@@ -1,0 +1,37 @@
+{
+  "name": "WRU",
+  "slug": "wru",
+  "categories": ["Productivity", "Other"],
+  "date_created": "2026-07-29",
+  "type": "ct",
+  "updateable": true,
+  "privileged": false,
+  "interface_port": 8000,
+  "documentation": "https://github.com/McKrackenAU/WRU",
+  "website": "https://github.com/McKrackenAU/WRU",
+  "description": "Lightweight LCP-FMRP MoA / roadwork site tracker with custom columns, tracking notes, and document attachments.",
+  "install_methods": [
+    {
+      "type": "default",
+      "script": "ct/wru.sh",
+      "resources": {
+        "cpu": 1,
+        "ram": 1024,
+        "hdd": 4,
+        "os": "debian",
+        "version": "12"
+      }
+    }
+  ],
+  "config_path": "/etc/default/wru",
+  "notes": [
+    {
+      "text": "Data and uploads persist in /opt/wru-data",
+      "type": "info"
+    },
+    {
+      "text": "Re-run the script inside the container to update WRU",
+      "type": "info"
+    }
+  ]
+}
