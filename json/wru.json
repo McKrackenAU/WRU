@@ -16,8 +16,8 @@
       "script": "ct/wru.sh",
       "resources": {
         "cpu": 1,
-        "ram": 1024,
-        "hdd": 4,
+        "ram": 2048,
+        "hdd": 8,
         "os": "debian",
         "version": "12"
       }
@@ -26,7 +26,11 @@
   "config_path": "/etc/default/wru",
   "notes": [
     {
-      "text": "Data and uploads persist in /opt/wru-data",
+      "text": "Uses local PostgreSQL (db/user wru). Credentials in /etc/default/wru",
+      "type": "info"
+    },
+    {
+      "text": "Uploads persist in /opt/wru-data/uploads",
       "type": "info"
     },
     {

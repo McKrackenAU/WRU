@@ -1,13 +1,38 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wru
+      POSTGRES_PASSWORD: wru
+      POSTGRES_DB: wru
+    volumes:
+      - wru_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wru -d wru"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   wru:
     build: .
     ports:
       - "8000:8000"
     volumes:
-      - wru_data:/data
+      - wru_uploads:/data
     environment:
       WRU_DATA_DIR: /data
+      POSTGRES_USER: wru
+      POSTGRES_PASSWORD: wru
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: wru
+      DATABASE_URL: postgresql+psycopg2://wru:wru@db:5432/wru
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  wru_data:
+  wru_pg:
+  wru_uploads:

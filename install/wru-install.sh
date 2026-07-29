@@ -20,6 +20,10 @@ APP_PORT="${WRU_PORT:-8000}"
 APP_GIT="${WRU_REPO:-https://github.com/McKrackenAU/WRU.git}"
 APP_BRANCH="${WRU_BRANCH:-main}"
 APP_USER="wru"
+PG_USER="${POSTGRES_USER:-wru}"
+PG_DB="${POSTGRES_DB:-wru}"
+PG_HOST="${POSTGRES_HOST:-127.0.0.1}"
+PG_PORT="${POSTGRES_PORT:-5432}"
 
 # Load community-scripts helpers when provided by ct/*.sh / build.func
 if [[ -n "${FUNCTIONS_FILE_PATH:-}" ]]; then
@@ -111,6 +115,28 @@ if ! declare -F silent >/dev/null 2>&1 && [[ "${STD:-}" == "silent" ]]; then
   silent() { "$@" >/dev/null 2>&1; }
 fi
 
+urlencode() {
+  python3 - <<'PY' "$1"
+import sys, urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe=""))
+PY
+}
+
+load_existing_pg_password() {
+  if [[ -f /etc/default/wru ]]; then
+    # shellcheck disable=SC1091
+    set -a
+    # shellcheck disable=SC1091
+    source /etc/default/wru
+    set +a
+    if [[ -n "${POSTGRES_PASSWORD:-}" ]]; then
+      echo "$POSTGRES_PASSWORD"
+      return
+    fi
+  fi
+  echo ""
+}
+
 msg_info "Installing Dependencies"
 $STD apt-get install -y \
   python3 \
@@ -118,8 +144,53 @@ $STD apt-get install -y \
   python3-pip \
   git \
   curl \
-  ca-certificates
+  ca-certificates \
+  postgresql \
+  postgresql-contrib \
+  libpq5
 msg_ok "Installed Dependencies"
+
+msg_info "Starting PostgreSQL"
+systemctl enable -q --now postgresql
+# Wait for local socket readiness
+for _ in $(seq 1 30); do
+  if su -s /bin/bash postgres -c "psql -tAc 'SELECT 1'" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+msg_ok "PostgreSQL running"
+
+PG_PASS="$(load_existing_pg_password)"
+if [[ -z "$PG_PASS" ]]; then
+  PG_PASS="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)"
+fi
+PG_PASS_SQL="${PG_PASS//\'/\'\'}"
+
+msg_info "Configuring PostgreSQL database"
+su -s /bin/bash postgres -c "psql -v ON_ERROR_STOP=1" <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${PG_USER}') THEN
+    CREATE ROLE ${PG_USER} LOGIN PASSWORD '${PG_PASS_SQL}';
+  ELSE
+    ALTER ROLE ${PG_USER} WITH LOGIN PASSWORD '${PG_PASS_SQL}';
+  END IF;
+END
+\$\$;
+SELECT 'CREATE DATABASE ${PG_DB} OWNER ${PG_USER}'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${PG_DB}')\gexec
+GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER};
+SQL
+# Schema privileges for Postgres 15+
+su -s /bin/bash postgres -c "psql -d ${PG_DB} -v ON_ERROR_STOP=1" <<SQL
+GRANT ALL ON SCHEMA public TO ${PG_USER};
+ALTER SCHEMA public OWNER TO ${PG_USER};
+SQL
+msg_ok "Database ${PG_DB} ready"
+
+PG_PASS_ENC="$(urlencode "$PG_PASS")"
+DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@${PG_HOST}:${PG_PORT}/${PG_DB}"
 
 msg_info "Creating application user"
 if ! id -u "$APP_USER" >/dev/null 2>&1; then
@@ -153,16 +224,24 @@ msg_info "Writing environment"
 cat <<EOF >/etc/default/wru
 WRU_DATA_DIR=${DATA_DIR}
 WRU_PORT=${APP_PORT}
-DATABASE_URL=sqlite:///${DATA_DIR}/wru.db
+POSTGRES_USER=${PG_USER}
+POSTGRES_PASSWORD=${PG_PASS}
+POSTGRES_HOST=${PG_HOST}
+POSTGRES_PORT=${PG_PORT}
+POSTGRES_DB=${PG_DB}
+DATABASE_URL=${DATABASE_URL}
 EOF
-chmod 644 /etc/default/wru
+chmod 640 /etc/default/wru
+chown root:"${APP_USER}" /etc/default/wru
 msg_ok "Wrote /etc/default/wru"
 
 msg_info "Seeding database"
 # shellcheck disable=SC1091
 source "$APP_DIR/.venv/bin/activate"
-export WRU_DATA_DIR="$DATA_DIR"
-export DATABASE_URL="sqlite:///${DATA_DIR}/wru.db"
+set -a
+# shellcheck disable=SC1091
+source /etc/default/wru
+set +a
 cd "$APP_DIR"
 python3 scripts/seed.py
 deactivate
@@ -177,8 +256,8 @@ msg_info "Creating Service"
 cat <<EOF >/etc/systemd/system/${SERVICE_NAME}.service
 [Unit]
 Description=WRU LCP-FMRP MoA Tracker
-After=network.target
-Wants=network-online.target
+After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
 Type=simple
@@ -208,7 +287,8 @@ if [[ -d /etc/update-motd.d ]]; then
 echo ""
 echo "  WRU MoA Tracker  →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}"
 echo "  Service          →  systemctl status ${SERVICE_NAME}"
-echo "  Data             →  ${DATA_DIR}"
+echo "  Database         →  PostgreSQL (${PG_DB})"
+echo "  Uploads          →  ${DATA_DIR}/uploads"
 echo ""
 EOF
   chmod +x /etc/update-motd.d/99-wru
@@ -222,4 +302,5 @@ IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo -e "\n${INFO:-ℹ} ${APP} installed."
 echo -e "Access URL: http://${IP_ADDR:-<container-ip>}:${APP_PORT}"
 echo -e "Service:    systemctl status ${SERVICE_NAME}"
-echo -e "Data dir:   ${DATA_DIR}\n"
+echo -e "Database:   PostgreSQL db=${PG_DB} user=${PG_USER}"
+echo -e "Uploads:    ${DATA_DIR}/uploads\n"

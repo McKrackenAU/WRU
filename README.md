@@ -15,13 +15,13 @@ Linux-hosted SQL web app that replaces the LCP–FMRP MoA spreadsheet. Track roa
 ## Stack
 
 - Python 3.12 + FastAPI
-- SQLite (WAL mode) via SQLAlchemy — single-file DB under `data/`
+- **PostgreSQL** via SQLAlchemy + psycopg2
 - Static HTML/CSS/JS frontend
-- Optional Docker Compose for Linux hosting
+- Proxmox helper-script installer and Docker Compose
 
 ## Proxmox Helper Script install (recommended)
 
-Helper-script style installer (same flow as community-scripts): creates a Debian LXC, installs WRU, enables `wru.service`, seeds sample data.
+Helper-script style installer (same flow as community-scripts): creates a Debian LXC, installs PostgreSQL + WRU, enables `wru.service`, seeds sample data.
 
 ### On the Proxmox host
 
@@ -46,21 +46,33 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ins
 
 ### Update
 
-Re-run the same `ct/wru.sh` **inside** the WRU container (or re-run `install/wru-install.sh`). App code updates; `/opt/wru-data` is kept.
+Re-run the same `ct/wru.sh` **inside** the WRU container (or re-run `install/wru-install.sh`). App code updates; PostgreSQL data and `/opt/wru-data/uploads` are kept. DB password in `/etc/default/wru` is reused.
 
 | Path | Purpose |
 |------|---------|
 | `/opt/wru` | Application |
-| `/opt/wru-data` | SQLite DB + uploads |
-| `/etc/default/wru` | Environment (`WRU_PORT`, data dir) |
-| `systemctl status wru` | Service |
+| `/opt/wru-data/uploads` | Uploaded documents |
+| `/etc/default/wru` | Env (`DATABASE_URL`, Postgres creds, port) |
+| PostgreSQL | Database `wru` / role `wru` |
+| `systemctl status wru` | App service |
+| `systemctl status postgresql` | Database service |
 
 ## Quick start (manual Linux)
 
+Requires a running PostgreSQL instance.
+
 ```bash
+sudo -u postgres psql -c "CREATE USER wru WITH PASSWORD 'wru';"
+sudo -u postgres psql -c "CREATE DATABASE wru OWNER wru;"
+sudo -u postgres psql -d wru -c "GRANT ALL ON SCHEMA public TO wru;"
+
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+export POSTGRES_USER=wru POSTGRES_PASSWORD=wru POSTGRES_HOST=127.0.0.1 POSTGRES_DB=wru
+# or: export DATABASE_URL=postgresql+psycopg2://wru:wru@127.0.0.1:5432/wru
+
 python3 scripts/seed.py
 python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
@@ -73,14 +85,19 @@ Open `http://localhost:8000` (or forward port 8000 from your host).
 docker compose up --build -d
 ```
 
-Data and uploads persist in the `wru_data` volume.
+Starts Postgres + the app. Uploads persist in the `wru_uploads` volume; DB in `wru_pg`.
 
 ## Environment
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `WRU_DATA_DIR` | `./data` (Proxmox: `/opt/wru-data`) | SQLite DB + upload storage |
-| `DATABASE_URL` | `sqlite:///{WRU_DATA_DIR}/wru.db` | Override DB (e.g. PostgreSQL) |
+| `DATABASE_URL` | built from `POSTGRES_*` | Full SQLAlchemy URL |
+| `POSTGRES_USER` | `wru` | DB user |
+| `POSTGRES_PASSWORD` | `wru` | DB password |
+| `POSTGRES_HOST` | `127.0.0.1` | DB host |
+| `POSTGRES_PORT` | `5432` | DB port |
+| `POSTGRES_DB` | `wru` | Database name |
+| `WRU_DATA_DIR` | `./data` (Proxmox: `/opt/wru-data`) | Upload storage |
 | `WRU_PORT` | `8000` | HTTP listen port |
 | `WRU_BRANCH` | `main` | Git branch used by helper scripts |
 | `WRU_REPO` | `https://github.com/McKrackenAU/WRU.git` | Git remote used by helper scripts |
