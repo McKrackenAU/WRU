@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#004825" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
-  <title>WRU TGS Tracker</title>
+  <title>Sites · WRU TGS Tracker</title>
   <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
-  <link rel="apple-touch-icon" href="/static/brand/veninspect-mark.png" />
   <link rel="stylesheet" href="/static/css/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
   <script>
@@ -26,33 +25,29 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <div class="brand-block">
-        <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="36" height="36" alt="" />
-        <div class="brand-text">
-          <p class="app-name">WRU TGS Tracker</p>
-          <p class="tagline">Traffic guidance · MoA workflow</p>
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Active sites</h1>
+          <p>Current financial-year TGS / MoA register</p>
         </div>
-        <img class="ventia-logo" src="/static/brand/ventia-logo.png" alt="Ventia" />
+        <div class="toolbar">
+          <a class="btn" href="/api/export/priority-list.csv">Export priority list</a>
+          <button type="button" class="btn" id="btnColumns">Columns</button>
+          <button type="button" class="btn btn-primary" id="btnAddSite">Add site</button>
+        </div>
       </div>
-      <div class="toolbar">
-        <label class="search-wrap">
-          <span class="sr-only">Search</span>
-          <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
-        </label>
+      <div class="filters">
+        <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
         <select id="priorityFilter" aria-label="Priority filter">
           <option value="">All priorities</option>
           <option value="1">Priority 1 (&lt; 21 days)</option>
           <option value="2">Priority 2</option>
         </select>
-        <input id="userName" type="text" placeholder="Your name" maxlength="64" aria-label="Your name for tracking" />
-        <button type="button" class="btn" id="btnColumns">Columns</button>
-        <button type="button" class="btn btn-primary" id="btnAddSite">Add site</button>
-        <button type="button" class="btn theme-toggle" id="themeToggle" aria-label="Theme">Theme</button>
+        <select id="stageFilter" aria-label="Stage filter"><option value="">All stages</option></select>
+        <select id="councilFilter" aria-label="Council filter"><option value="">All councils</option></select>
       </div>
-    </header>
-
-    <main class="main">
       <div class="table-card">
         <div class="table-scroll" id="tableScroll">
           <table class="data-table" id="sitesTable">
@@ -65,16 +60,9 @@
       </div>
       <p class="foot-note" id="statusLine">Ready</p>
     </main>
-
-    <footer class="app-footer">
-      <div class="inner">
-        <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="18" height="18" alt="" />
-        <span>WRU TGS Tracker · Traffic guidance schedules</span>
-      </div>
-    </footer>
+    <footer class="app-footer" data-app-footer></footer>
   </div>
 
-  <!-- Site editor -->
   <dialog id="siteDialog" class="panel">
     <form method="dialog" id="siteForm">
       <header class="panel-head">
@@ -85,10 +73,13 @@
         <input type="hidden" id="siteId" />
         <label>Road name<input id="fRoad" required maxlength="255" /></label>
         <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
+        <label>Program<input id="fProgram" maxlength="128" placeholder="e.g. LCP-FMRP" /></label>
+        <label>TGS reference<input id="fTgs" maxlength="128" /></label>
         <label>Indicative start<input id="fStart" type="date" /></label>
         <label>MoA must-have received<input id="fMustHave" type="date" /></label>
         <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
         <label>MoA submission date<input id="fMoaSub" type="date" /></label>
+        <label class="full">Councils (comma-separated)<input id="fCouncils" placeholder="Maribyrnong, Melbourne" /></label>
         <label class="full">Comments<textarea id="fComments" rows="3"></textarea></label>
         <fieldset class="full workflow-edit">
           <legend>Workflow progress</legend>
@@ -100,7 +91,7 @@
         </fieldset>
       </div>
       <footer class="panel-foot">
-        <button type="button" class="btn btn-danger" id="btnDeleteSite" hidden>Delete</button>
+        <button type="button" class="btn btn-danger" id="btnArchiveSite" hidden>Archive to FY</button>
         <div class="spacer"></div>
         <button type="submit" value="cancel" class="btn">Cancel</button>
         <button type="submit" value="save" class="btn btn-primary">Save</button>
@@ -108,7 +99,6 @@
     </form>
   </dialog>
 
-  <!-- Columns manager -->
   <dialog id="columnsDialog" class="panel">
     <form method="dialog" id="columnsForm">
       <header class="panel-head">
@@ -142,7 +132,6 @@
     </form>
   </dialog>
 
-  <!-- Side panel: tracking + documents -->
   <dialog id="detailDialog" class="panel panel-wide">
     <form method="dialog">
       <header class="panel-head">
@@ -168,11 +157,22 @@
           <ul id="trackList" class="event-list"></ul>
         </section>
         <section>
-          <h3>Documents</h3>
-          <div class="upload-row">
+          <h3>MoA documents</h3>
+          <div class="upload-row" style="flex-wrap:wrap">
+            <select id="docCategory">
+              <option value="email">Email</option>
+              <option value="tgs">TGS</option>
+              <option value="plan">Plan</option>
+              <option value="moa">MoA</option>
+              <option value="correspondence">Correspondence</option>
+              <option value="photo">Photo</option>
+              <option value="other">Other</option>
+            </select>
+            <input type="text" id="docDesc" placeholder="Description" />
             <input type="file" id="docFile" />
             <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
           </div>
+          <p class="hint">Attach emails (.eml/.msg), plans, TGS, MoA PDFs — all kept against this MoA/site.</p>
           <ul id="docList" class="event-list"></ul>
         </section>
       </div>
@@ -182,6 +182,6 @@
     </form>
   </dialog>
 
-  <script src="/static/js/app.js" type="module"></script>
+  <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

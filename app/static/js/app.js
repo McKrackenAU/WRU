@@ -1,89 +1,55 @@
+import {
+  $,
+  api,
+  escapeHtml,
+  fmtDate,
+  injectChrome,
+  mustBandClass,
+  stageLabel,
+  userName,
+} from "./common.js";
+
 const state = {
   sites: [],
   columns: [],
-  meta: { workflow_stages: [], priority_threshold_days: 21 },
+  meta: { workflow_stages: [], priority_threshold_days: 21, councils: [] },
   detailSiteId: null,
 };
 
-const $ = (id) => document.getElementById(id);
-
-function userName() {
-  return ($("userName").value || "").trim() || null;
-}
-
-function saveUserName() {
-  localStorage.setItem("wru_user", $("userName").value || "");
-}
-
-const THEME_KEY = "wru-tgs-theme";
-
-function currentTheme() {
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
-}
-
-function applyTheme(mode) {
-  const root = document.documentElement;
-  if (mode === "dark") root.classList.add("dark");
-  else root.classList.remove("dark");
-  root.style.colorScheme = mode;
-  const btn = $("themeToggle");
-  if (btn) {
-    btn.textContent = mode === "dark" ? "Light" : "Dark";
-    btn.setAttribute(
-      "aria-label",
-      mode === "dark" ? "Switch to light mode" : "Switch to dark mode"
-    );
-  }
-}
-
-function initThemeToggle() {
-  applyTheme(currentTheme());
-  $("themeToggle")?.addEventListener("click", () => {
-    const next = currentTheme() === "dark" ? "light" : "dark";
-    localStorage.setItem(THEME_KEY, next);
-    applyTheme(next);
-  });
-}
-
-async function api(path, options = {}) {
-  const res = await fetch(path, options);
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
-    } catch (_) {
-      /* ignore */
-    }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
-function fmtDate(value) {
-  if (!value) return "";
-  const [y, m, d] = value.split("-");
-  return `${d}/${m}/${y}`;
-}
-
-function daysUntil(iso) {
-  if (!iso) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(`${iso}T00:00:00`);
-  return Math.round((target - today) / 86400000);
-}
-
-function mustHaveClass(iso) {
-  const d = daysUntil(iso);
-  if (d === null) return "";
-  if (d < 0 || d >= 14) return "must-have late";
-  return "must-have soon";
-}
-
 function setStatus(msg) {
   $("statusLine").textContent = msg;
+}
+
+function workflowMap(site) {
+  const map = {};
+  for (const step of site.workflow || []) map[step.stage] = step.completed;
+  return map;
+}
+
+function fillFilterOptions() {
+  const stageSel = $("stageFilter");
+  const councilSel = $("councilFilter");
+  if (stageSel) {
+    const cur = stageSel.value;
+    stageSel.innerHTML =
+      `<option value="">All stages</option>` +
+      state.meta.workflow_stages
+        .map((s) => `<option value="${s.key}">${escapeHtml(s.label)}</option>`)
+        .join("");
+    stageSel.value = cur;
+  }
+  if (councilSel) {
+    const cur = councilSel.value;
+    const councils = new Set([...(state.meta.councils || [])]);
+    for (const s of state.sites) for (const c of s.councils || []) councils.add(c);
+    councilSel.innerHTML =
+      `<option value="">All councils</option>` +
+      [...councils]
+        .sort()
+        .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
+        .join("");
+    councilSel.value = cur;
+  }
 }
 
 function renderHead() {
@@ -95,13 +61,16 @@ function renderHead() {
     <tr>
       <th>Road Name</th>
       <th>Site</th>
+      <th>Program</th>
+      <th>Councils</th>
       <th>Start</th>
       <th>MoA must-have</th>
       <th>Pri</th>
+      <th>%</th>
       ${stages.map((s) => `<th class="stage" title="${escapeHtml(s.label)}">${escapeHtml(s.label)}</th>`).join("")}
       <th>Comments</th>
       <th>MoA #</th>
-      <th>Submitted</th>
+      <th>TGS</th>
       ${customTh}
       <th>Docs</th>
       <th></th>
@@ -109,28 +78,23 @@ function renderHead() {
   `;
 }
 
-function workflowMap(site) {
-  const map = {};
-  for (const step of site.workflow || []) map[step.stage] = step.completed;
-  return map;
-}
-
 function renderBody() {
   const tbody = $("tableBody");
   if (!state.sites.length) {
-    tbody.innerHTML = `<tr><td class="empty" colspan="30">No sites match. Add a site to get started.</td></tr>`;
+    tbody.innerHTML = `<tr><td class="empty" colspan="40">No active sites match.</td></tr>`;
     return;
   }
-
   const stages = state.meta.workflow_stages;
   tbody.innerHTML = state.sites
-    .map((site, idx) => {
+    .map((site) => {
       const wf = workflowMap(site);
+      const m = site.metrics || {};
+      const must = m.must_have_status || {};
       const stageCells = stages
-        .map((s) => {
-          const on = !!wf[s.key];
-          return `<td class="stage-cell ${on ? "on" : ""}" data-action="toggle-stage" data-id="${site.id}" data-stage="${s.key}" title="${escapeHtml(s.label)}"><span class="dot"></span></td>`;
-        })
+        .map(
+          (s) =>
+            `<td class="stage-cell ${wf[s.key] ? "on" : ""}" data-action="toggle-stage" data-id="${site.id}" data-stage="${s.key}" title="${escapeHtml(s.label)}"><span class="dot"></span></td>`
+        )
         .join("");
       const customCells = state.columns
         .map((c) => {
@@ -140,17 +104,23 @@ function renderBody() {
           return `<td>${escapeHtml(String(display))}</td>`;
         })
         .join("");
+      const councils = (site.councils || [])
+        .map((c) => `<span class="chip">${escapeHtml(c)}</span>`)
+        .join(" ");
       return `
-        <tr style="animation-delay:${Math.min(idx, 12) * 20}ms">
+        <tr>
           <td><strong>${escapeHtml(site.road_name)}</strong></td>
           <td class="mono">${escapeHtml(site.site_number)}</td>
+          <td>${escapeHtml(site.program || "")}</td>
+          <td>${councils || "—"}</td>
           <td class="mono">${fmtDate(site.indicative_site_start_date)}</td>
-          <td class="mono"><span class="${mustHaveClass(site.moa_must_have_received_date)}">${fmtDate(site.moa_must_have_received_date)}</span></td>
+          <td class="mono"><span class="${mustBandClass(must.band)}">${fmtDate(site.moa_must_have_received_date)} ${must.label && must.label !== "—" ? `(${escapeHtml(must.label)})` : ""}</span></td>
           <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
+          <td class="progress-mini">${m.workflow_progress_pct ?? 0}%</td>
           ${stageCells}
           <td class="comments">${escapeHtml(site.comments || "")}</td>
           <td class="mono">${escapeHtml(site.moa_number || "")}</td>
-          <td class="mono">${fmtDate(site.moa_submission_date)}</td>
+          <td class="mono">${escapeHtml(site.tgs_reference || "")}</td>
           ${customCells}
           <td class="mono">${site.document_count || 0}</td>
           <td>
@@ -159,39 +129,37 @@ function renderBody() {
               <button type="button" class="btn" data-action="detail" data-id="${site.id}">Track / Docs</button>
             </div>
           </td>
-        </tr>
-      `;
+        </tr>`;
     })
     .join("");
 }
 
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 async function loadAll() {
+  const params = new URLSearchParams({ archived: "false" });
   const q = $("search").value.trim();
   const priority = $("priorityFilter").value;
-  const params = new URLSearchParams();
+  const stage = $("stageFilter")?.value;
+  const council = $("councilFilter")?.value;
   if (q) params.set("q", q);
   if (priority) params.set("priority", priority);
-  const qs = params.toString() ? `?${params}` : "";
+  if (stage) params.set("stage", stage);
+  if (council) params.set("council", council);
 
   const [meta, columns, sites] = await Promise.all([
     api("/api/meta"),
     api("/api/columns"),
-    api(`/api/sites${qs}`),
+    api(`/api/sites?${params}`),
   ]);
   state.meta = meta;
   state.columns = columns;
   state.sites = sites;
+  fillFilterOptions();
   renderHead();
   renderBody();
-  setStatus(`${sites.length} site${sites.length === 1 ? "" : "s"} · ${columns.length} custom column${columns.length === 1 ? "" : "s"}`);
+  const pri = sites.filter((s) => s.metrics?.on_permits_priority_list).length;
+  setStatus(
+    `${sites.length} active site${sites.length === 1 ? "" : "s"} · ${pri} on permits priority list`
+  );
 }
 
 function buildWorkflowChecks(selected = {}) {
@@ -238,14 +206,17 @@ function openSiteDialog(site = null) {
   $("siteId").value = site ? site.id : "";
   $("fRoad").value = site?.road_name || "";
   $("fSiteNo").value = site?.site_number || "";
+  $("fProgram").value = site?.program || "";
+  $("fTgs").value = site?.tgs_reference || "";
   $("fStart").value = site?.indicative_site_start_date || "";
   $("fMustHave").value = site?.moa_must_have_received_date || "";
   $("fMoaNo").value = site?.moa_number || "";
   $("fMoaSub").value = site?.moa_submission_date || "";
+  $("fCouncils").value = (site?.councils || []).join(", ");
   $("fComments").value = site?.comments || "";
   buildWorkflowChecks(site ? workflowMap(site) : {});
   buildCustomFields(site?.custom_fields || {});
-  $("btnDeleteSite").hidden = !site;
+  $("btnArchiveSite").hidden = !site;
   $("siteDialog").showModal();
 }
 
@@ -262,14 +233,21 @@ function collectSitePayload() {
     else if (el.type === "number") custom_fields[key] = el.value === "" ? null : Number(el.value);
     else custom_fields[key] = el.value;
   }
+  const councils = $("fCouncils")
+    .value.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   return {
     road_name: $("fRoad").value.trim(),
     site_number: $("fSiteNo").value.trim(),
+    program: $("fProgram").value.trim() || null,
+    tgs_reference: $("fTgs").value.trim() || null,
     indicative_site_start_date: $("fStart").value || null,
     moa_must_have_received_date: $("fMustHave").value || null,
     moa_number: $("fMoaNo").value.trim() || null,
     moa_submission_date: $("fMoaSub").value || null,
     comments: $("fComments").value.trim() || null,
+    councils,
     custom_fields,
     workflow,
   };
@@ -301,10 +279,16 @@ async function saveSite(ev) {
   }
 }
 
-async function deleteSite() {
+async function archiveSite() {
   const id = $("siteId").value;
-  if (!id || !confirm("Delete this site and its documents/tracking?")) return;
-  await api(`/api/sites/${id}`, { method: "DELETE" });
+  if (!id) return;
+  const fy = prompt("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
+  if (fy === null) return;
+  await api(`/api/sites/${id}/archive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ financial_year: fy.trim() || null }),
+  });
   $("siteDialog").close();
   await loadAll();
 }
@@ -337,10 +321,7 @@ async function openColumns() {
 
 async function addColumn() {
   const name = $("colName").value.trim();
-  if (!name) {
-    alert("Column name is required");
-    return;
-  }
+  if (!name) return alert("Column name is required");
   const field_type = $("colType").value;
   const options =
     field_type === "select"
@@ -349,33 +330,21 @@ async function addColumn() {
           .map((s) => s.trim())
           .filter(Boolean)
       : null;
-  try {
-    await api("/api/columns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, field_type, options, created_by: userName() }),
-    });
-    await loadAll();
-    renderColumnList();
-    $("colName").value = "";
-    $("colOptions").value = "";
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function removeColumn(id) {
-  if (!confirm("Remove this column and clear its values from all sites?")) return;
-  await api(`/api/columns/${id}`, { method: "DELETE" });
+  await api("/api/columns", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, field_type, options, created_by: userName() }),
+  });
   await loadAll();
   renderColumnList();
+  $("colName").value = "";
 }
 
 async function openDetail(siteId) {
   state.detailSiteId = siteId;
   const site = state.sites.find((s) => s.id === siteId) || (await api(`/api/sites/${siteId}`));
   $("detailTitle").textContent = site.road_name;
-  $("detailSub").textContent = `${site.site_number} · tracking & documents`;
+  $("detailSub").textContent = `${site.site_number} · MoA ${site.moa_number || "—"} · docs & tracking`;
   await Promise.all([refreshTracking(), refreshDocuments()]);
   $("detailDialog").showModal();
 }
@@ -406,14 +375,14 @@ async function refreshDocuments() {
           (d) => `
       <li>
         <div class="top">
-          <span>${escapeHtml(d.uploaded_by || "anon")} · ${(d.size_bytes / 1024).toFixed(1)} KB · ${new Date(d.uploaded_at).toLocaleString()}</span>
+          <span><span class="doc-cat">${escapeHtml(d.category)}</span> · ${escapeHtml(d.uploaded_by || "anon")} · ${(d.size_bytes / 1024).toFixed(1)} KB</span>
           <button type="button" class="btn" data-del-doc="${d.id}">Delete</button>
         </div>
-        <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></p>
+        <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a>${d.description ? ` — ${escapeHtml(d.description)}` : ""}</p>
       </li>`
         )
         .join("")
-    : `<li><p class="meta">No documents attached.</p></li>`;
+    : `<li><p class="meta">No documents attached to this MoA/site.</p></li>`;
 }
 
 async function addTracking() {
@@ -435,23 +404,20 @@ async function addTracking() {
 
 async function uploadDoc() {
   const fileInput = $("docFile");
-  if (!fileInput.files?.length) {
-    alert("Choose a file first");
-    return;
-  }
+  if (!fileInput.files?.length) return alert("Choose a file first");
   const fd = new FormData();
   fd.append("file", fileInput.files[0]);
+  fd.append("category", $("docCategory").value);
+  if ($("docDesc").value.trim()) fd.append("description", $("docDesc").value.trim());
   if (userName()) fd.append("uploaded_by", userName());
-  const res = await fetch(`/api/sites/${state.detailSiteId}/documents`, {
-    method: "POST",
-    body: fd,
-  });
+  const res = await fetch(`/api/sites/${state.detailSiteId}/documents`, { method: "POST", body: fd });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     alert(body.detail || "Upload failed");
     return;
   }
   fileInput.value = "";
+  $("docDesc").value = "";
   await refreshDocuments();
   await loadAll();
 }
@@ -469,39 +435,46 @@ async function toggleStage(siteId, stage) {
   await loadAll();
 }
 
+function debounce(fn, ms) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
 function bindEvents() {
   $("btnAddSite").addEventListener("click", () => openSiteDialog());
   $("btnColumns").addEventListener("click", openColumns);
   $("btnAddColumn").addEventListener("click", addColumn);
-  $("btnDeleteSite").addEventListener("click", deleteSite);
+  $("btnArchiveSite").addEventListener("click", archiveSite);
   $("btnAddTrack").addEventListener("click", addTracking);
   $("btnUploadDoc").addEventListener("click", uploadDoc);
   $("siteForm").addEventListener("submit", saveSite);
   $("colType").addEventListener("change", () => {
     $("colOptionsWrap").hidden = $("colType").value !== "select";
   });
-  $("userName").addEventListener("change", saveUserName);
   $("search").addEventListener("input", debounce(loadAll, 250));
   $("priorityFilter").addEventListener("change", loadAll);
+  $("stageFilter")?.addEventListener("change", loadAll);
+  $("councilFilter")?.addEventListener("change", loadAll);
 
   $("tableBody").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-action]");
     if (!btn) return;
     const id = Number(btn.dataset.id);
-    if (btn.dataset.action === "edit") {
-      const site = state.sites.find((s) => s.id === id);
-      openSiteDialog(site);
-    } else if (btn.dataset.action === "detail") {
-      openDetail(id);
-    } else if (btn.dataset.action === "toggle-stage") {
-      await toggleStage(id, btn.dataset.stage);
-    }
+    if (btn.dataset.action === "edit") openSiteDialog(state.sites.find((s) => s.id === id));
+    else if (btn.dataset.action === "detail") openDetail(id);
+    else if (btn.dataset.action === "toggle-stage") await toggleStage(id, btn.dataset.stage);
   });
 
   $("columnList").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-del-col]");
     if (!btn) return;
-    await removeColumn(Number(btn.dataset.delCol));
+    if (!confirm("Remove this column and clear its values from all sites?")) return;
+    await api(`/api/columns/${btn.dataset.delCol}`, { method: "DELETE" });
+    await loadAll();
+    renderColumnList();
   });
 
   $("trackList").addEventListener("click", async (ev) => {
@@ -524,17 +497,8 @@ function bindEvents() {
   });
 }
 
-function debounce(fn, ms) {
-  let t;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
-}
-
 async function init() {
-  $("userName").value = localStorage.getItem("wru_user") || "";
-  initThemeToggle();
+  injectChrome({ active: "/" });
   bindEvents();
   try {
     await loadAll();

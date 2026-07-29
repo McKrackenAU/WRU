@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Archive · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Financial year archive</h1>
+          <p>Sites are archived (not deleted) so old plans and MoAs stay searchable by year</p>
+        </div>
+        <div class="toolbar">
+          <a class="btn" id="exportLink" href="/api/export/sites.csv?archived=true">Export archived CSV</a>
+        </div>
+      </div>
+      <div class="filters">
+        <select id="fyFilter"><option value="">All years</option></select>
+        <input id="search" type="search" placeholder="Search archived sites…" />
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>FY</th>
+                <th>Road</th>
+                <th>Site</th>
+                <th>Program</th>
+                <th>Councils</th>
+                <th>MoA #</th>
+                <th>TGS</th>
+                <th>Archived</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tbody"><tr><td class="empty" colspan="9">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <p class="foot-note" id="statusLine"></p>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/archive.js"></script>
+</body>
+</html>

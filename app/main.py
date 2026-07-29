@@ -2,44 +2,97 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import distinct
+from sqlalchemy.orm import Session
 
-from .database import Base, engine
-from .models import WORKFLOW_LABELS, WORKFLOW_STAGES
-from .routers import columns, documents, sites, tracking
+from .database import get_db
+from .financial_year import fy_choices
+from .migrate import run_migrations
+from .models import DOC_CATEGORIES, WORKFLOW_LABELS, WORKFLOW_STAGES, Site, SiteCouncil
+from .routers import columns, dashboard, documents, export, map_layers, sites, tracking
 from .schemas import MetaOut
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
     title="WRU TGS Tracker",
-    description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, and documents.",
-    version="1.0.0",
+    description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, documents, archive, and map.",
+    version="1.1.0",
 )
 
-Base.metadata.create_all(bind=engine)
+run_migrations()
 
 app.include_router(sites.router)
 app.include_router(columns.router)
 app.include_router(tracking.router)
 app.include_router(documents.router)
+app.include_router(dashboard.router)
+app.include_router(export.router)
+app.include_router(map_layers.router)
 
 
 @app.get("/api/meta", response_model=MetaOut)
-def meta():
+def meta(db: Session = Depends(get_db)):
+    programs = [
+        p
+        for (p,) in db.query(distinct(Site.program)).filter(Site.program.isnot(None)).order_by(Site.program).all()
+        if p
+    ]
+    councils = [
+        c
+        for (c,) in db.query(distinct(SiteCouncil.council_name)).order_by(SiteCouncil.council_name).all()
+        if c
+    ]
     return {
         "workflow_stages": [
             {"key": key, "label": WORKFLOW_LABELS[key]} for key in WORKFLOW_STAGES
         ],
+        "doc_categories": DOC_CATEGORIES,
         "priority_threshold_days": 21,
+        "financial_years": fy_choices(),
+        "programs": programs,
+        "councils": councils,
     }
+
+
+def _page(name: str) -> FileResponse:
+    path = STATIC_DIR / name
+    if not path.exists():
+        path = STATIC_DIR / "index.html"
+    return FileResponse(path)
 
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    return _page("index.html")
+
+
+@app.get("/dashboard")
+def dashboard_page():
+    return _page("dashboard.html")
+
+
+@app.get("/tracking")
+def tracking_page():
+    return _page("tracking.html")
+
+
+@app.get("/archive")
+def archive_page():
+    return _page("archive.html")
+
+
+@app.get("/map")
+def map_page():
+    return _page("map.html")
+
+
+@app.get("/documents")
+def documents_page():
+    return _page("documents.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

@@ -1,0 +1,212 @@
+from __future__ import annotations
+
+import uuid
+from pathlib import Path
+
+import aiofiles
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from sqlalchemy.orm import Session
+
+from ..database import UPLOAD_DIR, get_db
+from ..financial_year import australian_financial_year
+from ..kml_parse import parse_kml_features
+from ..models import MapFeature, MapLayer, Site
+from ..schemas import MapFeatureLink, MapFeatureOut, MapLayerOut
+
+router = APIRouter(prefix="/api/map", tags=["map"])
+
+KML_DIR = UPLOAD_DIR / "kml"
+KML_DIR.mkdir(parents=True, exist_ok=True)
+MAX_KML_BYTES = 50 * 1024 * 1024
+
+
+def _feature_out(feat: MapFeature) -> dict:
+    site_payload = None
+    if feat.site:
+        site_payload = {
+            "id": feat.site.id,
+            "road_name": feat.site.road_name,
+            "site_number": feat.site.site_number,
+            "moa_number": feat.site.moa_number,
+            "tgs_reference": feat.site.tgs_reference,
+            "financial_year": feat.site.archived_fy or feat.site.financial_year,
+            "archived": feat.site.archived,
+        }
+    return {
+        "id": feat.id,
+        "layer_id": feat.layer_id,
+        "site_id": feat.site_id,
+        "name": feat.name,
+        "description": feat.description,
+        "geometry": feat.geometry,
+        "properties": feat.properties or {},
+        "financial_year": feat.layer.financial_year if feat.layer else None,
+        "site": site_payload,
+    }
+
+
+@router.get("/layers", response_model=list[MapLayerOut])
+def list_layers(financial_year: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(MapLayer)
+    if financial_year:
+        query = query.filter(MapLayer.financial_year == financial_year)
+    return query.order_by(MapLayer.financial_year.desc(), MapLayer.id.desc()).all()
+
+
+@router.post("/layers", response_model=MapLayerOut, status_code=201)
+async def upload_kml(
+    file: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    financial_year: str | None = Form(default=None),
+    uploaded_by: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    original = Path(file.filename or "layer.kml").name
+    if not original.lower().endswith((".kml", ".xml")):
+        raise HTTPException(status_code=400, detail="Upload a .kml file")
+
+    content = await file.read(MAX_KML_BYTES + 1)
+    if len(content) > MAX_KML_BYTES:
+        raise HTTPException(status_code=413, detail="KML exceeds 50 MB limit")
+
+    try:
+        features = parse_kml_features(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not features:
+        raise HTTPException(status_code=400, detail="No placemarks with geometry found in KML")
+
+    fy = (financial_year or "").strip() or australian_financial_year()
+    stored = f"kml_{uuid.uuid4().hex}_{original}"
+    dest = KML_DIR / stored
+    async with aiofiles.open(dest, "wb") as out:
+        await out.write(content)
+
+    layer = MapLayer(
+        name=(name or original).strip(),
+        financial_year=fy,
+        original_filename=original,
+        stored_name=stored,
+        feature_count=len(features),
+        uploaded_by=uploaded_by,
+    )
+    db.add(layer)
+    db.flush()
+
+    # Auto-link by MoA / site number / road name hints in KML props/name
+    sites = db.query(Site).all()
+    by_moa = { (s.moa_number or "").strip(): s for s in sites if s.moa_number }
+    by_site_no = { (s.site_number or "").strip().upper(): s for s in sites }
+
+    for feat in features:
+        props = feat.get("properties") or {}
+        hay = " ".join(
+            [
+                feat.get("name") or "",
+                feat.get("description") or "",
+                " ".join(str(v) for v in props.values()),
+            ]
+        ).upper()
+        linked = None
+        for moa, site in by_moa.items():
+            if moa and moa.upper() in hay:
+                linked = site
+                break
+        if linked is None:
+            for sno, site in by_site_no.items():
+                if sno and sno in hay:
+                    linked = site
+                    break
+        db.add(
+            MapFeature(
+                layer_id=layer.id,
+                site_id=linked.id if linked else None,
+                name=feat.get("name"),
+                description=feat.get("description"),
+                geometry=feat["geometry"],
+                properties=props,
+            )
+        )
+
+    db.commit()
+    db.refresh(layer)
+    return layer
+
+
+@router.get("/features", response_model=list[MapFeatureOut])
+def list_features(
+    financial_year: str | None = Query(default=None),
+    layer_id: int | None = Query(default=None),
+    linked_only: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    query = db.query(MapFeature).join(MapLayer)
+    if financial_year:
+        query = query.filter(MapLayer.financial_year == financial_year)
+    if layer_id:
+        query = query.filter(MapFeature.layer_id == layer_id)
+    if linked_only:
+        query = query.filter(MapFeature.site_id.isnot(None))
+    feats = query.order_by(MapLayer.financial_year.desc(), MapFeature.id.asc()).all()
+    return [_feature_out(f) for f in feats]
+
+
+@router.get("/geojson")
+def geojson(
+    financial_year: str | None = Query(default=None),
+    layer_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    feats = list_features(
+        financial_year=financial_year, layer_id=layer_id, linked_only=False, db=db
+    )
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": f["id"],
+                "geometry": f["geometry"],
+                "properties": {
+                    "feature_id": f["id"],
+                    "layer_id": f["layer_id"],
+                    "name": f["name"],
+                    "description": f["description"],
+                    "financial_year": f["financial_year"],
+                    "site_id": f["site_id"],
+                    "site": f["site"],
+                    **(f.get("properties") or {}),
+                },
+            }
+            for f in feats
+        ],
+    }
+
+
+@router.patch("/features/{feature_id}", response_model=MapFeatureOut)
+def link_feature(feature_id: int, payload: MapFeatureLink, db: Session = Depends(get_db)):
+    feat = db.get(MapFeature, feature_id)
+    if not feat:
+        raise HTTPException(status_code=404, detail="Feature not found")
+    if payload.site_id is not None:
+        site = db.get(Site, payload.site_id)
+        if not site:
+            raise HTTPException(status_code=404, detail="Site not found")
+        feat.site_id = site.id
+    else:
+        feat.site_id = None
+    db.commit()
+    db.refresh(feat)
+    return _feature_out(feat)
+
+
+@router.delete("/layers/{layer_id}", status_code=204)
+def delete_layer(layer_id: int, db: Session = Depends(get_db)):
+    layer = db.get(MapLayer, layer_id)
+    if not layer:
+        raise HTTPException(status_code=404, detail="Layer not found")
+    path = KML_DIR / layer.stored_name
+    path.unlink(missing_ok=True)
+    db.delete(layer)
+    db.commit()
+    return None

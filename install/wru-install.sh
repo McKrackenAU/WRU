@@ -244,6 +244,7 @@ set -a
 source /etc/default/wru
 set +a
 cd "$APP_DIR"
+python3 -c "from app.migrate import run_migrations; run_migrations()"
 python3 scripts/seed.py
 deactivate
 msg_ok "Database ready"

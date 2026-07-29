@@ -10,13 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app.database import Base, SessionLocal, engine  # noqa: E402
+from app.database import SessionLocal  # noqa: E402
+from app.financial_year import australian_financial_year  # noqa: E402
+from app.migrate import run_migrations  # noqa: E402
 from app.models import CustomColumn, Site, TrackingEvent  # noqa: E402
-from app.services import apply_workflow, ensure_workflow_steps  # noqa: E402
+from app.services import apply_workflow, ensure_workflow_steps, set_councils  # noqa: E402
 
 
 def main() -> None:
-    Base.metadata.create_all(bind=engine)
+    run_migrations()
     db = SessionLocal()
     try:
         if db.query(Site).count():
@@ -24,15 +26,19 @@ def main() -> None:
             return
 
         today = date.today()
+        fy = australian_financial_year(today)
         samples = [
             {
                 "road_name": "DYNON RD - 5035",
                 "site_number": "S48",
+                "program": "LCP-FMRP",
+                "tgs_reference": "TGS-5035-A",
                 "indicative_site_start_date": today + timedelta(days=45),
                 "moa_must_have_received_date": today + timedelta(days=30),
                 "comments": "Ventia to review - 3x comments made Re: detours",
                 "moa_number": "0093225",
                 "moa_submission_date": today - timedelta(days=12),
+                "councils": ["Maribyrnong"],
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
@@ -42,15 +48,19 @@ def main() -> None:
                     "moa_with_trims": True,
                 },
                 "tracking": "TRIMS Submitted 23/7",
+                "custom_fields": {"permit_officer": "A. Nguyen"},
             },
             {
                 "road_name": "HOPKINS-WHITEHALL ST - 5880",
                 "site_number": "S49",
+                "program": "LCP-FMRP",
+                "tgs_reference": "TGS-5880-B",
                 "indicative_site_start_date": today + timedelta(days=18),
                 "moa_must_have_received_date": today + timedelta(days=5),
                 "comments": "Awaiting revised TGS from designer",
                 "moa_number": None,
                 "moa_submission_date": None,
+                "councils": ["Melbourne", "Maribyrnong"],
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
@@ -58,30 +68,38 @@ def main() -> None:
                     "ready_to_submit_moa": True,
                 },
                 "tracking": "Ready to submit MoA once comments cleared",
+                "custom_fields": {"permit_officer": "J. Patel"},
             },
             {
                 "road_name": "FOOTSCRAY RD - 4120",
                 "site_number": "S50",
+                "program": "LCP-FMRP",
+                "tgs_reference": "TGS-4120-A",
                 "indicative_site_start_date": today + timedelta(days=60),
                 "moa_must_have_received_date": today + timedelta(days=40),
                 "comments": "Plan received from consultant",
                 "moa_number": None,
                 "moa_submission_date": None,
+                "councils": ["Maribyrnong"],
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
                     "plan_received": True,
                 },
                 "tracking": "Plan Received – checking detour extents",
+                "custom_fields": {},
             },
             {
                 "road_name": "BALLARAT RD - 3312",
                 "site_number": "S51",
+                "program": "LCP-FMRP",
+                "tgs_reference": "TGS-3312-C",
                 "indicative_site_start_date": today + timedelta(days=10),
                 "moa_must_have_received_date": today - timedelta(days=2),
                 "comments": "Priority – MoA overdue vs must-have date",
                 "moa_number": "0093401",
                 "moa_submission_date": today - timedelta(days=5),
+                "councils": ["Hobsons Bay", "Maribyrnong"],
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
@@ -90,17 +108,21 @@ def main() -> None:
                     "moa_submitted": True,
                 },
                 "tracking": "Chasing TRIMS for turnaround",
+                "custom_fields": {},
             },
         ]
 
         for row in samples:
             tracking_msg = row.pop("tracking")
             workflow = row.pop("workflow")
-            site = Site(**row, custom_fields={})
+            councils = row.pop("councils")
+            custom_fields = row.pop("custom_fields")
+            site = Site(**row, custom_fields=custom_fields, financial_year=fy, archived=False)
             db.add(site)
             db.flush()
             ensure_workflow_steps(site)
             apply_workflow(site, workflow)
+            set_councils(site, councils)
             db.add(
                 TrackingEvent(
                     site_id=site.id,
@@ -119,31 +141,9 @@ def main() -> None:
                 created_by="seed",
             )
         )
-        db.add(
-            CustomColumn(
-                name="Council Area",
-                field_key="council_area",
-                field_type="select",
-                options=["Maribyrnong", "Melbourne", "Hobsons Bay"],
-                position=2,
-                created_by="seed",
-            )
-        )
-
-        # Attach sample custom field values
-        sites = db.query(Site).all()
-        if sites:
-            sites[0].custom_fields = {
-                "permit_officer": "A. Nguyen",
-                "council_area": "Maribyrnong",
-            }
-            sites[1].custom_fields = {
-                "permit_officer": "J. Patel",
-                "council_area": "Melbourne",
-            }
 
         db.commit()
-        print(f"Seeded {len(samples)} sites and 2 custom columns.")
+        print(f"Seeded {len(samples)} sites for FY {fy}.")
     finally:
         db.close()
 

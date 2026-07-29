@@ -5,27 +5,14 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from .models import WORKFLOW_STAGES, Site, WorkflowStep
+from .calculations import compute_today_priority, site_metrics
+from .financial_year import australian_financial_year
+from .models import WORKFLOW_STAGES, Site, SiteCouncil, WorkflowStep
 
 
 def slugify_field_key(name: str) -> str:
     key = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip().lower()).strip("_")
     return key or "custom_field"
-
-
-def days_until(target: date | None, today: date | None = None) -> int | None:
-    if target is None:
-        return None
-    today = today or date.today()
-    return (target - today).days
-
-
-def compute_today_priority(site: Site, threshold_days: int = 21) -> int:
-    """Priority 1 when start date is within threshold_days; otherwise 2."""
-    delta = days_until(site.indicative_site_start_date)
-    if delta is None:
-        return 2
-    return 1 if delta < threshold_days else 2
 
 
 def ensure_workflow_steps(site: Site) -> None:
@@ -59,19 +46,62 @@ def ordered_workflow(site: Site) -> list[WorkflowStep]:
     return sorted(site.workflow_steps, key=lambda s: order.get(s.stage, 999))
 
 
-def site_to_dict(site: Site) -> dict:
+def set_councils(site: Site, councils: list[str] | None) -> None:
+    if councils is None:
+        return
+    cleaned = []
+    seen = set()
+    for raw in councils:
+        name = (raw or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(name)
+    site.councils.clear()
+    for name in cleaned:
+        site.councils.append(SiteCouncil(council_name=name))
+
+
+def infer_financial_year(site: Site) -> str:
+    if site.archived_fy:
+        return site.archived_fy
+    if site.financial_year:
+        return site.financial_year
+    anchor = (
+        site.indicative_site_start_date
+        or site.moa_submission_date
+        or site.moa_must_have_received_date
+        or date.today()
+    )
+    return australian_financial_year(anchor)
+
+
+def site_to_dict(site: Site, *, include_metrics: bool = True) -> dict:
     workflow = ordered_workflow(site)
+    metrics = site_metrics(site) if include_metrics else {}
+    fy = infer_financial_year(site)
     return {
         "id": site.id,
         "road_name": site.road_name,
         "site_number": site.site_number,
+        "program": site.program,
+        "tgs_reference": site.tgs_reference,
         "indicative_site_start_date": site.indicative_site_start_date,
         "moa_must_have_received_date": site.moa_must_have_received_date,
         "comments": site.comments,
         "moa_number": site.moa_number,
         "moa_submission_date": site.moa_submission_date,
+        "financial_year": fy,
+        "archived": bool(site.archived),
+        "archived_at": site.archived_at,
+        "archived_fy": site.archived_fy,
+        "councils": [c.council_name for c in (site.councils or [])],
         "custom_fields": site.custom_fields or {},
-        "today_priority": compute_today_priority(site),
+        "today_priority": metrics.get("today_priority", compute_today_priority(site)),
+        "metrics": metrics,
         "workflow": [
             {
                 "stage": step.stage,

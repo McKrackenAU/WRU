@@ -4,13 +4,15 @@ Linux-hosted PostgreSQL web app for traffic guidance / MoA workflow tracking. Sa
 
 ## Features
 
-- **Site register** matching the spreadsheet: road name, site number, start dates, MoA must-have date, priority, workflow stages, comments, MoA number/submission date
-- **Workflow progress** as clickable stage cells (TGS → TMD → Plan → MoA → TRIMS → Ready for Works)
-- **Priority** auto-calculated (1 if indicative start is within 21 days)
-- **Custom columns** — any user can add or remove columns (text, number, date, checkbox, select)
-- **Tracking** — append status/chase/issue notes per site
-- **Documents** — upload attachments and download them again
-- **Lightweight UI** — dense table, no heavy frontend build step
+- **Site register** with program, multi-council attribution, TGS reference, MoA fields, workflow stages
+- **Sheet-style calculations** — priority (&lt;21 days), must-have bands (0–14 / 14+), progress %, permits priority list (TRIMS rule)
+- **Dashboard** — program health, stage funnel, councils, permits priority count
+- **Tracking page** — filter whole program by stage / council / priority / permits list
+- **Priority list export** — CSV for the approvals client (`/api/export/priority-list.csv`)
+- **MoA document library** — emails, TGS, plans, MoAs attached per site/MoA; searchable library page
+- **Archive by financial year** (AU FY Jul–Jun) instead of delete; restore supported
+- **Map** — import prior-year KML, click polygons to open linked TGS/MoA
+- **Custom columns**, tracking notes, Ventia/VenInspect styling
 
 ## Stack
 

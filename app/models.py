@@ -42,6 +42,16 @@ WORKFLOW_LABELS = {
     "ready_for_works": "Ready for Works",
 }
 
+DOC_CATEGORIES = [
+    "email",
+    "tgs",
+    "plan",
+    "moa",
+    "correspondence",
+    "photo",
+    "other",
+]
+
 
 class Site(Base):
     __tablename__ = "sites"
@@ -49,11 +59,17 @@ class Site(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     road_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     site_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    program: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    tgs_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     indicative_site_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     moa_must_have_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
-    moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     moa_submission_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    financial_year: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_fy: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     custom_fields: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -65,6 +81,9 @@ class Site(Base):
         nullable=False,
     )
 
+    councils: Mapped[list[SiteCouncil]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", lazy="selectin"
+    )
     workflow_steps: Mapped[list[WorkflowStep]] = relationship(
         back_populates="site", cascade="all, delete-orphan", lazy="joined"
     )
@@ -74,6 +93,20 @@ class Site(Base):
     documents: Mapped[list[Document]] = relationship(
         back_populates="site", cascade="all, delete-orphan", lazy="selectin"
     )
+    map_features: Mapped[list[MapFeature]] = relationship(
+        back_populates="site", lazy="selectin"
+    )
+
+
+class SiteCouncil(Base):
+    __tablename__ = "site_councils"
+    __table_args__ = (UniqueConstraint("site_id", "council_name", name="uq_site_council"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    council_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
+    site: Mapped[Site] = relationship(back_populates="councils")
 
 
 class WorkflowStep(Base):
@@ -125,6 +158,9 @@ class Document(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(32), nullable=False, default="other", index=True)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -135,3 +171,39 @@ class Document(Base):
     )
 
     site: Mapped[Site] = relationship(back_populates="documents")
+
+
+class MapLayer(Base):
+    __tablename__ = "map_layers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    financial_year: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    feature_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    features: Mapped[list[MapFeature]] = relationship(
+        back_populates="layer", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class MapFeature(Base):
+    __tablename__ = "map_features"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    layer_id: Mapped[int] = mapped_column(ForeignKey("map_layers.id", ondelete="CASCADE"), index=True)
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    geometry: Mapped[dict] = mapped_column(JSON, nullable=False)
+    properties: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    layer: Mapped[MapLayer] = relationship(back_populates="features")
+    site: Mapped[Site | None] = relationship(back_populates="map_features")

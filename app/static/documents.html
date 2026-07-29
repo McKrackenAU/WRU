@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Documents · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>MoA document library</h1>
+          <p>All attachments in one place — emails, TGS, plans, MoAs — filterable by MoA number</p>
+        </div>
+      </div>
+      <div class="filters">
+        <input id="moaFilter" type="search" placeholder="MoA number" />
+        <input id="search" type="search" placeholder="Filename, road, description…" />
+        <select id="categoryFilter"><option value="">All categories</option></select>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>File</th>
+                <th>MoA #</th>
+                <th>Road / Site</th>
+                <th>Description</th>
+                <th>Uploaded</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tbody"><tr><td class="empty" colspan="7">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <p class="foot-note" id="statusLine"></p>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/documents.js"></script>
+</body>
+</html>

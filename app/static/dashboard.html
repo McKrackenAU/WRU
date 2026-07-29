@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Dashboard · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Program dashboard</h1>
+          <p>Overall TGS / MoA tracking health</p>
+        </div>
+        <div class="toolbar">
+          <a class="btn btn-primary" href="/api/export/priority-list.csv">Export priority list</a>
+          <a class="btn" href="/tracking">Open tracking</a>
+        </div>
+      </div>
+      <div class="stat-grid" id="statGrid"></div>
+      <div class="split-2">
+        <section class="panel-card">
+          <h2>Where jobs are up to</h2>
+          <div class="bar-list" id="stageBars"></div>
+        </section>
+        <section class="panel-card">
+          <h2>Councils attributed</h2>
+          <div class="bar-list" id="councilBars"></div>
+        </section>
+      </div>
+      <div class="split-2">
+        <section class="panel-card">
+          <h2>Programs</h2>
+          <div class="bar-list" id="programBars"></div>
+        </section>
+        <section class="panel-card">
+          <h2>Recent tracking</h2>
+          <ul class="event-list" id="recentList"></ul>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/dashboard.js"></script>
+</body>
+</html>
