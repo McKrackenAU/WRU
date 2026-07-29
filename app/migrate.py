@@ -6,8 +6,11 @@ from sqlalchemy import inspect, text
 
 from .database import Base, engine
 from .models import (  # noqa: F401 — register metadata
+    CostEstimate,
+    CostSettings,
     CustomColumn,
     Document,
+    LabourRate,
     MapFeature,
     MapLayer,
     Site,

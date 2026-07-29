@@ -12,7 +12,16 @@ from .database import get_db
 from .financial_year import fy_choices
 from .migrate import run_migrations
 from .models import DOC_CATEGORIES, WORKFLOW_LABELS, WORKFLOW_STAGES, Site, SiteCouncil
-from .routers import columns, dashboard, documents, export, map_layers, sites, tracking
+from .routers import (
+    columns,
+    costs,
+    dashboard,
+    documents,
+    export,
+    map_layers,
+    sites,
+    tracking,
+)
 from .schemas import MetaOut
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -20,7 +29,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = FastAPI(
     title="WRU TGS Tracker",
     description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, documents, archive, and map.",
-    version="1.1.0",
+    version="1.2.0",
 )
 
 run_migrations()
@@ -32,6 +41,7 @@ app.include_router(documents.router)
 app.include_router(dashboard.router)
 app.include_router(export.router)
 app.include_router(map_layers.router)
+app.include_router(costs.router)
 
 
 @app.get("/api/meta", response_model=MetaOut)
@@ -93,6 +103,16 @@ def map_page():
 @app.get("/documents")
 def documents_page():
     return _page("documents.html")
+
+
+@app.get("/costs")
+def costs_page():
+    return _page("costs.html")
+
+
+@app.get("/rates")
+def rates_page():
+    return _page("rates.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -207,3 +208,65 @@ class MapFeature(Base):
 
     layer: Mapped[MapLayer] = relationship(back_populates="features")
     site: Mapped[Site | None] = relationship(back_populates="map_features")
+
+
+class CostSettings(Base):
+    """Singleton-ish settings row (id=1) for calculator defaults."""
+
+    __tablename__ = "cost_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    overtime_after_hours: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
+    vms_lead_days_default: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    vms_delivery_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    vms_collection_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    vms_day_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class LabourRate(Base):
+    """Configurable labour / plant category rates (day vs night, ordinary vs OT)."""
+
+    __tablename__ = "labour_rates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    day_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    day_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    night_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    night_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CostEstimate(Base):
+    """Saved traffic management cost estimate (optionally linked to a site)."""
+
+    __tablename__ = "cost_estimates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

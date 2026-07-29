@@ -81,9 +81,11 @@ const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/", label: "Sites" },
   { href: "/tracking", label: "Tracking" },
+  { href: "/costs", label: "Costs" },
   { href: "/documents", label: "Documents" },
   { href: "/map", label: "Map" },
   { href: "/archive", label: "Archive" },
+  { href: "/rates", label: "Rates" },
 ];
 
 export function injectChrome({ active } = {}) {

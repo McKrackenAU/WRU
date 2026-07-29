@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Rates · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Traffic rates &amp; defaults</h1>
+          <p>Backend settings for overtime, VMS, and labour/plant categories used by the cost calculator</p>
+        </div>
+        <a class="btn btn-primary" href="/costs">Open calculator</a>
+      </div>
+
+      <section class="panel-card">
+        <h2>Calculator defaults</h2>
+        <div class="form-grid">
+          <label>Overtime kicks in after (hours)
+            <input id="otHours" type="number" min="1" max="24" step="0.5" />
+          </label>
+          <label>VMS default lead days
+            <input id="vmsLead" type="number" min="0" max="60" step="1" />
+          </label>
+          <label>VMS delivery rate ($)
+            <input id="vmsDelivery" type="number" min="0" step="0.01" />
+          </label>
+          <label>VMS collection rate ($)
+            <input id="vmsCollection" type="number" min="0" step="0.01" />
+          </label>
+          <label>VMS day rate ($ / board / calendar day)
+            <input id="vmsDay" type="number" min="0" step="0.01" />
+          </label>
+        </div>
+        <div class="toolbar" style="margin-top:0.85rem">
+          <button type="button" class="btn btn-primary" id="btnSaveSettings">Save defaults</button>
+          <span class="hint" id="settingsStatus"></span>
+        </div>
+      </section>
+
+      <section class="panel-card">
+        <h2>Labour / plant categories</h2>
+        <p class="hint">Day and night ordinary + overtime rates ($/hr). Used when building crew mixes on the calculator.</p>
+        <div class="table-card" style="box-shadow:none">
+          <div class="table-scroll" style="max-height:none">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Day ord</th>
+                  <th>Day OT</th>
+                  <th>Night ord</th>
+                  <th>Night OT</th>
+                  <th>Active</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="rateBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="form-grid" style="margin-top:1rem">
+          <label>Name<input id="rName" maxlength="128" placeholder="e.g. Traffic Controller" /></label>
+          <label>Day ordinary<input id="rDayO" type="number" min="0" step="0.01" value="55" /></label>
+          <label>Day overtime<input id="rDayOt" type="number" min="0" step="0.01" value="75" /></label>
+          <label>Night ordinary<input id="rNightO" type="number" min="0" step="0.01" value="70" /></label>
+          <label>Night overtime<input id="rNightOt" type="number" min="0" step="0.01" value="95" /></label>
+        </div>
+        <div class="toolbar" style="margin-top:0.85rem">
+          <button type="button" class="btn btn-primary" id="btnAddRate">Add category</button>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/rates.js"></script>
+</body>
+</html>

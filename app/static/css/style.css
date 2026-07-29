@@ -354,6 +354,71 @@ html.dark .bar-fill {
   color: var(--ventia-green);
 }
 
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.tabs button {
+  border: 1px solid var(--ventia-border);
+  background: var(--panel);
+  color: var(--ventia-muted);
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  background: #004825;
+  border-color: #004825;
+  color: #fff;
+}
+
+html.dark .tabs button.active {
+  background: #3dd68c;
+  border-color: #3dd68c;
+  color: #0d1117;
+}
+
+.money {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.money-total {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--ventia-green);
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.compare-card.winner {
+  outline: 2px solid var(--ventia-green-mid);
+}
+
+.crew-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 0.45rem 0.75rem;
+  align-items: center;
+}
+
+.calc-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -831,6 +896,7 @@ dialog::backdrop {
   .detail-split { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .split-2 { grid-template-columns: 1fr; }
+  .compare-grid { grid-template-columns: 1fr; }
   .map-layout { grid-template-columns: 1fr; }
   .topbar { align-items: stretch; }
   .toolbar { width: 100%; }

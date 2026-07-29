@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Cost calculator · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Traffic management cost calculator</h1>
+          <p>Shift labour + VMS hire. Compare 3×8 vs 2×12 for 24-hour closures.</p>
+        </div>
+        <a class="btn" href="/rates">Edit rates / OT defaults</a>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button type="button" class="active" data-tab="standard">Standard shifts</button>
+        <button type="button" data-tab="closure">24-hour closure</button>
+      </div>
+
+      <!-- STANDARD -->
+      <section id="panel-standard">
+        <div class="split-2">
+          <div class="panel-card">
+            <h2>Job inputs</h2>
+            <div class="form-grid">
+              <label>Total shifts<input id="sShifts" type="number" min="1" step="1" value="5" /></label>
+              <label>Shift length (hours)<input id="sHours" type="number" min="1" max="24" step="0.5" value="10" /></label>
+              <label>Shift type
+                <select id="sType">
+                  <option value="night">Night</option>
+                  <option value="day">Day</option>
+                </select>
+              </label>
+              <label>OT after (hours)<input id="sOt" type="number" min="1" max="24" step="0.5" /></label>
+              <label>Works start date<input id="sStart" type="date" /></label>
+              <label>Works end date<input id="sEnd" type="date" /></label>
+            </div>
+            <h2 style="margin-top:1.1rem">Crew per shift</h2>
+            <div class="crew-grid" id="sCrew"></div>
+            <h2 style="margin-top:1.1rem">VMS boards</h2>
+            <div class="form-grid">
+              <label>Quantity<input id="sVmsQty" type="number" min="0" step="1" value="2" /></label>
+              <label>Lead days (before first shift)<input id="sVmsLead" type="number" min="0" step="1" /></label>
+            </div>
+            <p class="hint">VMS = delivery + collection + (day rate × boards × calendar days). Lead days + works span. Not charged per traffic shift.</p>
+            <div class="toolbar" style="margin-top:0.85rem">
+              <button type="button" class="btn btn-primary" id="btnCalcStandard">Calculate</button>
+              <button type="button" class="btn" id="btnSaveStandard">Save estimate</button>
+            </div>
+          </div>
+          <div class="panel-card calc-results" id="sResults">
+            <h2>Results</h2>
+            <p class="hint">Run a calculation to see shift and site totals.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 24H CLOSURE -->
+      <section id="panel-closure" hidden>
+        <div class="split-2">
+          <div class="panel-card">
+            <h2>Closure window</h2>
+            <div class="form-grid">
+              <label>Start (e.g. Fri 18:00)<input id="cStart" type="datetime-local" /></label>
+              <label>End (e.g. Mon 06:00)<input id="cEnd" type="datetime-local" /></label>
+              <label>OT after (hours)<input id="cOt" type="number" min="1" max="24" step="0.5" /></label>
+            </div>
+            <p class="hint">Auto-builds back-to-back coverage for the full window and compares <strong>3×8h</strong> vs <strong>2×12h</strong> patterns. Day/night rates alternate from the start time.</p>
+            <h2 style="margin-top:1.1rem">Crew per shift</h2>
+            <div class="crew-grid" id="cCrew"></div>
+            <h2 style="margin-top:1.1rem">VMS boards</h2>
+            <div class="form-grid">
+              <label>Quantity<input id="cVmsQty" type="number" min="0" step="1" value="2" /></label>
+              <label>Lead days<input id="cVmsLead" type="number" min="0" step="1" /></label>
+            </div>
+            <p class="hint">VMS uses calendar day rate only — a Friday with three 8-hour shifts still counts as <em>one</em> VMS day.</p>
+            <div class="toolbar" style="margin-top:0.85rem">
+              <button type="button" class="btn btn-primary" id="btnCalcClosure">Compare options</button>
+              <button type="button" class="btn" id="btnSaveClosure">Save estimate</button>
+            </div>
+          </div>
+          <div class="panel-card calc-results" id="cResults">
+            <h2>Comparison</h2>
+            <p class="hint">Run a comparison to see which pattern is cheaper.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>Saved estimates</h2>
+        <ul class="event-list" id="estimateList"></ul>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/costs.js"></script>
+</body>
+</html>

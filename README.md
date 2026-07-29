@@ -12,6 +12,8 @@ Linux-hosted PostgreSQL web app for traffic guidance / MoA workflow tracking. Sa
 - **MoA document library** — emails, TGS, plans, MoAs attached per site/MoA; searchable library page
 - **Archive by financial year** (AU FY Jul–Jun) instead of delete; restore supported
 - **Map** — import prior-year KML, click polygons to open linked TGS/MoA
+- **Traffic cost calculator** — day/night shifts, configurable OT threshold, crew rates, VMS lead/delivery/collection/day hire; 24h closure compares 3×8 vs 2×12
+- **Rates backend** — `/rates` to edit OT, VMS defaults, and labour/plant categories
 - **Custom columns**, tracking notes, Ventia/VenInspect styling
 
 ## Stack
