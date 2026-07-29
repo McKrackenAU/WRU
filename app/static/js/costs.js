@@ -86,6 +86,7 @@ function resourcesFrom(prefix) {
     people: Number($(prefix + "People").value || 0),
     vehicles: Number($(prefix + "Vehicles").value || 0),
     tmas: Number($(prefix + "Tmas").value || 0),
+    spotters: Number($(prefix + "Spotters").value || 0),
   };
 }
 
@@ -126,14 +127,44 @@ function labourTable(lines) {
     </table></div></div>`;
 }
 
+function bookingBlock(result) {
+  const items = result.booking_requirements || result.per_shift?.booking_requirements || [];
+  const summary = result.booking_summary || result.per_shift?.booking_summary || "";
+  if (!items.length && !summary) return "";
+  const list = items.length
+    ? `<ul class="booking-list">${items
+        .map((b) => `<li><strong>${escapeHtml(b.text || `${b.quantity}× ${b.label}`)}</strong></li>`)
+        .join("")}</ul>`
+    : "";
+  return `<div class="booking-box">
+    <strong>Booking requirements</strong>
+    ${list}
+    ${summary ? `<p class="hint" style="margin:0.35rem 0 0">${escapeHtml(summary)}</p>` : ""}
+  </div>`;
+}
+
 function allocationBlock(alloc) {
   if (!alloc) return "";
   const r = alloc.requested || {};
   const c = alloc.covered || {};
   return `<div class="hint" style="margin:0.5rem 0">
-    Requested ${r.people || 0} people · ${r.vehicles || 0} vehicles · ${r.tmas || 0} TMAs →
-    covered ${c.people || 0} people · ${c.vehicles || 0} vehicles · ${c.tmas || 0} TMAs
-    (${alloc.pack_units || 0} crew pack units). ${escapeHtml(alloc.note || "")}
+    Requested ${r.people || 0} TCs · ${r.vehicles || 0} vehicles · ${r.tmas || 0} TMAs · ${r.spotters || 0} spotters →
+    covered ${c.people || 0} TC seats · ${c.vehicles || 0} vehicles · ${c.tmas || 0} TMAs · ${c.spotters || 0} spotters
+    (${alloc.pack_units || 0} TC pack units). ${escapeHtml(alloc.note || "")}
+  </div>`;
+}
+
+function allowancesBlock(allow) {
+  if (!allow) return "";
+  return `<div style="margin:0.65rem 0">
+    <strong>Allowances (per shift)</strong>
+    <div class="hint">${escapeHtml(allow.note || "")}</div>
+    <div class="stat-grid" style="margin-top:0.45rem">
+      <div class="stat-card"><div class="label">Heads</div><div class="value" style="font-size:1.1rem">${allow.heads}</div></div>
+      <div class="stat-card"><div class="label">Travel</div><div class="value money-total" style="font-size:1.1rem">${money(allow.travel_total)}</div></div>
+      <div class="stat-card"><div class="label">Meals</div><div class="value money-total" style="font-size:1.1rem">${money(allow.meal_total)}</div></div>
+      <div class="stat-card"><div class="label">Allowances total</div><div class="value money-total" style="font-size:1.1rem">${money(allow.allowances_total)}</div></div>
+    </div>
   </div>`;
 }
 
@@ -154,15 +185,18 @@ function renderStandard(result) {
   const p = result.per_shift;
   $("sResults").innerHTML = `
     <h2>Results</h2>
+    ${bookingBlock(result)}
     <div class="stat-grid">
       <div class="stat-card"><div class="label">Per shift labour</div><div class="value money-total">${money(p.shift_labour_total)}</div></div>
-      <div class="stat-card"><div class="label">Site labour (${result.inputs_echo.total_shifts} shifts)</div><div class="value money-total">${money(result.site_labour_total)}</div></div>
+      <div class="stat-card"><div class="label">Per shift total (incl. allowances)</div><div class="value money-total">${money(p.shift_total)}</div></div>
+      <div class="stat-card"><div class="label">Site crew (${result.inputs_echo.total_shifts} shifts)</div><div class="value money-total">${money(result.site_crew_total ?? result.site_labour_total)}</div></div>
       <div class="stat-card"><div class="label">VMS total</div><div class="value money-total">${money(result.vms.vms_total)}</div></div>
       <div class="stat-card"><div class="label">Site traffic total</div><div class="value money-total">${money(result.site_traffic_total)}</div></div>
     </div>
     ${allocationBlock(p.allocation)}
+    ${allowancesBlock(p.allowances)}
     <div>
-      <strong>Best pack mix (per shift)</strong>
+      <strong>Best rate mix (per shift)</strong>
       (${escapeHtml(result.inputs_echo.shift_type)}, ${result.inputs_echo.shift_hours}h, OT after ${result.inputs_echo.overtime_after_hours}h)
       ${labourTable(p.lines)}
     </div>
@@ -191,18 +225,21 @@ function renderClosure(result) {
   $("cResults").innerHTML = `
     <h2>Comparison</h2>
     <p><strong>${escapeHtml(rec.summary)}</strong></p>
+    ${bookingBlock(result)}
     ${allocationBlock(result.option_3x8.allocation)}
     <div class="compare-grid">
       ${optionCard(result.option_3x8, win3)}
       ${optionCard(result.option_2x12, win2)}
     </div>
     ${vmsBlock(result.vms)}
-    <details>
-      <summary>3×8 first-shift pack mix</summary>
+    <details open>
+      <summary>3×8 first-shift mix &amp; allowances</summary>
+      ${allowancesBlock(result.option_3x8.sample_allowances || result.option_3x8.per_shift?.[0]?.allowances)}
       ${labourTable(result.option_3x8.per_shift?.[0]?.lines || [])}
     </details>
     <details>
-      <summary>2×12 first-shift pack mix</summary>
+      <summary>2×12 first-shift mix &amp; allowances</summary>
+      ${allowancesBlock(result.option_2x12.sample_allowances || result.option_2x12.per_shift?.[0]?.allowances)}
       ${labourTable(result.option_2x12.per_shift?.[0]?.lines || [])}
     </details>
   `;

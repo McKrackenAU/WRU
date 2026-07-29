@@ -3,6 +3,9 @@ import { $, api, escapeHtml, injectChrome } from "./common.js";
 async function loadSettings() {
   const s = await api("/api/costs/settings");
   $("otHours").value = s.overtime_after_hours;
+  $("travelAllow").value = s.travel_allowance;
+  $("mealAllow").value = s.meal_allowance;
+  $("mealAfter").value = s.meal_after_hours;
   $("vmsLead").value = s.vms_lead_days_default;
   $("vmsDelivery").value = s.vms_delivery_rate;
   $("vmsCollection").value = s.vms_collection_rate;
@@ -15,6 +18,9 @@ async function saveSettings() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       overtime_after_hours: Number($("otHours").value),
+      travel_allowance: Number($("travelAllow").value),
+      meal_allowance: Number($("mealAllow").value),
+      meal_after_hours: Number($("mealAfter").value),
       vms_lead_days_default: Number($("vmsLead").value),
       vms_delivery_rate: Number($("vmsDelivery").value),
       vms_collection_rate: Number($("vmsCollection").value),
@@ -26,12 +32,16 @@ async function saveSettings() {
 }
 
 function kindOptions(selected) {
-  return ["crew_pack", "tma", "legacy"]
+  const labels = {
+    crew_pack: "TC pack",
+    tma: "TMA",
+    spotter: "Spotter",
+    legacy: "Legacy",
+  };
+  return Object.keys(labels)
     .map(
       (k) =>
-        `<option value="${k}" ${k === selected ? "selected" : ""}>${
-          k === "crew_pack" ? "Crew pack" : k === "tma" ? "TMA" : "Legacy"
-        }</option>`
+        `<option value="${k}" ${k === selected ? "selected" : ""}>${labels[k]}</option>`
     )
     .join("");
 }
@@ -80,6 +90,9 @@ function syncNewKind() {
   if (kind === "tma") {
     $("rPeople").value = 0;
     $("rVehicle").checked = true;
+  } else if (kind === "spotter") {
+    $("rPeople").value = 1;
+    $("rVehicle").checked = false;
   } else if (kind === "crew_pack" && Number($("rPeople").value) < 1) {
     $("rPeople").value = 1;
   }
@@ -104,7 +117,7 @@ async function init() {
         body: JSON.stringify({
           name: $("rName").value.trim(),
           rate_kind: kind,
-          pack_people: kind === "tma" ? 0 : Number($("rPeople").value),
+          pack_people: kind === "tma" ? 0 : kind === "spotter" ? 1 : Number($("rPeople").value),
           includes_vehicle: $("rVehicle").checked,
           day_ordinary: Number($("rDayO").value),
           day_overtime: Number($("rDayOt").value),

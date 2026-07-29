@@ -1,4 +1,4 @@
-"""Traffic management cost calculations: resource packs, shifts, VMS, 24h compare."""
+"""Traffic management cost calculations: TC packs, allowances, VMS, 24h compare."""
 
 from __future__ import annotations
 
@@ -35,6 +35,15 @@ def rate_unit_rates(rate: Any, shift_type: ShiftType) -> tuple[float, float]:
     if shift_type == "night":
         return float(rate.night_ordinary), float(rate.night_overtime)
     return float(rate.day_ordinary), float(rate.day_overtime)
+
+
+def booking_label_for_pack(rate: Any) -> tuple[str, str]:
+    """Return (short label, detail) for booking sheets."""
+    n = int(getattr(rate, "pack_people", 1) or 0)
+    tc = f"{n} TC"
+    if getattr(rate, "includes_vehicle", False):
+        return f"{tc} + vehicle", f"{n} TC{'s' if n != 1 else ''} with 1 vehicle"
+    return f"{tc} (no vehicle)", f"{n} TC{'s' if n != 1 else ''} without vehicle"
 
 
 def labour_cost_for_shift(
@@ -76,7 +85,71 @@ def labour_cost_for_shift(
                 "line_total": money(line_total),
             }
         )
-    return {"lines": lines, "shift_labour_total": money(total), "allocation": None}
+    return {
+        "lines": lines,
+        "shift_labour_total": money(total),
+        "allowances": empty_allowances(),
+        "shift_total": money(total),
+        "allocation": None,
+        "booking_requirements": [],
+        "booking_summary": "",
+    }
+
+
+def empty_allowances() -> dict[str, Any]:
+    return {
+        "heads": 0,
+        "tc_heads": 0,
+        "tma_drivers": 0,
+        "spotter_heads": 0,
+        "travel_per_head": 0.0,
+        "meal_per_head": 0.0,
+        "meal_after_hours": 9.5,
+        "meals_apply": False,
+        "travel_total": 0.0,
+        "meal_total": 0.0,
+        "allowances_total": 0.0,
+        "note": "",
+    }
+
+
+def compute_allowances(
+    *,
+    tc_heads: int,
+    tma_drivers: int,
+    spotter_heads: int,
+    shift_hours: float,
+    travel_allowance: float,
+    meal_allowance: float,
+    meal_after_hours: float,
+) -> dict[str, Any]:
+    """Travel applies every shift; meals when shift length is over the threshold."""
+    heads = max(0, tc_heads) + max(0, tma_drivers) + max(0, spotter_heads)
+    meals_apply = shift_hours > float(meal_after_hours)
+    travel_total = heads * float(travel_allowance)
+    meal_total = heads * float(meal_allowance) if meals_apply else 0.0
+    note = (
+        f"Travel × {heads} heads (TCs + TMA drivers + spotters)."
+        + (
+            f" Meals × {heads} heads (shift {shift_hours:g}h > {meal_after_hours:g}h)."
+            if meals_apply
+            else f" No meals (shift {shift_hours:g}h is not over {meal_after_hours:g}h)."
+        )
+    )
+    return {
+        "heads": heads,
+        "tc_heads": max(0, tc_heads),
+        "tma_drivers": max(0, tma_drivers),
+        "spotter_heads": max(0, spotter_heads),
+        "travel_per_head": money(travel_allowance),
+        "meal_per_head": money(meal_allowance),
+        "meal_after_hours": float(meal_after_hours),
+        "meals_apply": meals_apply,
+        "travel_total": money(travel_total),
+        "meal_total": money(meal_total),
+        "allowances_total": money(travel_total + meal_total),
+        "note": note,
+    }
 
 
 def allocate_resource_packs(
@@ -84,20 +157,26 @@ def allocate_resource_packs(
     people: int,
     vehicles: int,
     tmas: int,
+    spotters: int = 0,
     rates: list[Any],
     shift_hours: float,
     shift_type: ShiftType,
     overtime_after: float,
+    travel_allowance: float = 0.0,
+    meal_allowance: float = 0.0,
+    meal_after_hours: float = 9.5,
 ) -> dict[str, Any]:
-    """Choose the cheapest combination of crew packs + TMAs for the resources.
+    """Cheapest crew-pack mix for TCs/vehicles, plus TMAs, spotters, and allowances.
 
-    - Crew packs cover 1–4 people, optionally including one vehicle.
-    - TMAs are separate units that include their own drivers (do not consume
-      from the people count).
+    - Crew packs cover 1–4 TCs, optionally including one vehicle.
+    - TMAs include their own drivers (not counted in the TC people total).
+    - Spotters use their own rate and also receive travel/meals.
+    - Travel applies per head each shift; meals when shift hours > threshold.
     """
     people = max(0, int(people))
     vehicles = max(0, int(vehicles))
     tmas = max(0, int(tmas))
+    spotters = max(0, int(spotters))
     ordinary_h, ot_h = split_ordinary_ot(shift_hours, overtime_after)
 
     packs = [
@@ -108,21 +187,27 @@ def allocate_resource_packs(
     tma_rates = [
         r for r in rates if getattr(r, "active", True) and getattr(r, "rate_kind", "") == "tma"
     ]
+    spotter_rates = [
+        r
+        for r in rates
+        if getattr(r, "active", True) and getattr(r, "rate_kind", "") == "spotter"
+    ]
 
     if (people > 0 or vehicles > 0) and not packs:
         raise ValueError(
-            "No active crew pack rates configured. Add 1–4 person packs (± vehicle) on the Rates page."
+            "No active crew pack rates configured. Add 1–4 TC packs (± vehicle) on the Rates page."
         )
     if tmas > 0 and not tma_rates:
         raise ValueError("No active TMA rates configured. Add a TMA rate on the Rates page.")
+    if spotters > 0 and not spotter_rates:
+        raise ValueError("No active Spotter rates configured. Add a Spotter rate on the Rates page.")
 
     pack_counts: dict[int, int] = {}
-    pack_cost = 0.0
     covered_people = 0
     covered_vehicles = 0
 
     if people > 0 or vehicles > 0:
-        # Clamped unbounded knapsack: min cost to cover at least P people and V vehicles.
+        # Min labour cost to cover at least P TCs and V vehicles (clamped unbounded knapsack).
         cost = [[INF] * (vehicles + 1) for _ in range(people + 1)]
         prev: list[list[tuple[int, int, int] | None]] = [
             [None] * (vehicles + 1) for _ in range(people + 1)
@@ -139,10 +224,9 @@ def allocate_resource_packs(
             pack_meta.append((r.id, ppl, veh, uc))
 
         if not pack_meta:
-            raise ValueError("Crew pack rates must cover people and/or a vehicle")
+            raise ValueError("Crew pack rates must cover TCs and/or a vehicle")
 
         changed = True
-        # Enough passes for unbounded combinations (people+vehicles bound)
         guard = (people + vehicles + 4) * max(1, len(pack_meta))
         while changed and guard > 0:
             guard -= 1
@@ -158,18 +242,17 @@ def allocate_resource_packs(
                         if np == p and nv == v:
                             continue
                         cand = base + uc
-                        if cand < cost[np][nv]:
+                        if cand < cost[np][nv] - 1e-9:
                             cost[np][nv] = cand
                             prev[np][nv] = (p, v, rate_id)
                             changed = True
 
         if cost[people][vehicles] >= INF:
             raise ValueError(
-                "Cannot cover the requested people/vehicles with the configured pack rates. "
+                "Cannot cover the requested TCs/vehicles with the configured pack rates. "
                 "Ensure you have both with-vehicle and without-vehicle packs as needed."
             )
 
-        # Reconstruct pack multiset
         p, v = people, vehicles
         while (p, v) != (0, 0):
             step = prev[p][v]
@@ -178,19 +261,16 @@ def allocate_resource_packs(
             op, ov, rate_id = step
             pack_counts[rate_id] = pack_counts.get(rate_id, 0) + 1
             p, v = op, ov
-        pack_cost = float(cost[people][vehicles])
 
-        rates_by_id = {r.id: r for r in packs}
+        rates_by_id_packs = {r.id: r for r in packs}
         for rate_id, qty in pack_counts.items():
-            rate = rates_by_id[rate_id]
+            rate = rates_by_id_packs[rate_id]
             covered_people += qty * int(rate.pack_people)
             if rate.includes_vehicle:
                 covered_vehicles += qty
 
-    # TMAs — pick cheapest TMA rate card (driver included in the rate)
-    tma_lines = []
-    tma_cost = 0.0
     chosen_tma = None
+    tma_qty = 0
     if tmas > 0:
         best = None
         for r in tma_rates:
@@ -198,23 +278,45 @@ def allocate_resource_packs(
             if best is None or uc < best[1]:
                 best = (r, uc)
         assert best is not None
-        chosen_tma, uc = best
-        tma_cost = tmas * uc
-        tma_lines.append((chosen_tma, tmas, uc))
+        chosen_tma, _uc = best
+        tma_qty = tmas
+
+    chosen_spotter = None
+    spotter_qty = 0
+    if spotters > 0:
+        best = None
+        for r in spotter_rates:
+            uc = unit_shift_cost(r, shift_type=shift_type, ordinary_h=ordinary_h, ot_h=ot_h)
+            if best is None or uc < best[1]:
+                best = (r, uc)
+        assert best is not None
+        chosen_spotter, _uc = best
+        spotter_qty = spotters
 
     rates_by_id = {r.id: r for r in rates}
-    lines = []
+    lines: list[dict[str, Any]] = []
+    booking: list[dict[str, Any]] = []
     total = 0.0
 
-    for rate_id, qty in sorted(pack_counts.items(), key=lambda x: rates_by_id[x[0]].position):
+    for rate_id, qty in sorted(
+        pack_counts.items(),
+        key=lambda x: (
+            -int(rates_by_id[x[0]].pack_people),
+            not rates_by_id[x[0]].includes_vehicle,
+            rates_by_id[x[0]].position,
+        ),
+    ):
         rate = rates_by_id[rate_id]
         ord_rate, ot_rate = rate_unit_rates(rate, shift_type)
         line_total = qty * (ordinary_h * ord_rate + ot_h * ot_rate)
         total += line_total
+        short, detail = booking_label_for_pack(rate)
         lines.append(
             {
                 "rate_id": rate_id,
                 "name": rate.name,
+                "booking_label": short,
+                "booking_detail": detail,
                 "rate_kind": "crew_pack",
                 "pack_people": int(rate.pack_people),
                 "includes_vehicle": bool(rate.includes_vehicle),
@@ -229,22 +331,34 @@ def allocate_resource_packs(
                 "line_total": money(line_total),
             }
         )
+        booking.append(
+            {
+                "quantity": qty,
+                "rate_id": rate_id,
+                "rate_kind": "crew_pack",
+                "label": short,
+                "detail": detail,
+                "text": f"{qty}× {short} ({detail})",
+            }
+        )
 
-    for rate, qty, _uc in tma_lines:
-        ord_rate, ot_rate = rate_unit_rates(rate, shift_type)
-        line_total = qty * (ordinary_h * ord_rate + ot_h * ot_rate)
+    if chosen_tma and tma_qty:
+        ord_rate, ot_rate = rate_unit_rates(chosen_tma, shift_type)
+        line_total = tma_qty * (ordinary_h * ord_rate + ot_h * ot_rate)
         total += line_total
         lines.append(
             {
-                "rate_id": rate.id,
-                "name": rate.name,
+                "rate_id": chosen_tma.id,
+                "name": chosen_tma.name,
+                "booking_label": "TMA (incl. driver)",
+                "booking_detail": "TMA unit with driver — driver not counted in TC total",
                 "rate_kind": "tma",
                 "pack_people": 0,
                 "includes_vehicle": True,
-                "quantity": qty,
+                "quantity": tma_qty,
                 "people_covered": 0,
                 "vehicles_covered": 0,
-                "note": "TMA includes driver — not counted in assigned people",
+                "note": "TMA includes driver — not counted in assigned TCs",
                 "shift_type": shift_type,
                 "ordinary_hours": ordinary_h,
                 "overtime_hours": ot_h,
@@ -253,25 +367,123 @@ def allocate_resource_packs(
                 "line_total": money(line_total),
             }
         )
+        booking.append(
+            {
+                "quantity": tma_qty,
+                "rate_id": chosen_tma.id,
+                "rate_kind": "tma",
+                "label": "TMA (incl. driver)",
+                "detail": "includes driver",
+                "text": f"{tma_qty}× TMA (incl. driver)",
+            }
+        )
+
+    if chosen_spotter and spotter_qty:
+        ord_rate, ot_rate = rate_unit_rates(chosen_spotter, shift_type)
+        line_total = spotter_qty * (ordinary_h * ord_rate + ot_h * ot_rate)
+        total += line_total
+        lines.append(
+            {
+                "rate_id": chosen_spotter.id,
+                "name": chosen_spotter.name,
+                "booking_label": "Spotter",
+                "booking_detail": "Spotter — own rate; meals & travel apply",
+                "rate_kind": "spotter",
+                "pack_people": 1,
+                "includes_vehicle": False,
+                "quantity": spotter_qty,
+                "people_covered": 0,
+                "vehicles_covered": 0,
+                "note": "Spotter uses own rate; receives travel and meals",
+                "shift_type": shift_type,
+                "ordinary_hours": ordinary_h,
+                "overtime_hours": ot_h,
+                "ordinary_rate": money(ord_rate),
+                "overtime_rate": money(ot_rate),
+                "line_total": money(line_total),
+            }
+        )
+        booking.append(
+            {
+                "quantity": spotter_qty,
+                "rate_id": chosen_spotter.id,
+                "rate_kind": "spotter",
+                "label": "Spotter",
+                "detail": "own rate; meals & travel apply",
+                "text": f"{spotter_qty}× Spotter",
+            }
+        )
+
+    allowances = compute_allowances(
+        tc_heads=people,
+        tma_drivers=tmas,
+        spotter_heads=spotters,
+        shift_hours=shift_hours,
+        travel_allowance=travel_allowance,
+        meal_allowance=meal_allowance,
+        meal_after_hours=meal_after_hours,
+    )
+    labour_total = money(total)
+    shift_total = money(labour_total + allowances["allowances_total"])
+    booking_summary = "; ".join(b["text"] for b in booking) if booking else "No crew booked"
+
+    spare_tc = max(0, covered_people - people)
+    note = (
+        "Cheapest pack mix for the requested TCs and vehicles. "
+        "TMAs and spotters are billed on their own rates. "
+        "Travel applies to TCs, TMA drivers and spotters; meals when shift is over the meal threshold."
+    )
+    if spare_tc:
+        note += f" Booking covers {covered_people} TC seats ({spare_tc} above request) because that pack mix is cheaper."
 
     return {
         "lines": lines,
-        "shift_labour_total": money(total),
+        "shift_labour_total": labour_total,
+        "allowances": allowances,
+        "shift_total": shift_total,
+        "booking_requirements": booking,
+        "booking_summary": booking_summary,
         "allocation": {
-            "requested": {"people": people, "vehicles": vehicles, "tmas": tmas},
+            "requested": {
+                "people": people,
+                "vehicles": vehicles,
+                "tmas": tmas,
+                "spotters": spotters,
+            },
             "covered": {
                 "people": covered_people,
                 "vehicles": covered_vehicles,
                 "tmas": tmas,
+                "spotters": spotters,
             },
             "pack_units": sum(pack_counts.values()),
             "tma_rate_id": chosen_tma.id if chosen_tma else None,
-            "note": (
-                "Best-cost mix of configured crew packs for people/vehicles. "
-                "TMAs billed separately (driver included)."
-            ),
+            "spotter_rate_id": chosen_spotter.id if chosen_spotter else None,
+            "note": note,
         },
     }
+
+
+def settings_allowance_values(settings: Any, payload: dict[str, Any]) -> tuple[float, float, float]:
+    travel = float(
+        payload.get(
+            "travel_allowance",
+            getattr(settings, "travel_allowance", 0.0),
+        )
+    )
+    meal = float(
+        payload.get(
+            "meal_allowance",
+            getattr(settings, "meal_allowance", 0.0),
+        )
+    )
+    meal_after = float(
+        payload.get(
+            "meal_after_hours",
+            getattr(settings, "meal_after_hours", 9.5),
+        )
+    )
+    return travel, meal, meal_after
 
 
 def resolve_shift_labour(
@@ -281,24 +493,33 @@ def resolve_shift_labour(
     shift_type: ShiftType,
     overtime_after: float,
     rates: list[Any],
+    settings: Any = None,
 ) -> dict[str, Any]:
-    """Prefer resource allocation when people/vehicles/tmas supplied; else legacy crew."""
+    """Prefer resource allocation when people/vehicles/tmas/spotters supplied."""
     resources = payload.get("resources")
-    if resources is None and any(k in payload for k in ("people", "vehicles", "tmas")):
+    if resources is None and any(
+        k in payload for k in ("people", "vehicles", "tmas", "spotters")
+    ):
         resources = {
             "people": payload.get("people", 0),
             "vehicles": payload.get("vehicles", 0),
             "tmas": payload.get("tmas", 0),
+            "spotters": payload.get("spotters", 0),
         }
     if resources is not None:
+        travel, meal, meal_after = settings_allowance_values(settings or object(), payload)
         return allocate_resource_packs(
             people=int(resources.get("people") or 0),
             vehicles=int(resources.get("vehicles") or 0),
             tmas=int(resources.get("tmas") or 0),
+            spotters=int(resources.get("spotters") or 0),
             rates=rates,
             shift_hours=shift_hours,
             shift_type=shift_type,
             overtime_after=overtime_after,
+            travel_allowance=travel,
+            meal_allowance=meal,
+            meal_after_hours=meal_after,
         )
     rates_by_id = {r.id: r for r in rates}
     return labour_cost_for_shift(
@@ -386,8 +607,11 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
         shift_type=shift_type,
         overtime_after=overtime_after,
         rates=rates,
+        settings=settings,
     )
     site_labour = labour["shift_labour_total"] * total_shifts
+    site_allowances = labour["allowances"]["allowances_total"] * total_shifts
+    site_crew = labour["shift_total"] * total_shifts
     vms = vms_cost(
         quantity=vms_qty,
         lead_days=lead_days,
@@ -402,7 +626,7 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
         day_rate=float(payload.get("vms_day_rate", settings.vms_day_rate)),
     )
 
-    grand = site_labour + vms["vms_total"]
+    grand = site_crew + vms["vms_total"]
     return {
         "mode": "standard",
         "inputs_echo": {
@@ -412,12 +636,14 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
             "overtime_after_hours": overtime_after,
             "works_start": works_start.isoformat(),
             "works_end": works_end.isoformat(),
-            "resources": labour.get("allocation", {}).get("requested")
-            if labour.get("allocation")
-            else None,
+            "resources": (labour.get("allocation") or {}).get("requested"),
         },
         "per_shift": labour,
+        "booking_requirements": labour.get("booking_requirements") or [],
+        "booking_summary": labour.get("booking_summary") or "",
         "site_labour_total": money(site_labour),
+        "site_allowances_total": money(site_allowances),
+        "site_crew_total": money(site_crew),
         "vms": vms,
         "site_traffic_total": money(grand),
     }
@@ -444,6 +670,7 @@ def _closure_option(
     overtime_after: float,
     payload: dict[str, Any],
     rates: list[Any],
+    settings: Any,
 ) -> dict[str, Any]:
     duration_h = (end - start).total_seconds() / 3600
     if duration_h <= 0:
@@ -453,9 +680,13 @@ def _closure_option(
 
     per_shift = []
     labour_total = 0.0
+    allowances_total = 0.0
     day_shifts = 0
     night_shifts = 0
     allocation = None
+    booking_requirements = []
+    booking_summary = ""
+    sample_allowances = empty_allowances()
     for idx, stype in enumerate(types):
         detail = resolve_shift_labour(
             payload,
@@ -463,21 +694,29 @@ def _closure_option(
             shift_type=stype,
             overtime_after=overtime_after,
             rates=rates,
+            settings=settings,
         )
-        labour_total += detail["shift_labour_total"]
+        labour_total += detail["shift_total"]
+        allowances_total += detail["allowances"]["allowances_total"]
         if stype == "day":
             day_shifts += 1
         else:
             night_shifts += 1
         if allocation is None:
             allocation = detail.get("allocation")
+            booking_requirements = detail.get("booking_requirements") or []
+            booking_summary = detail.get("booking_summary") or ""
+            sample_allowances = detail.get("allowances") or empty_allowances()
         per_shift.append(
             {
                 "index": idx + 1,
                 "shift_type": stype,
                 "hours": shift_hours,
                 "labour_total": detail["shift_labour_total"],
+                "allowances_total": detail["allowances"]["allowances_total"],
+                "shift_total": detail["shift_total"],
                 "lines": detail["lines"],
+                "allowances": detail.get("allowances"),
             }
         )
 
@@ -489,7 +728,11 @@ def _closure_option(
         "night_shifts": night_shifts,
         "duration_hours": money(duration_h),
         "labour_total": money(labour_total),
+        "allowances_total": money(allowances_total),
+        "sample_allowances": sample_allowances,
         "allocation": allocation,
+        "booking_requirements": booking_requirements,
+        "booking_summary": booking_summary,
         "per_shift": per_shift,
     }
 
@@ -515,6 +758,7 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
         overtime_after=overtime_after,
         payload=payload,
         rates=rates,
+        settings=settings,
     )
     opt_2x12 = _closure_option(
         label="2 × 12-hour shifts (per 24h coverage)",
@@ -524,6 +768,7 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
         overtime_after=overtime_after,
         payload=payload,
         rates=rates,
+        settings=settings,
     )
 
     vms = vms_cost(
@@ -560,13 +805,13 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
             "closure_end": end.isoformat(sep=" "),
             "overtime_after_hours": overtime_after,
             "duration_hours": money((end - start).total_seconds() / 3600),
-            "resources": opt_3x8.get("allocation", {}).get("requested")
-            if opt_3x8.get("allocation")
-            else None,
+            "resources": (opt_3x8.get("allocation") or {}).get("requested"),
         },
         "vms": vms,
         "option_3x8": opt_3x8,
         "option_2x12": opt_2x12,
+        "booking_requirements": opt_3x8.get("booking_requirements") or [],
+        "booking_summary": opt_3x8.get("booking_summary") or "",
         "recommendation": {
             "cheaper": cheaper,
             "saving": saving,
@@ -578,7 +823,8 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
                     if cheaper == "equal"
                     else f"{'3×8' if cheaper == '3x8' else '2×12'} is cheaper by ${saving:,.2f}."
                 )
-                + " VMS charged by calendar day (not per shift)."
+                + " VMS charged by calendar day (not per shift). "
+                + "Meals apply on shifts over the meal threshold (typically 12h, not 8h)."
             ),
         },
     }

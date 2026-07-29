@@ -892,6 +892,27 @@ dialog::backdrop {
   color: var(--ventia-blue);
 }
 
+.booking-box {
+  margin: 0 0 0.85rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  background: var(--ventia-green-tint);
+}
+
+.booking-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.booking-list li {
+  font-size: 0.92rem;
+}
+
 .estimate-attach {
   margin-top: 0.55rem;
   padding-top: 0.45rem;

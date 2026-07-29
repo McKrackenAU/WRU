@@ -29,6 +29,9 @@ class CostSettingsOut(BaseModel):
     vms_delivery_rate: float
     vms_collection_rate: float
     vms_day_rate: float
+    travel_allowance: float
+    meal_allowance: float
+    meal_after_hours: float
 
 
 class CostSettingsUpdate(BaseModel):
@@ -37,11 +40,14 @@ class CostSettingsUpdate(BaseModel):
     vms_delivery_rate: float | None = Field(default=None, ge=0)
     vms_collection_rate: float | None = Field(default=None, ge=0)
     vms_day_rate: float | None = Field(default=None, ge=0)
+    travel_allowance: float | None = Field(default=None, ge=0)
+    meal_allowance: float | None = Field(default=None, ge=0)
+    meal_after_hours: float | None = Field(default=None, gt=0, le=24)
 
 
 class LabourRateIn(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    rate_kind: str = Field(default="crew_pack", pattern="^(crew_pack|tma|legacy)$")
+    rate_kind: str = Field(default="crew_pack", pattern="^(crew_pack|tma|spotter|legacy)$")
     pack_people: int = Field(default=1, ge=0, le=4)
     includes_vehicle: bool = False
     day_ordinary: float = Field(ge=0)
@@ -85,6 +91,9 @@ def get_or_create_settings(db: Session) -> CostSettings:
         vms_delivery_rate=150.0,
         vms_collection_rate=150.0,
         vms_day_rate=45.0,
+        travel_allowance=45.0,
+        meal_allowance=30.0,
+        meal_after_hours=9.5,
     )
     db.add(row)
     db.commit()
@@ -93,11 +102,11 @@ def get_or_create_settings(db: Session) -> CostSettings:
 
 
 def _pack_seed_rows() -> list[dict]:
-    """Starter crew packs (1–4 people ± vehicle) and a TMA card.
+    """Starter TC packs (1–4 ± vehicle), TMA, and Spotter cards.
 
     Dollar values are placeholders — edit on the Rates page to match your
     schedule. Pack pricing is intentionally non-linear so the allocator can
-    prefer larger packs when they are cheaper per head.
+    prefer larger packs when they are cheaper.
     """
     rows: list[dict] = []
     # people, includes_vehicle, day_o, day_ot, night_o, night_ot
@@ -112,7 +121,7 @@ def _pack_seed_rows() -> list[dict]:
         (4, True, 210, 280, 255, 350),
     ]
     for people, with_veh, d_o, d_ot, n_o, n_ot in matrix:
-        label = f"{people} {'person' if people == 1 else 'people'}"
+        label = f"{people} TC"
         label += " + vehicle" if with_veh else " (no vehicle)"
         rows.append(
             {
@@ -138,35 +147,60 @@ def _pack_seed_rows() -> list[dict]:
             "night_overtime": 260,
         }
     )
+    rows.append(
+        {
+            "name": "Spotter",
+            "rate_kind": "spotter",
+            "pack_people": 1,
+            "includes_vehicle": False,
+            "day_ordinary": 50,
+            "day_overtime": 70,
+            "night_ordinary": 65,
+            "night_overtime": 90,
+        }
+    )
     return rows
 
 
-def ensure_default_rates(db: Session) -> None:
-    """Seed pack/TMA catalogue when missing (keeps any existing legacy rows)."""
-    has_packs = (
-        db.query(LabourRate).filter(LabourRate.rate_kind.in_(["crew_pack", "tma"])).count()
-    )
-    if has_packs:
-        return
-    max_pos = db.query(func.max(LabourRate.position)).scalar() or 0
-    for idx, row in enumerate(_pack_seed_rows(), start=1):
-        if db.query(LabourRate).filter(func.lower(LabourRate.name) == row["name"].lower()).first():
-            continue
-        db.add(
-            LabourRate(
-                name=row["name"],
-                rate_kind=row["rate_kind"],
-                pack_people=row["pack_people"],
-                includes_vehicle=row["includes_vehicle"],
-                day_ordinary=row["day_ordinary"],
-                day_overtime=row["day_overtime"],
-                night_ordinary=row["night_ordinary"],
-                night_overtime=row["night_overtime"],
-                active=True,
-                position=max_pos + idx,
-            )
+def _add_rate_if_missing(db: Session, row: dict, position: int) -> bool:
+    if db.query(LabourRate).filter(func.lower(LabourRate.name) == row["name"].lower()).first():
+        return False
+    db.add(
+        LabourRate(
+            name=row["name"],
+            rate_kind=row["rate_kind"],
+            pack_people=row["pack_people"],
+            includes_vehicle=row["includes_vehicle"],
+            day_ordinary=row["day_ordinary"],
+            day_overtime=row["day_overtime"],
+            night_ordinary=row["night_ordinary"],
+            night_overtime=row["night_overtime"],
+            active=True,
+            position=position,
         )
-    db.commit()
+    )
+    return True
+
+
+def ensure_default_rates(db: Session) -> None:
+    """Seed TC pack / TMA / Spotter catalogue when missing (keeps legacy rows)."""
+    has_packs = db.query(LabourRate).filter(LabourRate.rate_kind == "crew_pack").count()
+    max_pos = db.query(func.max(LabourRate.position)).scalar() or 0
+    added = 0
+    seed_rows = _pack_seed_rows()
+    if not has_packs:
+        for row in seed_rows:
+            max_pos += 1
+            if _add_rate_if_missing(db, row, max_pos):
+                added += 1
+    else:
+        for row in seed_rows:
+            if row["rate_kind"] in ("tma", "spotter"):
+                max_pos += 1
+                if _add_rate_if_missing(db, row, max_pos):
+                    added += 1
+    if added:
+        db.commit()
 
 
 def _summary_total(mode: str, results: dict) -> float | None:
@@ -245,9 +279,11 @@ def list_rates(active_only: bool = False, db: Session = Depends(get_db)):
 
 def _validate_rate_payload(payload: LabourRateIn) -> None:
     if payload.rate_kind == "crew_pack" and not (1 <= payload.pack_people <= 4):
-        raise HTTPException(status_code=400, detail="Crew packs must cover 1–4 people")
+        raise HTTPException(status_code=400, detail="Crew packs must cover 1–4 TCs")
     if payload.rate_kind == "tma" and payload.pack_people != 0:
         raise HTTPException(status_code=400, detail="TMA rates should use pack_people = 0 (driver included)")
+    if payload.rate_kind == "spotter" and payload.pack_people != 1:
+        raise HTTPException(status_code=400, detail="Spotter rates should use pack_people = 1")
 
 
 @router.post("/rates", response_model=LabourRateOut, status_code=201)

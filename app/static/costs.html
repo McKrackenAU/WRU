@@ -71,11 +71,12 @@
             </div>
             <h2 style="margin-top:1.1rem">Resources per shift</h2>
             <div class="form-grid">
-              <label>People<input id="sPeople" type="number" min="0" step="1" value="10" /></label>
-              <label>Vehicles<input id="sVehicles" type="number" min="0" step="1" value="8" /></label>
+              <label>TCs (people)<input id="sPeople" type="number" min="0" step="1" value="20" /></label>
+              <label>Vehicles<input id="sVehicles" type="number" min="0" step="1" value="10" /></label>
               <label>TMAs<input id="sTmas" type="number" min="0" step="1" value="2" /></label>
+              <label>Spotters<input id="sSpotters" type="number" min="0" step="1" value="0" /></label>
             </div>
-            <p class="hint">Calculator picks the cheapest mix of your crew packs (1–4 people ± vehicle). TMAs include drivers — they are not counted in People.</p>
+            <p class="hint">Picks the cheapest TC pack mix and lists booking requirements (e.g. 10× 2 TC + vehicle). TMA drivers are not counted in TCs. Travel applies to TCs, TMA drivers and spotters; meals when shift &gt; meal threshold.</p>
             <h2 style="margin-top:1.1rem">VMS boards</h2>
             <div class="form-grid">
               <label>Quantity<input id="sVmsQty" type="number" min="0" step="1" value="2" /></label>
@@ -107,11 +108,12 @@
             <p class="hint">Auto-builds back-to-back coverage for the full window and compares <strong>3×8h</strong> vs <strong>2×12h</strong> patterns. Day/night rates alternate from the start time.</p>
             <h2 style="margin-top:1.1rem">Resources per shift</h2>
             <div class="form-grid">
-              <label>People<input id="cPeople" type="number" min="0" step="1" value="10" /></label>
-              <label>Vehicles<input id="cVehicles" type="number" min="0" step="1" value="8" /></label>
+              <label>TCs (people)<input id="cPeople" type="number" min="0" step="1" value="20" /></label>
+              <label>Vehicles<input id="cVehicles" type="number" min="0" step="1" value="10" /></label>
               <label>TMAs<input id="cTmas" type="number" min="0" step="1" value="2" /></label>
+              <label>Spotters<input id="cSpotters" type="number" min="0" step="1" value="0" /></label>
             </div>
-            <p class="hint">Same best-pack allocation as standard shifts. TMAs include drivers.</p>
+            <p class="hint">Same best-pack booking logic. 12h shifts typically attract meals; 8h usually do not (threshold on Rates).</p>
             <h2 style="margin-top:1.1rem">VMS boards</h2>
             <div class="form-grid">
               <label>Quantity<input id="cVmsQty" type="number" min="0" step="1" value="2" /></label>

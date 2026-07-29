@@ -224,6 +224,10 @@ class CostSettings(Base):
     vms_delivery_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     vms_collection_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     vms_day_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Per-head allowances (TCs + TMA drivers + spotters)
+    travel_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=45.0)
+    meal_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=30.0)
+    meal_after_hours: Mapped[float] = mapped_column(Float, nullable=False, default=9.5)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -233,15 +237,15 @@ class CostSettings(Base):
 
 
 class LabourRate(Base):
-    """Rate card: crew packs (1–4 people ± vehicle), TMA units, or legacy per-head."""
+    """Rate card: TC packs (1–4 ± vehicle), TMA, spotter, or legacy per-head."""
 
     __tablename__ = "labour_rates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
-    # crew_pack | tma | legacy
+    # crew_pack | tma | spotter | legacy
     rate_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="crew_pack")
-    # People covered by one unit (1–4 for crew_pack; 0 for tma; 1 for legacy headcount)
+    # TCs covered by one unit (1–4 for crew_pack; 0 for tma; 1 for spotter/legacy)
     pack_people: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     includes_vehicle: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     day_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

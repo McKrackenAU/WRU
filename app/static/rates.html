@@ -26,7 +26,7 @@
       <div class="page-head">
         <div>
           <h1>Traffic rates &amp; defaults</h1>
-          <p>Crew packs (1–4 people ± vehicle), TMA units, overtime and VMS defaults for the cost calculator.</p>
+          <p>TC crew packs, TMA, spotters, travel/meal allowances, OT and VMS defaults.</p>
         </div>
         <a class="btn btn-primary" href="/costs">Open calculator</a>
       </div>
@@ -36,6 +36,15 @@
         <div class="form-grid">
           <label>Overtime kicks in after (hours)
             <input id="otHours" type="number" min="1" max="24" step="0.5" />
+          </label>
+          <label>Travel allowance ($ / head / shift)
+            <input id="travelAllow" type="number" min="0" step="0.01" />
+          </label>
+          <label>Meal allowance ($ / head / shift)
+            <input id="mealAllow" type="number" min="0" step="0.01" />
+          </label>
+          <label>Meals apply when shift over (hours)
+            <input id="mealAfter" type="number" min="0.5" max="24" step="0.1" />
           </label>
           <label>VMS default lead days
             <input id="vmsLead" type="number" min="0" max="60" step="1" />
@@ -50,6 +59,7 @@
             <input id="vmsDay" type="number" min="0" step="0.01" />
           </label>
         </div>
+        <p class="hint">Travel and meals apply to TCs, TMA drivers, and spotters. Meals only when shift length is over the meal threshold (default 9.5h).</p>
         <div class="toolbar" style="margin-top:0.85rem">
           <button type="button" class="btn btn-primary" id="btnSaveSettings">Save defaults</button>
           <span class="hint" id="settingsStatus"></span>
@@ -57,11 +67,10 @@
       </section>
 
       <section class="panel-card">
-        <h2>Crew packs &amp; TMA rates</h2>
+        <h2>TC packs, TMA &amp; spotter rates</h2>
         <p class="hint">
-          Enter each sellable pack: 1–4 people, with or without a vehicle. Add a TMA card separately —
-          TMA rates include the driver, so TMA drivers are not counted in the calculator’s people total.
-          The calculator picks the cheapest mix that covers the job’s people and vehicles.
+          Configure each sellable TC pack (1–4 TCs, with or without a vehicle), plus TMA (driver included)
+          and Spotter rates. The calculator picks the cheapest pack mix that covers the job and lists the booking requirements.
         </p>
         <div class="table-card" style="box-shadow:none">
           <div class="table-scroll" style="max-height:none">
@@ -70,7 +79,7 @@
                 <tr>
                   <th>Name</th>
                   <th>Kind</th>
-                  <th>People</th>
+                  <th>TCs</th>
                   <th>Vehicle</th>
                   <th>Day ord</th>
                   <th>Day OT</th>
@@ -85,15 +94,16 @@
           </div>
         </div>
         <div class="form-grid" style="margin-top:1rem">
-          <label>Name<input id="rName" maxlength="128" placeholder="e.g. 2 people + vehicle" /></label>
+          <label>Name<input id="rName" maxlength="128" placeholder="e.g. 2 TC + vehicle" /></label>
           <label>Kind
             <select id="rKind">
-              <option value="crew_pack">Crew pack</option>
+              <option value="crew_pack">TC crew pack</option>
               <option value="tma">TMA (incl. driver)</option>
+              <option value="spotter">Spotter</option>
               <option value="legacy">Legacy (manual qty)</option>
             </select>
           </label>
-          <label>People in pack<input id="rPeople" type="number" min="0" max="4" step="1" value="1" /></label>
+          <label>TCs in pack<input id="rPeople" type="number" min="0" max="4" step="1" value="1" /></label>
           <label><span><input id="rVehicle" type="checkbox" /> Includes vehicle</span></label>
           <label>Day ordinary<input id="rDayO" type="number" min="0" step="0.01" value="55" /></label>
           <label>Day overtime<input id="rDayOt" type="number" min="0" step="0.01" value="75" /></label>
