@@ -233,12 +233,17 @@ class CostSettings(Base):
 
 
 class LabourRate(Base):
-    """Configurable labour / plant category rates (day vs night, ordinary vs OT)."""
+    """Rate card: crew packs (1–4 people ± vehicle), TMA units, or legacy per-head."""
 
     __tablename__ = "labour_rates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    # crew_pack | tma | legacy
+    rate_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="crew_pack")
+    # People covered by one unit (1–4 for crew_pack; 0 for tma; 1 for legacy headcount)
+    pack_people: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    includes_vehicle: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     day_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     day_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     night_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

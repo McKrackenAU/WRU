@@ -41,6 +41,9 @@ class CostSettingsUpdate(BaseModel):
 
 class LabourRateIn(BaseModel):
     name: str = Field(min_length=1, max_length=128)
+    rate_kind: str = Field(default="crew_pack", pattern="^(crew_pack|tma|legacy)$")
+    pack_people: int = Field(default=1, ge=0, le=4)
+    includes_vehicle: bool = False
     day_ordinary: float = Field(ge=0)
     day_overtime: float = Field(ge=0)
     night_ordinary: float = Field(ge=0)
@@ -89,25 +92,78 @@ def get_or_create_settings(db: Session) -> CostSettings:
     return row
 
 
-def ensure_default_rates(db: Session) -> None:
-    if db.query(LabourRate).count():
-        return
-    defaults = [
-        ("Traffic Controller", 55, 75, 70, 95),
-        ("Team Leader", 65, 90, 85, 110),
-        ("Supervisor", 80, 110, 100, 135),
-        ("Company Vehicle", 25, 25, 35, 35),
+def _pack_seed_rows() -> list[dict]:
+    """Starter crew packs (1–4 people ± vehicle) and a TMA card.
+
+    Dollar values are placeholders — edit on the Rates page to match your
+    schedule. Pack pricing is intentionally non-linear so the allocator can
+    prefer larger packs when they are cheaper per head.
+    """
+    rows: list[dict] = []
+    # people, includes_vehicle, day_o, day_ot, night_o, night_ot
+    matrix = [
+        (1, False, 55, 75, 70, 95),
+        (2, False, 100, 140, 130, 180),
+        (3, False, 145, 200, 185, 255),
+        (4, False, 180, 250, 230, 320),
+        (1, True, 80, 100, 100, 125),
+        (2, True, 130, 170, 160, 210),
+        (3, True, 175, 230, 210, 285),
+        (4, True, 210, 280, 255, 350),
     ]
-    for idx, (name, d_o, d_ot, n_o, n_ot) in enumerate(defaults, start=1):
+    for people, with_veh, d_o, d_ot, n_o, n_ot in matrix:
+        label = f"{people} person{'s' if people > 1 else ''}"
+        label += " + vehicle" if with_veh else " (no vehicle)"
+        rows.append(
+            {
+                "name": label,
+                "rate_kind": "crew_pack",
+                "pack_people": people,
+                "includes_vehicle": with_veh,
+                "day_ordinary": d_o,
+                "day_overtime": d_ot,
+                "night_ordinary": n_o,
+                "night_overtime": n_ot,
+            }
+        )
+    rows.append(
+        {
+            "name": "TMA (incl. driver)",
+            "rate_kind": "tma",
+            "pack_people": 0,
+            "includes_vehicle": True,
+            "day_ordinary": 180,
+            "day_overtime": 220,
+            "night_ordinary": 210,
+            "night_overtime": 260,
+        }
+    )
+    return rows
+
+
+def ensure_default_rates(db: Session) -> None:
+    """Seed pack/TMA catalogue when missing (keeps any existing legacy rows)."""
+    has_packs = (
+        db.query(LabourRate).filter(LabourRate.rate_kind.in_(["crew_pack", "tma"])).count()
+    )
+    if has_packs:
+        return
+    max_pos = db.query(func.max(LabourRate.position)).scalar() or 0
+    for idx, row in enumerate(_pack_seed_rows(), start=1):
+        if db.query(LabourRate).filter(func.lower(LabourRate.name) == row["name"].lower()).first():
+            continue
         db.add(
             LabourRate(
-                name=name,
-                day_ordinary=d_o,
-                day_overtime=d_ot,
-                night_ordinary=n_o,
-                night_overtime=n_ot,
+                name=row["name"],
+                rate_kind=row["rate_kind"],
+                pack_people=row["pack_people"],
+                includes_vehicle=row["includes_vehicle"],
+                day_ordinary=row["day_ordinary"],
+                day_overtime=row["day_overtime"],
+                night_ordinary=row["night_ordinary"],
+                night_overtime=row["night_overtime"],
                 active=True,
-                position=idx,
+                position=max_pos + idx,
             )
         )
     db.commit()
@@ -187,13 +243,24 @@ def list_rates(active_only: bool = False, db: Session = Depends(get_db)):
     return q.order_by(LabourRate.position.asc(), LabourRate.id.asc()).all()
 
 
+def _validate_rate_payload(payload: LabourRateIn) -> None:
+    if payload.rate_kind == "crew_pack" and not (1 <= payload.pack_people <= 4):
+        raise HTTPException(status_code=400, detail="Crew packs must cover 1–4 people")
+    if payload.rate_kind == "tma" and payload.pack_people != 0:
+        raise HTTPException(status_code=400, detail="TMA rates should use pack_people = 0 (driver included)")
+
+
 @router.post("/rates", response_model=LabourRateOut, status_code=201)
 def create_rate(payload: LabourRateIn, db: Session = Depends(get_db)):
+    _validate_rate_payload(payload)
     if db.query(LabourRate).filter(func.lower(LabourRate.name) == payload.name.strip().lower()).first():
         raise HTTPException(status_code=400, detail="A rate category with this name already exists")
     max_pos = db.query(func.max(LabourRate.position)).scalar() or 0
     row = LabourRate(
         name=payload.name.strip(),
+        rate_kind=payload.rate_kind,
+        pack_people=payload.pack_people,
+        includes_vehicle=payload.includes_vehicle,
         day_ordinary=payload.day_ordinary,
         day_overtime=payload.day_overtime,
         night_ordinary=payload.night_ordinary,
@@ -212,6 +279,7 @@ def update_rate(rate_id: int, payload: LabourRateIn, db: Session = Depends(get_d
     row = db.get(LabourRate, rate_id)
     if not row:
         raise HTTPException(status_code=404, detail="Rate not found")
+    _validate_rate_payload(payload)
     clash = (
         db.query(LabourRate)
         .filter(
@@ -223,6 +291,9 @@ def update_rate(rate_id: int, payload: LabourRateIn, db: Session = Depends(get_d
     if clash:
         raise HTTPException(status_code=400, detail="A rate category with this name already exists")
     row.name = payload.name.strip()
+    row.rate_kind = payload.rate_kind
+    row.pack_people = payload.pack_people
+    row.includes_vehicle = payload.includes_vehicle
     row.day_ordinary = payload.day_ordinary
     row.day_overtime = payload.day_overtime
     row.night_ordinary = payload.night_ordinary

@@ -25,12 +25,26 @@ async function saveSettings() {
   setTimeout(() => ($("settingsStatus").textContent = ""), 2000);
 }
 
+function kindOptions(selected) {
+  return ["crew_pack", "tma", "legacy"]
+    .map(
+      (k) =>
+        `<option value="${k}" ${k === selected ? "selected" : ""}>${
+          k === "crew_pack" ? "Crew pack" : k === "tma" ? "TMA" : "Legacy"
+        }</option>`
+    )
+    .join("");
+}
+
 async function loadRates() {
   const rates = await api("/api/costs/rates");
   $("rateBody").innerHTML = rates
     .map(
       (r) => `<tr data-id="${r.id}">
       <td><input data-f="name" value="${escapeHtml(r.name)}" /></td>
+      <td><select data-f="rate_kind">${kindOptions(r.rate_kind || "legacy")}</select></td>
+      <td><input data-f="pack_people" type="number" min="0" max="4" step="1" value="${r.pack_people ?? 1}" /></td>
+      <td><input data-f="includes_vehicle" type="checkbox" ${r.includes_vehicle ? "checked" : ""} /></td>
       <td><input data-f="day_ordinary" type="number" min="0" step="0.01" value="${r.day_ordinary}" /></td>
       <td><input data-f="day_overtime" type="number" min="0" step="0.01" value="${r.day_overtime}" /></td>
       <td><input data-f="night_ordinary" type="number" min="0" step="0.01" value="${r.night_ordinary}" /></td>
@@ -50,12 +64,25 @@ async function loadRates() {
 function rowPayload(tr) {
   return {
     name: tr.querySelector('[data-f="name"]').value.trim(),
+    rate_kind: tr.querySelector('[data-f="rate_kind"]').value,
+    pack_people: Number(tr.querySelector('[data-f="pack_people"]').value),
+    includes_vehicle: tr.querySelector('[data-f="includes_vehicle"]').checked,
     day_ordinary: Number(tr.querySelector('[data-f="day_ordinary"]').value),
     day_overtime: Number(tr.querySelector('[data-f="day_overtime"]').value),
     night_ordinary: Number(tr.querySelector('[data-f="night_ordinary"]').value),
     night_overtime: Number(tr.querySelector('[data-f="night_overtime"]').value),
     active: tr.querySelector('[data-f="active"]').checked,
   };
+}
+
+function syncNewKind() {
+  const kind = $("rKind").value;
+  if (kind === "tma") {
+    $("rPeople").value = 0;
+    $("rVehicle").checked = true;
+  } else if (kind === "crew_pack" && Number($("rPeople").value) < 1) {
+    $("rPeople").value = 1;
+  }
 }
 
 async function init() {
@@ -66,13 +93,19 @@ async function init() {
   $("btnSaveSettings").addEventListener("click", () =>
     saveSettings().catch((e) => alert(e.message))
   );
+  $("rKind").addEventListener("change", syncNewKind);
+
   $("btnAddRate").addEventListener("click", async () => {
     try {
+      const kind = $("rKind").value;
       await api("/api/costs/rates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: $("rName").value.trim(),
+          rate_kind: kind,
+          pack_people: kind === "tma" ? 0 : Number($("rPeople").value),
+          includes_vehicle: $("rVehicle").checked,
           day_ordinary: Number($("rDayO").value),
           day_overtime: Number($("rDayOt").value),
           night_ordinary: Number($("rNightO").value),
@@ -100,7 +133,7 @@ async function init() {
         });
       }
       if (del) {
-        if (!confirm("Delete this rate category?")) return;
+        if (!confirm("Delete this rate?")) return;
         await api(`/api/costs/rates/${del.dataset.del}`, { method: "DELETE" });
         await loadRates();
       }

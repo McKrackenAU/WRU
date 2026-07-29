@@ -57,6 +57,11 @@ def run_migrations() -> None:
     ensure_column("cost_estimates", "moa_number", "moa_number VARCHAR(64)")
     ensure_column("cost_estimates", "summary_total", "summary_total DOUBLE PRECISION")
 
+    # labour rate pack / TMA metadata
+    ensure_column("labour_rates", "rate_kind", "rate_kind VARCHAR(32) NOT NULL DEFAULT 'legacy'")
+    ensure_column("labour_rates", "pack_people", "pack_people INTEGER NOT NULL DEFAULT 1")
+    ensure_column("labour_rates", "includes_vehicle", "includes_vehicle BOOLEAN NOT NULL DEFAULT FALSE")
+
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_financial_year ON sites (financial_year)"))

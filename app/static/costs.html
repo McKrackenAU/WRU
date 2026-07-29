@@ -69,8 +69,13 @@
               <label>Works start date<input id="sStart" type="date" /></label>
               <label>Works end date<input id="sEnd" type="date" /></label>
             </div>
-            <h2 style="margin-top:1.1rem">Crew per shift</h2>
-            <div class="crew-grid" id="sCrew"></div>
+            <h2 style="margin-top:1.1rem">Resources per shift</h2>
+            <div class="form-grid">
+              <label>People<input id="sPeople" type="number" min="0" step="1" value="10" /></label>
+              <label>Vehicles<input id="sVehicles" type="number" min="0" step="1" value="8" /></label>
+              <label>TMAs<input id="sTmas" type="number" min="0" step="1" value="2" /></label>
+            </div>
+            <p class="hint">Calculator picks the cheapest mix of your crew packs (1–4 people ± vehicle). TMAs include drivers — they are not counted in People.</p>
             <h2 style="margin-top:1.1rem">VMS boards</h2>
             <div class="form-grid">
               <label>Quantity<input id="sVmsQty" type="number" min="0" step="1" value="2" /></label>
@@ -100,8 +105,13 @@
               <label>OT after (hours)<input id="cOt" type="number" min="1" max="24" step="0.5" /></label>
             </div>
             <p class="hint">Auto-builds back-to-back coverage for the full window and compares <strong>3×8h</strong> vs <strong>2×12h</strong> patterns. Day/night rates alternate from the start time.</p>
-            <h2 style="margin-top:1.1rem">Crew per shift</h2>
-            <div class="crew-grid" id="cCrew"></div>
+            <h2 style="margin-top:1.1rem">Resources per shift</h2>
+            <div class="form-grid">
+              <label>People<input id="cPeople" type="number" min="0" step="1" value="10" /></label>
+              <label>Vehicles<input id="cVehicles" type="number" min="0" step="1" value="8" /></label>
+              <label>TMAs<input id="cTmas" type="number" min="0" step="1" value="2" /></label>
+            </div>
+            <p class="hint">Same best-pack allocation as standard shifts. TMAs include drivers.</p>
             <h2 style="margin-top:1.1rem">VMS boards</h2>
             <div class="form-grid">
               <label>Quantity<input id="cVmsQty" type="number" min="0" step="1" value="2" /></label>

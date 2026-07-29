@@ -1,7 +1,6 @@
 import { $, api, escapeHtml, injectChrome, userName } from "./common.js";
 
 let settings = null;
-let rates = [];
 let sites = [];
 let lastStandard = null;
 let lastClosure = null;
@@ -82,46 +81,60 @@ function defaultClosureTimes() {
   return { start: toLocal(fri), end: toLocal(mon) };
 }
 
-function renderCrew(containerId) {
-  const el = $(containerId);
-  el.innerHTML = rates
-    .filter((r) => r.active)
-    .map(
-      (r) => `
-      <label>${escapeHtml(r.name)}</label>
-      <input type="number" min="0" step="1" value="${r.name.includes("Controller") ? 2 : r.name.includes("Leader") ? 1 : 0}" data-rate-id="${r.id}" />`
-    )
-    .join("");
-}
-
-function crewFrom(containerId) {
-  return [...$(containerId).querySelectorAll("[data-rate-id]")].map((input) => ({
-    rate_id: Number(input.dataset.rateId),
-    quantity: Number(input.value || 0),
-  }));
+function resourcesFrom(prefix) {
+  return {
+    people: Number($(prefix + "People").value || 0),
+    vehicles: Number($(prefix + "Vehicles").value || 0),
+    tmas: Number($(prefix + "Tmas").value || 0),
+  };
 }
 
 function labourTable(lines) {
-  if (!lines?.length) return "<p class='hint'>No crew quantities entered.</p>";
-  return `<div class="table-card" style="box-shadow:none"><div class="table-scroll" style="max-height:240px">
+  if (!lines?.length) return "<p class='hint'>No resources allocated.</p>";
+  return `<div class="table-card" style="box-shadow:none"><div class="table-scroll" style="max-height:280px">
     <table class="data-table">
-      <thead><tr><th>Category</th><th>Qty</th><th>Ord h</th><th>OT h</th><th>Ord $</th><th>OT $</th><th>Line</th></tr></thead>
+      <thead><tr><th>Pack / unit</th><th>Qty</th><th>People</th><th>Veh</th><th>Ord h</th><th>OT h</th><th>Ord $</th><th>OT $</th><th>Line</th></tr></thead>
       <tbody>
         ${lines
-          .map(
-            (l) => `<tr>
-            <td>${escapeHtml(l.name)}</td>
+          .map((l) => {
+            const ppl =
+              l.people_covered != null
+                ? l.people_covered
+                : l.rate_kind === "tma"
+                  ? "—"
+                  : (l.pack_people || 1) * l.quantity;
+            const veh =
+              l.vehicles_covered != null
+                ? l.vehicles_covered
+                : l.includes_vehicle
+                  ? l.quantity
+                  : 0;
+            return `<tr>
+            <td>${escapeHtml(l.name)}${l.note ? `<div class="meta">${escapeHtml(l.note)}</div>` : ""}</td>
             <td class="mono">${l.quantity}</td>
+            <td class="mono">${ppl}</td>
+            <td class="mono">${veh}</td>
             <td class="mono">${l.ordinary_hours}</td>
             <td class="mono">${l.overtime_hours}</td>
             <td class="money">${money(l.ordinary_rate)}</td>
             <td class="money">${money(l.overtime_rate)}</td>
             <td class="money">${money(l.line_total)}</td>
-          </tr>`
-          )
+          </tr>`;
+          })
           .join("")}
       </tbody>
     </table></div></div>`;
+}
+
+function allocationBlock(alloc) {
+  if (!alloc) return "";
+  const r = alloc.requested || {};
+  const c = alloc.covered || {};
+  return `<div class="hint" style="margin:0.5rem 0">
+    Requested ${r.people || 0} people · ${r.vehicles || 0} vehicles · ${r.tmas || 0} TMAs →
+    covered ${c.people || 0} people · ${c.vehicles || 0} vehicles · ${c.tmas || 0} TMAs
+    (${alloc.pack_units || 0} crew pack units). ${escapeHtml(alloc.note || "")}
+  </div>`;
 }
 
 function vmsBlock(vms) {
@@ -147,8 +160,9 @@ function renderStandard(result) {
       <div class="stat-card"><div class="label">VMS total</div><div class="value money-total">${money(result.vms.vms_total)}</div></div>
       <div class="stat-card"><div class="label">Site traffic total</div><div class="value money-total">${money(result.site_traffic_total)}</div></div>
     </div>
+    ${allocationBlock(p.allocation)}
     <div>
-      <strong>Per-shift labour breakdown</strong>
+      <strong>Best pack mix (per shift)</strong>
       (${escapeHtml(result.inputs_echo.shift_type)}, ${result.inputs_echo.shift_hours}h, OT after ${result.inputs_echo.overtime_after_hours}h)
       ${labourTable(p.lines)}
     </div>
@@ -177,44 +191,19 @@ function renderClosure(result) {
   $("cResults").innerHTML = `
     <h2>Comparison</h2>
     <p><strong>${escapeHtml(rec.summary)}</strong></p>
+    ${allocationBlock(result.option_3x8.allocation)}
     <div class="compare-grid">
       ${optionCard(result.option_3x8, win3)}
       ${optionCard(result.option_2x12, win2)}
     </div>
     ${vmsBlock(result.vms)}
     <details>
-      <summary>3×8 shift list</summary>
-      <div class="table-card" style="box-shadow:none;margin-top:0.5rem">
-        <div class="table-scroll" style="max-height:220px">
-          <table class="data-table">
-            <thead><tr><th>#</th><th>Type</th><th>Hours</th><th>Labour</th></tr></thead>
-            <tbody>
-              ${result.option_3x8.per_shift
-                .map(
-                  (s) => `<tr><td>${s.index}</td><td>${s.shift_type}</td><td>${s.hours}</td><td class="money">${money(s.labour_total)}</td></tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <summary>3×8 first-shift pack mix</summary>
+      ${labourTable(result.option_3x8.per_shift?.[0]?.lines || [])}
     </details>
     <details>
-      <summary>2×12 shift list</summary>
-      <div class="table-card" style="box-shadow:none;margin-top:0.5rem">
-        <div class="table-scroll" style="max-height:220px">
-          <table class="data-table">
-            <thead><tr><th>#</th><th>Type</th><th>Hours</th><th>Labour</th></tr></thead>
-            <tbody>
-              ${result.option_2x12.per_shift
-                .map(
-                  (s) => `<tr><td>${s.index}</td><td>${s.shift_type}</td><td>${s.hours}</td><td class="money">${money(s.labour_total)}</td></tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <summary>2×12 first-shift pack mix</summary>
+      ${labourTable(result.option_2x12.per_shift?.[0]?.lines || [])}
     </details>
   `;
 }
@@ -307,7 +296,7 @@ async function calcStandard() {
     works_end: $("sEnd").value || $("sStart").value,
     vms_quantity: Number($("sVmsQty").value),
     vms_lead_days: Number($("sVmsLead").value),
-    crew: crewFrom("sCrew"),
+    resources: resourcesFrom("s"),
   };
   const result = await api("/api/costs/calculate/standard", {
     method: "POST",
@@ -324,7 +313,7 @@ async function calcClosure() {
     overtime_after_hours: Number($("cOt").value),
     vms_quantity: Number($("cVmsQty").value),
     vms_lead_days: Number($("cVmsLead").value),
-    crew: crewFrom("cCrew"),
+    resources: resourcesFrom("c"),
   };
   const result = await api("/api/costs/calculate/closure-24h", {
     method: "POST",
@@ -355,13 +344,13 @@ async function saveEstimate(mode) {
           works_start: $("sStart").value,
           works_end: $("sEnd").value,
           vms_quantity: Number($("sVmsQty").value),
-          crew: crewFrom("sCrew"),
+          resources: resourcesFrom("s"),
         }
       : {
           closure_start: $("cStart").value,
           closure_end: $("cEnd").value,
           vms_quantity: Number($("cVmsQty").value),
-          crew: crewFrom("cCrew"),
+          resources: resourcesFrom("c"),
         };
   await api("/api/costs/estimates", {
     method: "POST",
@@ -405,7 +394,8 @@ async function init() {
   const preselect = params.get("site_id") ? Number(params.get("site_id")) : null;
 
   settings = await api("/api/costs/settings");
-  rates = await api("/api/costs/rates?active_only=true");
+  // Touch rates endpoint so pack/TMA defaults are seeded
+  await api("/api/costs/rates?active_only=true");
   sites = await api("/api/sites?archived=false");
 
   fillSiteSelect(preselect);
@@ -420,8 +410,6 @@ async function init() {
   $("cStart").value = clo.start;
   $("cEnd").value = clo.end;
 
-  renderCrew("sCrew");
-  renderCrew("cCrew");
   await loadEstimates();
 
   document.querySelectorAll(".tabs [data-tab]").forEach((btn) => {
