@@ -20,4 +20,4 @@ RUN mkdir -p /data/uploads
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "python -c 'from app.migrate import run_migrations; run_migrations()' && python scripts/seed.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
