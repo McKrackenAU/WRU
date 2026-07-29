@@ -16,7 +16,7 @@ Linux-hosted PostgreSQL web app for traffic guidance / MoA workflow tracking. Sa
 
 - Python 3.12 + FastAPI
 - **PostgreSQL** via SQLAlchemy + psycopg2
-- Static HTML/CSS/JS frontend
+- Static HTML/CSS/JS frontend with **VenInspect / Ventia** brand tokens, logos, Geist fonts, and light/dark theme
 - Proxmox helper-script installer and Docker Compose
 
 ## Proxmox Helper Script install (recommended)
