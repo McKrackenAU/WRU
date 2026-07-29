@@ -2,6 +2,7 @@ import { $, api, escapeHtml, injectChrome, userName } from "./common.js";
 
 let settings = null;
 let rates = [];
+let sites = [];
 let lastStandard = null;
 let lastClosure = null;
 
@@ -15,10 +16,58 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function selectedSiteId() {
+  const v = $("costSite")?.value;
+  return v ? Number(v) : null;
+}
+
+function selectedSite() {
+  const id = selectedSiteId();
+  return id ? sites.find((s) => s.id === id) : null;
+}
+
+function updateSiteHint() {
+  const site = selectedSite();
+  const hint = $("costSiteHint");
+  if (!hint) return;
+  if (!site) {
+    hint.textContent =
+      "Select a MoA/site before saving. Estimates and attachments are stored against that site for planning.";
+    return;
+  }
+  const parts = [
+    site.road_name,
+    site.site_number,
+    site.moa_number ? `MoA ${site.moa_number}` : "No MoA # yet",
+    site.tgs_reference ? `TGS ${site.tgs_reference}` : null,
+  ].filter(Boolean);
+  hint.textContent = `Saving to: ${parts.join(" · ")}`;
+}
+
+function fillSiteSelect(preselectId = null) {
+  const sel = $("costSite");
+  const cur = preselectId != null ? String(preselectId) : sel.value;
+  sel.innerHTML =
+    `<option value="">Select a site…</option>` +
+    sites
+      .map((s) => {
+        const label = [
+          s.road_name,
+          s.site_number,
+          s.moa_number ? `MoA ${s.moa_number}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return `<option value="${s.id}">${escapeHtml(label)}</option>`;
+      })
+      .join("");
+  if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  updateSiteHint();
+}
+
 function defaultClosureTimes() {
-  // Next Friday 18:00 → Monday 06:00
   const now = new Date();
-  const day = now.getDay(); // 0 Sun
+  const day = now.getDay();
   const daysToFri = (5 - day + 7) % 7 || 7;
   const fri = new Date(now);
   fri.setDate(now.getDate() + daysToFri);
@@ -170,27 +219,82 @@ function renderClosure(result) {
   `;
 }
 
-async function loadEstimates() {
-  const rows = await api("/api/costs/estimates");
-  $("estimateList").innerHTML = rows.length
-    ? rows
+function modeLabel(mode) {
+  return mode === "closure_24h" ? "24h closure" : "Standard";
+}
+
+function estimateTotalLabel(r) {
+  if (r.summary_total != null) return money(r.summary_total);
+  return "—";
+}
+
+function attachmentsHtml(r) {
+  const atts = r.attachments || [];
+  const list = atts.length
+    ? `<ul class="attach-mini">${atts
         .map(
-          (r) => `<li>
-          <div class="top">
-            <span>${escapeHtml(r.mode)} · ${new Date(r.created_at).toLocaleString()}</span>
-            <button type="button" class="btn btn-danger" data-del-est="${r.id}">Delete</button>
-          </div>
-          <p><strong>${escapeHtml(r.name)}</strong>
-            ${
-              r.mode === "standard"
-                ? ` — total ${money(r.results?.site_traffic_total)}`
-                : ` — 3×8 ${money(r.results?.option_3x8?.grand_total)} / 2×12 ${money(r.results?.option_2x12?.grand_total)}`
-            }
-          </p>
+          (a) => `<li>
+          <a href="/api/costs/attachments/${a.id}/download">${escapeHtml(a.original_filename)}</a>
+          <span class="meta">${(a.size_bytes / 1024).toFixed(1)} KB</span>
+          <button type="button" class="btn btn-danger" data-del-att="${a.id}">Remove</button>
         </li>`
         )
+        .join("")}</ul>`
+    : `<p class="meta">No attachments yet.</p>`;
+  return `
+    <div class="estimate-attach" data-est-id="${r.id}">
+      <strong>Attachments</strong>
+      ${list}
+      <div class="upload-row" style="margin-top:0.5rem;flex-wrap:wrap">
+        <input type="file" data-att-file="${r.id}" />
+        <input type="text" data-att-desc="${r.id}" placeholder="Description (optional)" />
+        <button type="button" class="btn" data-att-upload="${r.id}">Attach file</button>
+      </div>
+    </div>`;
+}
+
+async function loadEstimates() {
+  const siteId = selectedSiteId();
+  const filter = $("historyFilter")?.value || "assigned";
+  const params = new URLSearchParams();
+  if (filter === "assigned" && siteId) {
+    params.set("site_id", String(siteId));
+  } else if (filter === "assigned" && !siteId) {
+    $("estimateList").innerHTML =
+      `<li><p class="meta">Select a site above to see its cost history, or switch filter to All sites.</p></li>`;
+    $("historyHint").textContent = "Select a MoA/site to view its saved traffic cost history.";
+    return;
+  }
+  const rows = await api(`/api/costs/estimates?${params}`);
+  const site = selectedSite();
+  if (filter === "assigned" && site) {
+    $("historyHint").textContent = `History for ${site.road_name} (${site.site_number})${
+      site.moa_number ? ` · MoA ${site.moa_number}` : ""
+    } — ${rows.length} estimate${rows.length === 1 ? "" : "s"}.`;
+  } else {
+    $("historyHint").textContent = `${rows.length} saved estimate${rows.length === 1 ? "" : "s"} across sites.`;
+  }
+
+  $("estimateList").innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const siteLabel = r.road_name
+            ? `${r.road_name} · ${r.site_number || ""}${r.moa_number ? ` · MoA ${r.moa_number}` : ""}`
+            : "Unassigned";
+          return `<li>
+          <div class="top">
+            <span>${escapeHtml(modeLabel(r.mode))} · ${new Date(r.created_at).toLocaleString()}
+              ${r.created_by ? ` · ${escapeHtml(r.created_by)}` : ""}</span>
+            <button type="button" class="btn btn-danger" data-del-est="${r.id}">Delete</button>
+          </div>
+          <p><strong>${escapeHtml(r.name)}</strong> — <span class="money">${estimateTotalLabel(r)}</span></p>
+          <p class="meta">${escapeHtml(siteLabel)}</p>
+          ${r.notes ? `<p>${escapeHtml(r.notes)}</p>` : ""}
+          ${attachmentsHtml(r)}
+        </li>`;
+        })
         .join("")
-    : `<li><p class="meta">No saved estimates yet.</p></li>`;
+    : `<li><p class="meta">No saved estimates yet for this view.</p></li>`;
 }
 
 async function calcStandard() {
@@ -233,10 +337,14 @@ async function calcClosure() {
 async function saveEstimate(mode) {
   const result = mode === "standard" ? lastStandard : lastClosure;
   if (!result) return alert("Calculate first");
-  const name = prompt(
-    "Estimate name",
-    mode === "standard" ? `Standard ${$("sStart").value}` : `24h ${$("cStart").value}`
-  );
+  const siteId = selectedSiteId();
+  if (!siteId) return alert("Select a MoA / site before saving this estimate.");
+  const site = selectedSite();
+  const defaultName =
+    mode === "standard"
+      ? `${site?.site_number || "Site"} standard ${$("sStart").value}`
+      : `${site?.site_number || "Site"} 24h ${$("cStart").value.slice(0, 10)}`;
+  const name = prompt("Estimate name", defaultName);
   if (!name) return;
   const inputs =
     mode === "standard"
@@ -260,19 +368,47 @@ async function saveEstimate(mode) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
+      site_id: siteId,
       mode,
+      notes: $("costNotes").value.trim() || null,
       inputs,
       results: result,
       created_by: userName(),
     }),
   });
+  $("historyFilter").value = "assigned";
+  await loadEstimates();
+}
+
+async function uploadAttachment(estimateId) {
+  const fileInput = document.querySelector(`[data-att-file="${estimateId}"]`);
+  if (!fileInput?.files?.length) return alert("Choose a file first");
+  const desc = document.querySelector(`[data-att-desc="${estimateId}"]`);
+  const fd = new FormData();
+  fd.append("file", fileInput.files[0]);
+  if (desc?.value.trim()) fd.append("description", desc.value.trim());
+  if (userName()) fd.append("uploaded_by", userName());
+  const res = await fetch(`/api/costs/estimates/${estimateId}/attachments`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Upload failed");
+  }
   await loadEstimates();
 }
 
 async function init() {
   injectChrome({ active: "/costs" });
+  const params = new URLSearchParams(location.search);
+  const preselect = params.get("site_id") ? Number(params.get("site_id")) : null;
+
   settings = await api("/api/costs/settings");
   rates = await api("/api/costs/rates?active_only=true");
+  sites = await api("/api/sites?archived=false");
+
+  fillSiteSelect(preselect);
 
   $("sOt").value = settings.overtime_after_hours;
   $("cOt").value = settings.overtime_after_hours;
@@ -298,6 +434,14 @@ async function init() {
     });
   });
 
+  $("costSite").addEventListener("change", () => {
+    updateSiteHint();
+    if ($("historyFilter").value === "assigned") loadEstimates().catch((e) => alert(e.message));
+  });
+  $("historyFilter").addEventListener("change", () =>
+    loadEstimates().catch((e) => alert(e.message))
+  );
+
   $("btnCalcStandard").addEventListener("click", () =>
     calcStandard().catch((e) => alert(e.message))
   );
@@ -310,12 +454,26 @@ async function init() {
   $("btnSaveClosure").addEventListener("click", () =>
     saveEstimate("closure_24h").catch((e) => alert(e.message))
   );
+
   $("estimateList").addEventListener("click", async (ev) => {
-    const btn = ev.target.closest("[data-del-est]");
-    if (!btn) return;
-    if (!confirm("Delete saved estimate?")) return;
-    await api(`/api/costs/estimates/${btn.dataset.delEst}`, { method: "DELETE" });
-    await loadEstimates();
+    const delEst = ev.target.closest("[data-del-est]");
+    if (delEst) {
+      if (!confirm("Delete saved estimate and its attachments?")) return;
+      await api(`/api/costs/estimates/${delEst.dataset.delEst}`, { method: "DELETE" });
+      await loadEstimates();
+      return;
+    }
+    const delAtt = ev.target.closest("[data-del-att]");
+    if (delAtt) {
+      if (!confirm("Remove this attachment?")) return;
+      await api(`/api/costs/attachments/${delAtt.dataset.delAtt}`, { method: "DELETE" });
+      await loadEstimates();
+      return;
+    }
+    const up = ev.target.closest("[data-att-upload]");
+    if (up) {
+      await uploadAttachment(Number(up.dataset.attUpload)).catch((e) => alert(e.message));
+    }
   });
 }
 

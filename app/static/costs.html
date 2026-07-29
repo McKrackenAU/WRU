@@ -26,10 +26,25 @@
       <div class="page-head">
         <div>
           <h1>Traffic management cost calculator</h1>
-          <p>Shift labour + VMS hire. Compare 3×8 vs 2×12 for 24-hour closures.</p>
+          <p>Assign each calculation to a MoA/site to build a cost history for planning.</p>
         </div>
         <a class="btn" href="/rates">Edit rates / OT defaults</a>
       </div>
+
+      <section class="panel-card" style="margin-bottom:1rem">
+        <h2>Assign to MoA / site</h2>
+        <div class="form-grid">
+          <label class="full">Site
+            <select id="costSite">
+              <option value="">Select a site…</option>
+            </select>
+          </label>
+          <label class="full">Notes (optional)
+            <textarea id="costNotes" rows="2" placeholder="Assumptions, quote ref, scope notes…"></textarea>
+          </label>
+        </div>
+        <p class="hint" id="costSiteHint">Saved estimates are stored against the selected MoA so each site builds a traffic cost history.</p>
+      </section>
 
       <div class="tabs" role="tablist">
         <button type="button" class="active" data-tab="standard">Standard shifts</button>
@@ -106,7 +121,18 @@
       </section>
 
       <section class="panel-card" style="margin-top:1rem">
-        <h2>Saved estimates</h2>
+        <div class="page-head" style="margin-bottom:0.75rem">
+          <div>
+            <h2 style="margin:0">Cost history</h2>
+            <p class="hint" id="historyHint" style="margin:0.25rem 0 0">All saved estimates, newest first. Filter by the assigned site above.</p>
+          </div>
+          <label style="min-width:12rem">Filter
+            <select id="historyFilter">
+              <option value="assigned">Selected site</option>
+              <option value="all">All sites</option>
+            </select>
+          </label>
+        </div>
         <ul class="event-list" id="estimateList"></ul>
       </section>
     </main>

@@ -113,9 +113,29 @@ def site_to_dict(site: Site, *, include_metrics: bool = True) -> dict:
         ],
         "document_count": len(site.documents or []),
         "tracking_count": len(site.tracking_events or []),
+        "cost_estimate_count": len(site.cost_estimates or []),
+        "latest_cost_total": _latest_cost_total(site),
         "created_at": site.created_at,
         "updated_at": site.updated_at,
     }
+
+
+def _latest_cost_total(site: Site) -> float | None:
+    estimates = list(site.cost_estimates or [])
+    if not estimates:
+        return None
+    estimates.sort(key=lambda e: e.created_at or e.id, reverse=True)
+    latest = estimates[0]
+    if latest.summary_total is not None:
+        return float(latest.summary_total)
+    results = latest.results or {}
+    if latest.mode == "standard":
+        return results.get("site_traffic_total")
+    # prefer cheaper of 24h options for summary display
+    a = (results.get("option_3x8") or {}).get("grand_total")
+    b = (results.get("option_2x12") or {}).get("grand_total")
+    vals = [v for v in (a, b) if v is not None]
+    return min(vals) if vals else None
 
 
 def get_site_or_none(db: Session, site_id: int) -> Site | None:

@@ -97,6 +97,9 @@ class Site(Base):
     map_features: Mapped[list[MapFeature]] = relationship(
         back_populates="site", lazy="selectin"
     )
+    cost_estimates: Mapped[list[CostEstimate]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class SiteCouncil(Base):
@@ -248,16 +251,19 @@ class LabourRate(Base):
 
 
 class CostEstimate(Base):
-    """Saved traffic management cost estimate (optionally linked to a site)."""
+    """Saved traffic management cost estimate linked to a site / MoA."""
 
     __tablename__ = "cost_estimates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     site_id: Mapped[int | None] = mapped_column(
-        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     mode: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    summary_total: Mapped[float | None] = mapped_column(Float, nullable=True)
     inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     results: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -270,3 +276,30 @@ class CostEstimate(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    site: Mapped[Site | None] = relationship(back_populates="cost_estimates")
+    attachments: Mapped[list[CostEstimateAttachment]] = relationship(
+        back_populates="estimate", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class CostEstimateAttachment(Base):
+    """Files attached to a cost estimate (quotes, emails, PDFs, etc.)."""
+
+    __tablename__ = "cost_estimate_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    estimate_id: Mapped[int] = mapped_column(
+        ForeignKey("cost_estimates.id", ondelete="CASCADE"), index=True
+    )
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    estimate: Mapped[CostEstimate] = relationship(back_populates="attachments")

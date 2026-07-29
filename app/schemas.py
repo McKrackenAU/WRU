@@ -106,6 +106,8 @@ class SiteOut(SiteBase):
     workflow: list[WorkflowStepOut]
     document_count: int = 0
     tracking_count: int = 0
+    cost_estimate_count: int = 0
+    latest_cost_total: float | None = None
     created_at: datetime
     updated_at: datetime
 

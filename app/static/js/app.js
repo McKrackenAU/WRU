@@ -73,6 +73,7 @@ function renderHead() {
       <th>TGS</th>
       ${customTh}
       <th>Docs</th>
+      <th>Cost</th>
       <th></th>
     </tr>
   `;
@@ -123,10 +124,18 @@ function renderBody() {
           <td class="mono">${escapeHtml(site.tgs_reference || "")}</td>
           ${customCells}
           <td class="mono">${site.document_count || 0}</td>
+          <td class="money">${
+            site.latest_cost_total != null
+              ? `$${Number(site.latest_cost_total).toLocaleString(undefined, {
+                  maximumFractionDigits: 0,
+                })}`
+              : "—"
+          }${site.cost_estimate_count ? ` <span class="meta">(${site.cost_estimate_count})</span>` : ""}</td>
           <td>
             <div class="row-actions">
               <button type="button" class="btn" data-action="edit" data-id="${site.id}">Edit</button>
               <button type="button" class="btn" data-action="detail" data-id="${site.id}">Track / Docs</button>
+              <a class="btn" href="/costs?site_id=${site.id}">Cost</a>
             </div>
           </td>
         </tr>`;
@@ -344,9 +353,47 @@ async function openDetail(siteId) {
   state.detailSiteId = siteId;
   const site = state.sites.find((s) => s.id === siteId) || (await api(`/api/sites/${siteId}`));
   $("detailTitle").textContent = site.road_name;
-  $("detailSub").textContent = `${site.site_number} · MoA ${site.moa_number || "—"} · docs & tracking`;
-  await Promise.all([refreshTracking(), refreshDocuments()]);
+  $("detailSub").textContent = `${site.site_number} · MoA ${site.moa_number || "—"} · docs, tracking & costs`;
+  const costLink = $("btnOpenCosts");
+  if (costLink) costLink.href = `/costs?site_id=${siteId}`;
+  await Promise.all([refreshTracking(), refreshDocuments(), refreshCosts()]);
   $("detailDialog").showModal();
+}
+
+function moneyFmt(n) {
+  if (n == null) return "—";
+  return `$${Number(n).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+async function refreshCosts() {
+  const rows = await api(`/api/costs/estimates?site_id=${state.detailSiteId}`);
+  $("costList").innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const atts = (r.attachments || [])
+            .map(
+              (a) =>
+                `<a href="/api/costs/attachments/${a.id}/download">${escapeHtml(a.original_filename)}</a>`
+            )
+            .join(", ");
+          return `<li>
+          <div class="top">
+            <span>${escapeHtml(r.mode === "closure_24h" ? "24h closure" : "Standard")} · ${new Date(r.created_at).toLocaleString()}${
+              r.created_by ? ` · ${escapeHtml(r.created_by)}` : ""
+            }</span>
+            <a class="btn" href="/costs?site_id=${state.detailSiteId}">Open calculator</a>
+          </div>
+          <p><strong>${escapeHtml(r.name)}</strong> — <span class="money">${moneyFmt(r.summary_total)}</span>
+            ${r.attachment_count ? ` · ${r.attachment_count} file${r.attachment_count === 1 ? "" : "s"}` : ""}</p>
+          ${r.notes ? `<p>${escapeHtml(r.notes)}</p>` : ""}
+          ${atts ? `<p class="meta">Files: ${atts}</p>` : ""}
+        </li>`;
+        })
+        .join("")
+    : `<li><p class="meta">No cost estimates yet. Use <strong>New cost estimate</strong> to calculate and save against this MoA.</p></li>`;
 }
 
 async function refreshTracking() {
