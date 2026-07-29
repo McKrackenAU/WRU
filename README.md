@@ -1,6 +1,6 @@
-# WRU · LCP FMRP MoA Tracker
+# WRU TGS Tracker
 
-Linux-hosted SQL web app that replaces the LCP–FMRP MoA spreadsheet. Track roadwork sites, MoA workflow stages, custom columns, activity notes, and attached documents.
+Linux-hosted PostgreSQL web app for traffic guidance / MoA workflow tracking. Same Ventia styling and logos as [VenInspect](https://github.com/McKrackenAU/VenInspect).
 
 ## Features
 

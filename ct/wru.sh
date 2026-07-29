@@ -16,7 +16,7 @@
 
 set -eEuo pipefail
 
-APP="WRU"
+APP="WRU TGS Tracker"
 APP_PORT="${WRU_PORT:-8000}"
 APP_GIT="${WRU_REPO:-https://github.com/McKrackenAU/WRU.git}"
 APP_BRANCH="${WRU_BRANCH:-main}"
@@ -60,7 +60,7 @@ header_info() {
    | |/ |/ / __/ / _, _/ /_/
    |__/|__/_/ /_/_/ |_|\____/
 
-  LCP · FMRP MoA Tracker
+  WRU TGS Tracker
   Proxmox Helper Script Installer
 EOF
   echo -e "\n${INFO} Repo: ${APP_GIT} (${APP_BRANCH})\n"
@@ -258,7 +258,7 @@ create_lxc() {
 
   local ip
   ip="$(pct exec "$CTID" -- hostname -I | awk '{print $1}')"
-  pct set "$CTID" -description $'WRU LCP-FMRP MoA Tracker\nURL: http://'"${ip}"':'"${APP_PORT}"$'\nRepo: '"${APP_GIT}"$'\nBranch: '"${APP_BRANCH}" >/dev/null || true
+  pct set "$CTID" -description $'WRU TGS Tracker\nURL: http://'"${ip}"':'"${APP_PORT}"$'\nRepo: '"${APP_GIT}"$'\nBranch: '"${APP_BRANCH}" >/dev/null || true
 
   echo
   msg_ok "Completed successfully!"

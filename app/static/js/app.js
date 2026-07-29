@@ -15,6 +15,36 @@ function saveUserName() {
   localStorage.setItem("wru_user", $("userName").value || "");
 }
 
+const THEME_KEY = "wru-tgs-theme";
+
+function currentTheme() {
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode === "dark") root.classList.add("dark");
+  else root.classList.remove("dark");
+  root.style.colorScheme = mode;
+  const btn = $("themeToggle");
+  if (btn) {
+    btn.textContent = mode === "dark" ? "Light" : "Dark";
+    btn.setAttribute(
+      "aria-label",
+      mode === "dark" ? "Switch to light mode" : "Switch to dark mode"
+    );
+  }
+}
+
+function initThemeToggle() {
+  applyTheme(currentTheme());
+  $("themeToggle")?.addEventListener("click", () => {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  });
+}
+
 async function api(path, options = {}) {
   const res = await fetch(path, options);
   if (!res.ok) {
@@ -504,6 +534,7 @@ function debounce(fn, ms) {
 
 async function init() {
   $("userName").value = localStorage.getItem("wru_user") || "";
+  initThemeToggle();
   bindEvents();
   try {
     await loadAll();

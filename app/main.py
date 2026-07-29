@@ -14,8 +14,8 @@ from .schemas import MetaOut
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
-    title="WRU – LCP FMRP MoA Tracker",
-    description="Lightweight web tracker for MoA / roadwork sites with custom columns, tracking, and documents.",
+    title="WRU TGS Tracker",
+    description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, and documents.",
     version="1.0.0",
 )
 

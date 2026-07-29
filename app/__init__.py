@@ -1,1 +1,1 @@
-"""LCP-FMRP MoA tracker application package."""
+"""WRU TGS Tracker application package."""

@@ -12,7 +12,8 @@
 
 set -euo pipefail
 
-APP="WRU"
+APP="WRU TGS Tracker"
+APP_SLUG="wru"
 APP_DIR="/opt/wru"
 DATA_DIR="/opt/wru-data"
 SERVICE_NAME="wru"
@@ -255,7 +256,7 @@ msg_ok "Permissions set"
 msg_info "Creating Service"
 cat <<EOF >/etc/systemd/system/${SERVICE_NAME}.service
 [Unit]
-Description=WRU LCP-FMRP MoA Tracker
+Description=WRU TGS Tracker
 After=network.target postgresql.service
 Wants=postgresql.service
 
@@ -277,15 +278,15 @@ systemctl daemon-reload
 systemctl enable -q --now "$SERVICE_NAME"
 msg_ok "Created and started ${SERVICE_NAME}.service"
 
-echo "${APP_BRANCH}" >"/opt/${APP}_version.txt"
-chmod 644 "/opt/${APP}_version.txt"
+echo "${APP_BRANCH}" >"/opt/${APP_SLUG}_version.txt"
+chmod 644 "/opt/${APP_SLUG}_version.txt"
 
 # Helper MOTD tip
 if [[ -d /etc/update-motd.d ]]; then
   cat <<EOF >/etc/update-motd.d/99-wru
 #!/bin/sh
 echo ""
-echo "  WRU MoA Tracker  →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}"
+echo "  WRU TGS Tracker   →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}"
 echo "  Service          →  systemctl status ${SERVICE_NAME}"
 echo "  Database         →  PostgreSQL (${PG_DB})"
 echo "  Uploads          →  ${DATA_DIR}/uploads"

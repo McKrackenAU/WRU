@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed sample LCP-FMRP MoA tracker data."""
+"""Seed sample WRU TGS Tracker data."""
 
 from __future__ import annotations
 

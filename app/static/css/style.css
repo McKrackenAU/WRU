@@ -1,25 +1,60 @@
 :root {
-  --bg: #e8edf1;
-  --bg-accent: linear-gradient(145deg, #d7e2ea 0%, #eef2f5 42%, #f7f5f0 100%);
-  --surface: #fbfcfd;
-  --ink: #1c2430;
-  --muted: #5c6b7a;
-  --line: #c5d0da;
-  --line-strong: #8fa1b3;
-  --brand: #0f4c5c;
-  --brand-soft: #1a6b7c;
-  --accent: #c45c26;
-  --ok: #2f6f4e;
-  --ok-bg: #d7ebe0;
+  /* Ventia-inspired tokens — same as VenInspect */
+  --ventia-green: #004825;
+  --ventia-green-mid: #00994d;
+  --ventia-green-tint: #f6faef;
+  --ventia-blue: #0077c8;
+  --ventia-ink: #2a2a2a;
+  --ventia-muted: #5c6770;
+  --ventia-paper: #ffffff;
+  --ventia-border: #d8e0d4;
+  --background: var(--ventia-green-tint);
+  --foreground: var(--ventia-ink);
+  --panel: var(--ventia-paper);
+  --accent: var(--ventia-green);
+  --touch: 2.75rem;
+  --nav-bg: rgba(255, 255, 255, 0.95);
+  --field-bg: #ffffff;
+  --danger-bg: #fff1f2;
+  --danger-fg: #9f1239;
+  --ok: #004825;
+  --ok-bg: #e3f5ea;
   --warn: #9a3412;
   --warn-bg: #fde8d8;
-  --danger: #9b1c1c;
-  --stage-on: #2f6f4e;
-  --stage-off: #1c2430;
-  --shadow: 0 18px 40px rgba(28, 36, 48, 0.12);
-  --radius: 10px;
-  --font: "IBM Plex Sans", "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --stage-on: #00994d;
+  --stage-off: #2a2a2a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --radius: 0.75rem;
+  --font: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+
+html.dark {
+  --ventia-green: #3dd68c;
+  --ventia-green-mid: #2bb673;
+  --ventia-green-tint: #141a17;
+  --ventia-blue: #4da3ff;
+  --ventia-ink: #e8eaed;
+  --ventia-muted: #9aa0a6;
+  --ventia-paper: #1a1d21;
+  --ventia-border: #2d333b;
+  --background: #0d1117;
+  --foreground: #e8eaed;
+  --panel: #1a1d21;
+  --accent: var(--ventia-green);
+  --nav-bg: rgba(13, 17, 23, 0.92);
+  --field-bg: #12151a;
+  --danger-bg: #3f1219;
+  --danger-fg: #fda4af;
+  --ok: #3dd68c;
+  --ok-bg: #143024;
+  --warn: #fda4af;
+  --warn-bg: #3f1219;
+  --stage-on: #3dd68c;
+  --stage-off: #6b7280;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -28,26 +63,28 @@ html, body {
   margin: 0;
   min-height: 100%;
   font-family: var(--font);
-  color: var(--ink);
-  background: var(--bg);
-  background-image:
-    radial-gradient(circle at 12% 8%, rgba(15, 76, 92, 0.08), transparent 34%),
-    radial-gradient(circle at 88% 0%, rgba(196, 92, 38, 0.07), transparent 28%),
-    linear-gradient(180deg, #dce5ec 0%, var(--bg) 220px);
+  color: var(--ventia-ink);
+  background: var(--background);
+  -webkit-tap-highlight-color: transparent;
 }
 
-body {
-  animation: fadeIn 0.45s ease;
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 420px at 0% 0%, rgba(0, 153, 77, 0.12), transparent),
+    radial-gradient(700px 380px at 100% 0%, rgba(0, 119, 200, 0.1), transparent),
+    var(--background);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes rowIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
+html.dark body::before {
+  background:
+    radial-gradient(800px 400px at 0% 0%, rgba(61, 214, 140, 0.08), transparent),
+    radial-gradient(700px 380px at 100% 0%, rgba(77, 163, 255, 0.06), transparent),
+    var(--background);
 }
 
 .sr-only {
@@ -62,7 +99,6 @@ body {
 }
 
 .app-shell {
-  max-width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -71,50 +107,65 @@ body {
 .topbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem 1.5rem;
-  align-items: flex-end;
+  gap: 0.85rem 1.25rem;
+  align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 1.5rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: rgba(251, 252, 253, 0.82);
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--ventia-border);
+  background: var(--nav-bg);
   backdrop-filter: blur(8px);
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 20;
 }
 
 .brand-block {
   display: flex;
-  gap: 0.9rem;
+  gap: 0.75rem;
   align-items: center;
+  min-width: 0;
 }
 
-.brand {
-  margin: 0;
-  font-size: clamp(2.4rem, 4vw, 3.4rem);
-  line-height: 0.9;
-  letter-spacing: -0.04em;
-  font-weight: 700;
-  color: var(--brand);
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 0.5rem;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
-.topbar h1 {
+.ventia-logo {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.brand-text .app-name {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.02em;
+  color: var(--ventia-green);
 }
 
-.tagline {
-  margin: 0.15rem 0 0;
-  color: var(--muted);
-  font-size: 0.85rem;
+.brand-text .tagline {
+  margin: 0.1rem 0 0;
+  color: var(--ventia-muted);
+  font-size: 0.7rem;
 }
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.45rem;
   align-items: center;
 }
 
@@ -125,72 +176,121 @@ body {
 .form-grid textarea,
 .track-compose textarea,
 .track-compose select,
-.upload-row input {
+.upload-row input,
+.field-input {
   font: inherit;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
+  color: var(--ventia-ink);
+  background: var(--field-bg);
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.75rem;
+  min-height: 2.5rem;
+}
+
+.toolbar input:focus,
+.toolbar select:focus,
+.form-grid input:focus,
+.form-grid select:focus,
+.form-grid textarea:focus,
+.track-compose textarea:focus,
+.track-compose select:focus {
+  outline: 2px solid var(--ventia-green-mid);
+  outline-offset: 1px;
+}
+
+html.dark select,
+html.dark select option {
+  background-color: var(--field-bg);
+  color: var(--ventia-ink);
 }
 
 .toolbar input[type="search"],
 #userName {
-  min-width: 10rem;
+  min-width: 9.5rem;
 }
 
 .btn, .icon-btn {
   font: inherit;
   cursor: pointer;
-  border-radius: 8px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--ink);
-  padding: 0.5rem 0.85rem;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  border-radius: var(--radius);
+  border: 1px solid var(--ventia-border);
+  background: var(--panel);
+  color: var(--ventia-ink);
+  padding: 0.55rem 0.9rem;
+  min-height: 2.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .btn:hover, .icon-btn:hover {
-  transform: translateY(-1px);
-  border-color: var(--brand-soft);
+  background: var(--ventia-green-tint);
+  border-color: var(--ventia-green-mid);
 }
 
 .btn-primary {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #f7fbfd;
+  background: #004825;
+  border-color: #004825;
+  color: #fff;
+}
+
+html.dark .btn-primary {
+  background: #3dd68c;
+  border-color: #3dd68c;
+  color: #0d1117;
 }
 
 .btn-primary:hover {
-  background: var(--brand-soft);
+  background: var(--ventia-green-mid);
+  border-color: var(--ventia-green-mid);
+  color: #fff;
+}
+
+html.dark .btn-primary:hover {
+  color: #0d1117;
 }
 
 .btn-danger {
-  background: #fff5f5;
+  background: var(--danger-bg);
   border-color: #e8b4b4;
-  color: var(--danger);
+  color: var(--danger-fg);
 }
 
 .icon-btn {
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
   padding: 0;
   font-size: 1.25rem;
   line-height: 1;
 }
 
+.theme-toggle {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--ventia-muted);
+  padding: 0.45rem 0.7rem;
+}
+
 .main {
-  padding: 0.75rem 1rem 1.5rem;
+  padding: 1rem 1.25rem 0.5rem;
   flex: 1;
+  width: 100%;
+  max-width: 96rem;
+  margin: 0 auto;
+}
+
+.table-card {
+  border: 1px solid var(--ventia-border);
+  border-radius: 1rem;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
 .table-scroll {
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  max-height: calc(100vh - 9.5rem);
+  max-height: calc(100vh - 11.5rem);
 }
 
 .data-table {
@@ -203,8 +303,8 @@ body {
 
 .data-table th,
 .data-table td {
-  border-bottom: 1px solid var(--line);
-  border-right: 1px solid #e4eaef;
+  border-bottom: 1px solid var(--ventia-border);
+  border-right: 1px solid var(--ventia-border);
   padding: 0.45rem 0.55rem;
   vertical-align: middle;
   white-space: nowrap;
@@ -214,11 +314,16 @@ body {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #0f4c5c;
+  background: #004825;
   color: #f4fafb;
-  font-weight: 550;
+  font-weight: 600;
   text-align: left;
   letter-spacing: 0.01em;
+}
+
+html.dark .data-table th {
+  background: #143024;
+  color: #e8eaed;
 }
 
 .data-table th.stage {
@@ -232,21 +337,17 @@ body {
   padding: 0.55rem 0.2rem;
 }
 
-.data-table tbody tr {
-  animation: rowIn 0.28s ease both;
-}
-
 .data-table tbody tr:nth-child(even) {
-  background: #f3f7f9;
+  background: color-mix(in srgb, var(--ventia-green-tint) 70%, var(--panel));
 }
 
 .data-table tbody tr:hover {
-  background: #e8f2f5;
+  background: color-mix(in srgb, var(--ventia-green-mid) 12%, var(--panel));
 }
 
 .data-table td.empty {
   text-align: center;
-  color: var(--muted);
+  color: var(--ventia-muted);
   padding: 2rem;
 }
 
@@ -257,9 +358,9 @@ body {
   min-width: 1.5rem;
   justify-content: center;
   font-family: var(--mono);
-  font-weight: 500;
+  font-weight: 600;
   padding: 0.15rem 0.4rem;
-  border-radius: 4px;
+  border-radius: 0.375rem;
 }
 
 .priority.p1 {
@@ -268,22 +369,22 @@ body {
 }
 
 .priority.p2 {
-  background: #e8eef3;
-  color: var(--muted);
+  background: color-mix(in srgb, var(--ventia-border) 55%, transparent);
+  color: var(--ventia-muted);
 }
 
 .must-have.soon {
   background: var(--ok-bg);
   color: var(--ok);
   padding: 0.1rem 0.35rem;
-  border-radius: 4px;
+  border-radius: 0.375rem;
 }
 
 .must-have.late {
-  background: #fde2e2;
-  color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
   padding: 0.1rem 0.35rem;
-  border-radius: 4px;
+  border-radius: 0.375rem;
 }
 
 .stage-cell {
@@ -297,7 +398,7 @@ body {
   display: inline-block;
   width: 0.85rem;
   height: 0.85rem;
-  border-radius: 2px;
+  border-radius: 0.2rem;
   background: var(--stage-off);
   transition: background 0.15s ease, transform 0.15s ease;
 }
@@ -308,14 +409,14 @@ body {
 }
 
 .stage-cell:hover .dot {
-  outline: 2px solid rgba(15, 76, 92, 0.35);
+  outline: 2px solid color-mix(in srgb, var(--ventia-green) 40%, transparent);
   outline-offset: 1px;
 }
 
 .comments {
   max-width: 18rem;
   white-space: normal;
-  color: var(--muted);
+  color: var(--ventia-muted);
 }
 
 .row-actions {
@@ -326,22 +427,45 @@ body {
 .row-actions .btn {
   padding: 0.28rem 0.5rem;
   font-size: 0.75rem;
+  min-height: 0;
 }
 
 .foot-note {
   margin: 0.65rem 0 0;
-  color: var(--muted);
+  color: var(--ventia-muted);
   font-size: 0.8rem;
 }
 
+.app-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--ventia-border);
+  padding: 0.85rem 1.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--ventia-muted);
+}
+
+.app-footer .inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+}
+
+.app-footer .brand-mark {
+  width: 18px;
+  height: 18px;
+  opacity: 0.9;
+}
+
 dialog.panel {
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  border: 1px solid var(--ventia-border);
+  border-radius: 1rem;
   padding: 0;
   width: min(720px, calc(100vw - 1.5rem));
-  box-shadow: var(--shadow);
-  background: var(--surface);
-  color: var(--ink);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+  background: var(--panel);
+  color: var(--ventia-ink);
 }
 
 dialog.panel-wide {
@@ -349,7 +473,7 @@ dialog.panel-wide {
 }
 
 dialog::backdrop {
-  background: rgba(18, 28, 36, 0.45);
+  background: rgba(13, 17, 23, 0.45);
 }
 
 .panel-head,
@@ -358,17 +482,18 @@ dialog::backdrop {
   align-items: center;
   gap: 0.75rem;
   padding: 0.9rem 1rem;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--ventia-border);
 }
 
 .panel-foot {
   border-bottom: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--ventia-border);
 }
 
 .panel-head h2 {
   margin: 0;
   font-size: 1.1rem;
+  color: var(--ventia-green);
 }
 
 .panel-body {
@@ -389,14 +514,14 @@ dialog::backdrop {
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--ventia-muted);
 }
 
 .form-grid .full { grid-column: 1 / -1; }
 
 .workflow-edit {
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
   padding: 0.65rem 0.75rem;
 }
 
@@ -411,13 +536,13 @@ dialog::backdrop {
   flex-direction: row;
   align-items: center;
   gap: 0.45rem;
-  color: var(--ink);
+  color: var(--ventia-ink);
   font-size: 0.82rem;
 }
 
 .hint {
   margin: 0 0 0.75rem;
-  color: var(--muted);
+  color: var(--ventia-muted);
   font-size: 0.85rem;
 }
 
@@ -436,13 +561,13 @@ dialog::backdrop {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f5f8fa;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  background: var(--ventia-green-tint);
 }
 
 .column-list .meta {
-  color: var(--muted);
+  color: var(--ventia-muted);
   font-family: var(--mono);
   font-size: 0.75rem;
 }
@@ -458,6 +583,7 @@ dialog::backdrop {
 .detail-split h3 {
   margin: 0 0 0.6rem;
   font-size: 0.95rem;
+  color: var(--ventia-green);
 }
 
 .track-compose {
@@ -483,10 +609,10 @@ dialog::backdrop {
 }
 
 .event-list li {
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
   padding: 0.55rem 0.65rem;
-  background: #f7fafb;
+  background: var(--ventia-green-tint);
 }
 
 .event-list .top {
@@ -495,7 +621,7 @@ dialog::backdrop {
   gap: 0.5rem;
   margin-bottom: 0.25rem;
   font-size: 0.72rem;
-  color: var(--muted);
+  color: var(--ventia-muted);
   font-family: var(--mono);
 }
 
@@ -506,7 +632,7 @@ dialog::backdrop {
 }
 
 .event-list a {
-  color: var(--brand);
+  color: var(--ventia-blue);
 }
 
 @media (max-width: 900px) {
@@ -516,4 +642,5 @@ dialog::backdrop {
   .toolbar { width: 100%; }
   .toolbar input,
   .toolbar select { flex: 1; min-width: 0; }
+  .ventia-logo { display: none; }
 }
