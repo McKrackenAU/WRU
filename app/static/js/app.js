@@ -384,7 +384,11 @@ async function refreshCosts() {
             <span>${escapeHtml(r.mode === "closure_24h" ? "24h closure" : "Standard")} · ${new Date(r.created_at).toLocaleString()}${
               r.created_by ? ` · ${escapeHtml(r.created_by)}` : ""
             }</span>
-            <a class="btn" href="/costs?site_id=${state.detailSiteId}">Open calculator</a>
+            <span class="row-actions">
+              <a class="btn" href="/api/costs/estimates/${r.id}/export.xlsx">Excel</a>
+              <a class="btn" href="/api/costs/estimates/${r.id}/export.pdf">PDF</a>
+              <a class="btn" href="/costs?site_id=${state.detailSiteId}">Open calculator</a>
+            </span>
           </div>
           <p><strong>${escapeHtml(r.name)}</strong> — <span class="money">${moneyFmt(r.summary_total)}</span>
             ${r.attachment_count ? ` · ${r.attachment_count} file${r.attachment_count === 1 ? "" : "s"}` : ""}</p>

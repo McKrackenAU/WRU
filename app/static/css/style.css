@@ -404,6 +404,30 @@ html.dark .tabs button.active {
 
 .compare-card.winner {
   outline: 2px solid var(--ventia-green-mid);
+  background: color-mix(in srgb, var(--ventia-green-tint) 70%, white);
+  position: relative;
+}
+
+.compare-card .best-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  background: var(--ventia-green);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.best-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--ventia-green-mid);
+  background: var(--ventia-green-tint);
+  font-weight: 650;
 }
 
 .crew-grid {

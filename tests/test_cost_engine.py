@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.cost_engine import allocate_resource_packs, calculate_standard, unit_shift_cost
+from app.cost_engine import (
+    allocate_resource_packs,
+    calculate_closure_24h,
+    calculate_standard,
+    unit_shift_cost,
+)
 
 
 def _pack(id_, people, vehicle, day_o, *, kind="crew_pack", name=None, pos=0, day_ot=None):
@@ -135,8 +140,8 @@ def test_meals_apply_over_threshold():
     assert result["shift_total"] == result["shift_labour_total"] + result["allowances"]["allowances_total"]
 
 
-def test_standard_includes_booking_and_allowances():
-    settings = SimpleNamespace(
+def _settings(**kwargs):
+    base = dict(
         overtime_after_hours=8,
         vms_lead_days_default=0,
         vms_delivery_rate=0,
@@ -146,6 +151,11 @@ def test_standard_includes_booking_and_allowances():
         meal_allowance=30,
         meal_after_hours=9.5,
     )
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
+def test_standard_includes_booking_and_allowances():
     out = calculate_standard(
         {
             "total_shifts": 1,
@@ -156,10 +166,54 @@ def test_standard_includes_booking_and_allowances():
             "vms_quantity": 0,
             "resources": {"people": 20, "vehicles": 10, "tmas": 0, "spotters": 0},
         },
-        settings,
+        _settings(),
         _default_rates(),
     )
     assert out["booking_requirements"]
     assert out["per_shift"]["allowances"]["heads"] == 20
     assert out["per_shift"]["allowances"]["meal_total"] == 600
     assert out["site_traffic_total"] == out["site_crew_total"]
+
+
+def test_closure_8h_no_meals_12h_has_meals_and_marks_best():
+    out = calculate_closure_24h(
+        {
+            "closure_start": "2026-08-07T18:00:00",
+            "closure_end": "2026-08-10T06:00:00",
+            "vms_quantity": 0,
+            "resources": {"people": 4, "vehicles": 2, "tmas": 0, "spotters": 0},
+        },
+        _settings(),
+        _default_rates(),
+    )
+    opt8 = out["option_3x8"]
+    opt12 = out["option_2x12"]
+    assert opt8["meals_apply_per_shift"] is False
+    assert opt8["meal_total"] == 0
+    assert opt8["travel_total"] > 0
+    assert opt12["meals_apply_per_shift"] is True
+    assert opt12["meal_total"] > 0
+    assert opt12["travel_total"] > 0
+    assert out["recommendation"]["best_label"]
+    assert opt8["is_best"] or opt12["is_best"]
+    assert opt8["grand_total"] == opt8["pack_labour_total"] + opt8["travel_total"] + opt8["meal_total"] + opt8["vms_total"]
+    assert opt12["grand_total"] == opt12["pack_labour_total"] + opt12["travel_total"] + opt12["meal_total"] + opt12["vms_total"]
+
+
+def test_exports_build_bytes():
+    from app.cost_export import build_cost_pdf, build_cost_workbook
+
+    out = calculate_closure_24h(
+        {
+            "closure_start": "2026-08-07T18:00:00",
+            "closure_end": "2026-08-08T18:00:00",
+            "vms_quantity": 0,
+            "resources": {"people": 2, "vehicles": 1, "tmas": 0, "spotters": 0},
+        },
+        _settings(),
+        _default_rates(),
+    )
+    xlsx = build_cost_workbook(out, title="Test closure")
+    pdf = build_cost_pdf(out, title="Test closure")
+    assert xlsx[:2] == b"PK"
+    assert pdf.startswith(b"%PDF")

@@ -205,14 +205,23 @@ function renderStandard(result) {
 }
 
 function optionCard(opt, winner) {
+  const mealNote = opt.meals_apply_per_shift
+    ? `Meals included (${money(opt.meal_total)} across shifts)`
+    : "No meals (shift ≤ meal threshold)";
   return `
     <div class="panel-card compare-card ${winner ? "winner" : ""}" style="margin:0;box-shadow:none">
-      <h2>${escapeHtml(opt.label)}</h2>
+      <h2>${escapeHtml(opt.shift_hours)}-hour shifts${
+        winner ? '<span class="best-badge">BEST</span>' : ""
+      }</h2>
       <div class="hint">${opt.shifts_required} shifts · ${opt.day_shifts} day / ${opt.night_shifts} night · ${opt.duration_hours}h coverage</div>
+      <div class="hint">${escapeHtml(mealNote)} · Travel ${money(opt.travel_total)}</div>
       <div class="stat-grid" style="margin-top:0.75rem">
-        <div class="stat-card"><div class="label">Labour</div><div class="value money-total" style="font-size:1.2rem">${money(opt.labour_total)}</div></div>
-        <div class="stat-card"><div class="label">VMS</div><div class="value money-total" style="font-size:1.2rem">${money(opt.vms_total)}</div></div>
-        <div class="stat-card"><div class="label">Grand total</div><div class="value money-total" style="font-size:1.2rem">${money(opt.grand_total)}</div></div>
+        <div class="stat-card"><div class="label">Pack labour</div><div class="value money-total" style="font-size:1.1rem">${money(opt.pack_labour_total)}</div></div>
+        <div class="stat-card"><div class="label">Travel</div><div class="value money-total" style="font-size:1.1rem">${money(opt.travel_total)}</div></div>
+        <div class="stat-card"><div class="label">Meals</div><div class="value money-total" style="font-size:1.1rem">${money(opt.meal_total)}</div></div>
+        <div class="stat-card"><div class="label">Crew total</div><div class="value money-total" style="font-size:1.1rem">${money(opt.crew_total ?? opt.labour_total)}</div></div>
+        <div class="stat-card"><div class="label">VMS</div><div class="value money-total" style="font-size:1.1rem">${money(opt.vms_total)}</div></div>
+        <div class="stat-card"><div class="label">Grand total</div><div class="value money-total" style="font-size:1.25rem">${money(opt.grand_total)}</div></div>
       </div>
     </div>`;
 }
@@ -220,29 +229,61 @@ function optionCard(opt, winner) {
 function renderClosure(result) {
   lastClosure = result;
   const rec = result.recommendation;
-  const win3 = rec.cheaper === "3x8";
-  const win2 = rec.cheaper === "2x12";
   $("cResults").innerHTML = `
-    <h2>Comparison</h2>
-    <p><strong>${escapeHtml(rec.summary)}</strong></p>
+    <h2>8h vs 12h comparison</h2>
+    <div class="best-banner">BEST: ${escapeHtml(rec.best_label || rec.cheaper)}
+      ${rec.cheaper !== "equal" && rec.saving ? ` · saves ${money(rec.saving)}` : ""}</div>
+    <p class="hint">${escapeHtml(rec.summary)}</p>
     ${bookingBlock(result)}
     ${allocationBlock(result.option_3x8.allocation)}
     <div class="compare-grid">
-      ${optionCard(result.option_3x8, win3)}
-      ${optionCard(result.option_2x12, win2)}
+      ${optionCard(result.option_3x8, !!result.option_3x8.is_best)}
+      ${optionCard(result.option_2x12, !!result.option_2x12.is_best)}
     </div>
     ${vmsBlock(result.vms)}
     <details open>
-      <summary>3×8 first-shift mix &amp; allowances</summary>
+      <summary>8-hour shift sample (pack mix &amp; allowances)</summary>
       ${allowancesBlock(result.option_3x8.sample_allowances || result.option_3x8.per_shift?.[0]?.allowances)}
       ${labourTable(result.option_3x8.per_shift?.[0]?.lines || [])}
     </details>
-    <details>
-      <summary>2×12 first-shift mix &amp; allowances</summary>
+    <details open>
+      <summary>12-hour shift sample (pack mix &amp; allowances — meals usually apply)</summary>
       ${allowancesBlock(result.option_2x12.sample_allowances || result.option_2x12.per_shift?.[0]?.allowances)}
       ${labourTable(result.option_2x12.per_shift?.[0]?.lines || [])}
     </details>
   `;
+}
+
+async function exportResult(result, format) {
+  if (!result) return alert("Calculate first");
+  const siteId = selectedSiteId();
+  const res = await fetch(`/api/costs/export/${format}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      result,
+      site_id: siteId,
+      title:
+        result.mode === "closure_24h"
+          ? "24-hour closure cost comparison"
+          : "Standard shift cost estimate",
+      notes: $("costNotes")?.value.trim() || null,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Export failed");
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition") || "";
+  const match = cd.match(/filename="?([^"]+)"?/);
+  const filename = match?.[1] || `wru-cost.${format === "pdf" ? "pdf" : "xlsx"}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function modeLabel(mode) {
@@ -311,7 +352,11 @@ async function loadEstimates() {
           <div class="top">
             <span>${escapeHtml(modeLabel(r.mode))} · ${new Date(r.created_at).toLocaleString()}
               ${r.created_by ? ` · ${escapeHtml(r.created_by)}` : ""}</span>
-            <button type="button" class="btn btn-danger" data-del-est="${r.id}">Delete</button>
+            <span class="row-actions">
+              <a class="btn" href="/api/costs/estimates/${r.id}/export.xlsx">Excel</a>
+              <a class="btn" href="/api/costs/estimates/${r.id}/export.pdf">PDF</a>
+              <button type="button" class="btn btn-danger" data-del-est="${r.id}">Delete</button>
+            </span>
           </div>
           <p><strong>${escapeHtml(r.name)}</strong> — <span class="money">${estimateTotalLabel(r)}</span></p>
           <p class="meta">${escapeHtml(siteLabel)}</p>
@@ -478,6 +523,18 @@ async function init() {
   );
   $("btnSaveClosure").addEventListener("click", () =>
     saveEstimate("closure_24h").catch((e) => alert(e.message))
+  );
+  $("btnExportStdExcel").addEventListener("click", () =>
+    exportResult(lastStandard, "excel").catch((e) => alert(e.message))
+  );
+  $("btnExportStdPdf").addEventListener("click", () =>
+    exportResult(lastStandard, "pdf").catch((e) => alert(e.message))
+  );
+  $("btnExportCloExcel").addEventListener("click", () =>
+    exportResult(lastClosure, "excel").catch((e) => alert(e.message))
+  );
+  $("btnExportCloPdf").addEventListener("click", () =>
+    exportResult(lastClosure, "pdf").catch((e) => alert(e.message))
   );
 
   $("estimateList").addEventListener("click", async (ev) => {

@@ -5,12 +5,13 @@ from pathlib import Path
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..cost_engine import calculate_closure_24h, calculate_standard
+from ..cost_export import build_cost_pdf, build_cost_workbook
 from ..database import UPLOAD_DIR, get_db
 from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, Site
 
@@ -78,6 +79,24 @@ class EstimateUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     site_id: int | None = None
     notes: str | None = None
+
+
+class CostExportRequest(BaseModel):
+    result: dict
+    title: str | None = None
+    notes: str | None = None
+    site_id: int | None = None
+
+
+def _site_export_meta(site: Site | None) -> dict | None:
+    if not site:
+        return None
+    return {
+        "road_name": site.road_name,
+        "site_number": site.site_number,
+        "moa_number": site.moa_number,
+        "tgs_reference": site.tgs_reference,
+    }
 
 
 def get_or_create_settings(db: Session) -> CostSettings:
@@ -541,3 +560,85 @@ def delete_estimate_attachment(attachment_id: int, db: Session = Depends(get_db)
     db.delete(att)
     db.commit()
     return None
+
+
+@router.post("/export/excel")
+def export_cost_excel(payload: CostExportRequest, db: Session = Depends(get_db)):
+    site = db.get(Site, payload.site_id) if payload.site_id else None
+    if payload.site_id and not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    mode = (payload.result or {}).get("mode") or "cost"
+    title = payload.title or f"Traffic cost — {mode}"
+    data = build_cost_workbook(
+        payload.result,
+        title=title,
+        site=_site_export_meta(site),
+        notes=payload.notes,
+    )
+    filename = f"wru-cost-{mode}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/export/pdf")
+def export_cost_pdf(payload: CostExportRequest, db: Session = Depends(get_db)):
+    site = db.get(Site, payload.site_id) if payload.site_id else None
+    if payload.site_id and not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    mode = (payload.result or {}).get("mode") or "cost"
+    title = payload.title or f"Traffic cost — {mode}"
+    data = build_cost_pdf(
+        payload.result,
+        title=title,
+        site=_site_export_meta(site),
+        notes=payload.notes,
+    )
+    filename = f"wru-cost-{mode}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/estimates/{estimate_id}/export.xlsx")
+def export_saved_estimate_excel(estimate_id: int, db: Session = Depends(get_db)):
+    row = db.get(CostEstimate, estimate_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    data = build_cost_workbook(
+        row.results or {},
+        title=row.name,
+        site=_site_export_meta(row.site),
+        notes=row.notes,
+    )
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="wru-estimate-{estimate_id}.xlsx"'
+        },
+    )
+
+
+@router.get("/estimates/{estimate_id}/export.pdf")
+def export_saved_estimate_pdf(estimate_id: int, db: Session = Depends(get_db)):
+    row = db.get(CostEstimate, estimate_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Estimate not found")
+    data = build_cost_pdf(
+        row.results or {},
+        title=row.name,
+        site=_site_export_meta(row.site),
+        notes=row.notes,
+    )
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="wru-estimate-{estimate_id}.pdf"'
+        },
+    )

@@ -679,8 +679,11 @@ def _closure_option(
     types = _shift_type_sequence(start, shift_hours, shifts)
 
     per_shift = []
-    labour_total = 0.0
+    pack_labour_total = 0.0
+    travel_total = 0.0
+    meal_total = 0.0
     allowances_total = 0.0
+    crew_total = 0.0
     day_shifts = 0
     night_shifts = 0
     allocation = None
@@ -696,8 +699,12 @@ def _closure_option(
             rates=rates,
             settings=settings,
         )
-        labour_total += detail["shift_total"]
-        allowances_total += detail["allowances"]["allowances_total"]
+        allow = detail.get("allowances") or empty_allowances()
+        pack_labour_total += detail["shift_labour_total"]
+        travel_total += allow["travel_total"]
+        meal_total += allow["meal_total"]
+        allowances_total += allow["allowances_total"]
+        crew_total += detail["shift_total"]
         if stype == "day":
             day_shifts += 1
         else:
@@ -706,34 +713,46 @@ def _closure_option(
             allocation = detail.get("allocation")
             booking_requirements = detail.get("booking_requirements") or []
             booking_summary = detail.get("booking_summary") or ""
-            sample_allowances = detail.get("allowances") or empty_allowances()
+            sample_allowances = allow
         per_shift.append(
             {
                 "index": idx + 1,
                 "shift_type": stype,
                 "hours": shift_hours,
                 "labour_total": detail["shift_labour_total"],
-                "allowances_total": detail["allowances"]["allowances_total"],
+                "travel_total": allow["travel_total"],
+                "meal_total": allow["meal_total"],
+                "allowances_total": allow["allowances_total"],
+                "meals_apply": allow["meals_apply"],
                 "shift_total": detail["shift_total"],
                 "lines": detail["lines"],
-                "allowances": detail.get("allowances"),
+                "allowances": allow,
             }
         )
 
     return {
         "label": label,
+        "key": "3x8" if shift_hours == 8 else "2x12" if shift_hours == 12 else f"{shift_hours:g}h",
         "shift_hours": shift_hours,
         "shifts_required": shifts,
         "day_shifts": day_shifts,
         "night_shifts": night_shifts,
         "duration_hours": money(duration_h),
-        "labour_total": money(labour_total),
+        # pack/TMA/spotter labour only
+        "pack_labour_total": money(pack_labour_total),
+        "travel_total": money(travel_total),
+        "meal_total": money(meal_total),
         "allowances_total": money(allowances_total),
+        # crew = pack labour + travel + meals (kept as labour_total for compatibility)
+        "crew_total": money(crew_total),
+        "labour_total": money(crew_total),
+        "meals_apply_per_shift": bool(sample_allowances.get("meals_apply")),
         "sample_allowances": sample_allowances,
         "allocation": allocation,
         "booking_requirements": booking_requirements,
         "booking_summary": booking_summary,
         "per_shift": per_shift,
+        "is_best": False,
     }
 
 
@@ -787,16 +806,33 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
 
     for opt in (opt_3x8, opt_2x12):
         opt["vms_total"] = vms["vms_total"]
-        opt["grand_total"] = money(opt["labour_total"] + vms["vms_total"])
+        opt["grand_total"] = money(opt["crew_total"] + vms["vms_total"])
 
-    cheaper = (
-        "3x8"
-        if opt_3x8["grand_total"] < opt_2x12["grand_total"]
-        else "2x12"
-        if opt_2x12["grand_total"] < opt_3x8["grand_total"]
-        else "equal"
-    )
+    if opt_3x8["grand_total"] < opt_2x12["grand_total"]:
+        cheaper = "3x8"
+        opt_3x8["is_best"] = True
+        best_label = "3 × 8-hour shifts"
+    elif opt_2x12["grand_total"] < opt_3x8["grand_total"]:
+        cheaper = "2x12"
+        opt_2x12["is_best"] = True
+        best_label = "2 × 12-hour shifts"
+    else:
+        cheaper = "equal"
+        opt_3x8["is_best"] = True
+        opt_2x12["is_best"] = True
+        best_label = "Either pattern (equal cost)"
+
     saving = money(abs(opt_3x8["grand_total"] - opt_2x12["grand_total"]))
+    meal_note_8 = (
+        "no meals"
+        if not opt_3x8["meals_apply_per_shift"]
+        else f"meals ${opt_3x8['meal_total']:,.2f}"
+    )
+    meal_note_12 = (
+        "no meals"
+        if not opt_2x12["meals_apply_per_shift"]
+        else f"meals ${opt_2x12['meal_total']:,.2f}"
+    )
 
     return {
         "mode": "closure_24h",
@@ -814,17 +850,19 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
         "booking_summary": opt_3x8.get("booking_summary") or "",
         "recommendation": {
             "cheaper": cheaper,
+            "best_key": cheaper,
+            "best_label": best_label,
             "saving": saving,
             "summary": (
-                f"3×8 total ${opt_3x8['grand_total']:,.2f} vs 2×12 total "
-                f"${opt_2x12['grand_total']:,.2f}. "
-                + (
-                    "Equal cost."
-                    if cheaper == "equal"
-                    else f"{'3×8' if cheaper == '3x8' else '2×12'} is cheaper by ${saving:,.2f}."
-                )
-                + " VMS charged by calendar day (not per shift). "
-                + "Meals apply on shifts over the meal threshold (typically 12h, not 8h)."
+                f"BEST: {best_label}. "
+                f"8h pattern ${opt_3x8['grand_total']:,.2f} "
+                f"(pack ${opt_3x8['pack_labour_total']:,.2f} + travel ${opt_3x8['travel_total']:,.2f} "
+                f"+ {meal_note_8} + VMS ${opt_3x8['vms_total']:,.2f}) vs "
+                f"12h pattern ${opt_2x12['grand_total']:,.2f} "
+                f"(pack ${opt_2x12['pack_labour_total']:,.2f} + travel ${opt_2x12['travel_total']:,.2f} "
+                f"+ {meal_note_12} + VMS ${opt_2x12['vms_total']:,.2f})"
+                + (f". Saves ${saving:,.2f}." if cheaper != "equal" else ".")
+                + " Travel applies every shift; meals only when shift length exceeds the meal threshold."
             ),
         },
     }
