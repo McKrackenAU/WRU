@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WRU · LCP FMRP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <p class="brand">WRU</p>
+        <div>
+          <h1>LCP · FMRP</h1>
+          <p class="tagline">MoA site tracker</p>
+        </div>
+      </div>
+      <div class="toolbar">
+        <label class="search-wrap">
+          <span class="sr-only">Search</span>
+          <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
+        </label>
+        <select id="priorityFilter" aria-label="Priority filter">
+          <option value="">All priorities</option>
+          <option value="1">Priority 1 (&lt; 21 days)</option>
+          <option value="2">Priority 2</option>
+        </select>
+        <input id="userName" type="text" placeholder="Your name" maxlength="64" aria-label="Your name for tracking" />
+        <button type="button" class="btn" id="btnColumns">Columns</button>
+        <button type="button" class="btn btn-primary" id="btnAddSite">Add site</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="table-scroll" id="tableScroll">
+        <table class="data-table" id="sitesTable">
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody">
+            <tr><td class="empty" colspan="20">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="foot-note" id="statusLine">Ready</p>
+    </main>
+  </div>
+
+  <!-- Site editor -->
+  <dialog id="siteDialog" class="panel">
+    <form method="dialog" id="siteForm">
+      <header class="panel-head">
+        <h2 id="siteDialogTitle">Add site</h2>
+        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body form-grid">
+        <input type="hidden" id="siteId" />
+        <label>Road name<input id="fRoad" required maxlength="255" /></label>
+        <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
+        <label>Indicative start<input id="fStart" type="date" /></label>
+        <label>MoA must-have received<input id="fMustHave" type="date" /></label>
+        <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
+        <label>MoA submission date<input id="fMoaSub" type="date" /></label>
+        <label class="full">Comments<textarea id="fComments" rows="3"></textarea></label>
+        <fieldset class="full workflow-edit">
+          <legend>Workflow progress</legend>
+          <div id="workflowChecks" class="workflow-checks"></div>
+        </fieldset>
+        <fieldset class="full" id="customFieldsEdit">
+          <legend>Custom fields</legend>
+          <div id="customFieldsGrid" class="form-grid"></div>
+        </fieldset>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-danger" id="btnDeleteSite" hidden>Delete</button>
+        <div class="spacer"></div>
+        <button type="submit" value="cancel" class="btn">Cancel</button>
+        <button type="submit" value="save" class="btn btn-primary">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Columns manager -->
+  <dialog id="columnsDialog" class="panel">
+    <form method="dialog" id="columnsForm">
+      <header class="panel-head">
+        <h2>Custom columns</h2>
+        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">Any user can add or remove columns. Values are stored per site.</p>
+        <ul id="columnList" class="column-list"></ul>
+        <div class="add-column form-grid">
+          <label>Name<input id="colName" maxlength="128" required /></label>
+          <label>Type
+            <select id="colType">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+              <option value="checkbox">Checkbox</option>
+              <option value="select">Select</option>
+            </select>
+          </label>
+          <label class="full" id="colOptionsWrap" hidden>Options (comma-separated)
+            <input id="colOptions" placeholder="Option A, Option B" />
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-primary" id="btnAddColumn">Add column</button>
+        <div class="spacer"></div>
+        <button type="submit" value="cancel" class="btn">Close</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- Side panel: tracking + documents -->
+  <dialog id="detailDialog" class="panel panel-wide">
+    <form method="dialog">
+      <header class="panel-head">
+        <div>
+          <h2 id="detailTitle">Site</h2>
+          <p class="tagline" id="detailSub"></p>
+        </div>
+        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body detail-split">
+        <section>
+          <h3>Tracking</h3>
+          <div class="track-compose">
+            <select id="trackType">
+              <option value="note">Note</option>
+              <option value="status">Status</option>
+              <option value="chase">Chase</option>
+              <option value="issue">Issue</option>
+            </select>
+            <textarea id="trackMessage" rows="2" placeholder="Add a tracking update…"></textarea>
+            <button type="button" class="btn btn-primary" id="btnAddTrack">Add</button>
+          </div>
+          <ul id="trackList" class="event-list"></ul>
+        </section>
+        <section>
+          <h3>Documents</h3>
+          <div class="upload-row">
+            <input type="file" id="docFile" />
+            <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
+          </div>
+          <ul id="docList" class="event-list"></ul>
+        </section>
+      </div>
+      <footer class="panel-foot">
+        <button type="submit" value="cancel" class="btn">Close</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="/static/js/app.js" type="module"></script>
+</body>
+</html>
