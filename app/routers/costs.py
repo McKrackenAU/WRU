@@ -112,7 +112,7 @@ def _pack_seed_rows() -> list[dict]:
         (4, True, 210, 280, 255, 350),
     ]
     for people, with_veh, d_o, d_ot, n_o, n_ot in matrix:
-        label = f"{people} person{'s' if people > 1 else ''}"
+        label = f"{people} {'person' if people == 1 else 'people'}"
         label += " + vehicle" if with_veh else " (no vehicle)"
         rows.append(
             {
