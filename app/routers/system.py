@@ -28,6 +28,8 @@ class SystemStatusOut(BaseModel):
     update_available_via: str
     can_update: bool
     detail: str | None = None
+    shell_ct: str | None = None
+    shell_proxmox: str | None = None
 
 
 class SystemUpdateRequest(BaseModel):
@@ -40,6 +42,15 @@ class SystemUpdateOut(BaseModel):
     message: str
     log_tail: str | None = None
     status: SystemStatusOut | None = None
+
+
+SHELL_CT = (
+    'bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh)"'
+)
+SHELL_PROXMOX = (
+    'bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"'
+    '  # then choose: Update existing CT from GitHub'
+)
 
 
 def _parse_version_file() -> dict[str, str]:
@@ -87,8 +98,9 @@ def build_status() -> SystemStatusOut:
     detail = None
     if not can:
         detail = (
-            "Update helper not installed. Re-run install/wru-install.sh "
-            "or place /usr/local/sbin/wru-update (sudo-enabled for user wru)."
+            "In-app updater helper not installed yet. Run the shell command below "
+            "once as root inside this CT (or use Proxmox host → Update existing CT). "
+            "That installs /usr/local/sbin/wru-update for future UI updates."
         )
     return SystemStatusOut(
         app_version=meta.get("app_version") or _app_version_from_code(),
@@ -96,11 +108,12 @@ def build_status() -> SystemStatusOut:
         repo=meta.get("repo") or DEFAULT_REPO,
         commit=meta.get("commit") or _local_git_commit(),
         updated_at=meta.get("updated_at"),
-        update_available_via="sudo /usr/local/sbin/wru-update",
+        update_available_via="sudo /usr/local/sbin/wru-update" if can else "shell curl one-liner",
         can_update=can,
         detail=detail,
+        shell_ct=SHELL_CT,
+        shell_proxmox=SHELL_PROXMOX,
     )
-
 
 @router.get("", response_model=SystemStatusOut)
 def system_status():

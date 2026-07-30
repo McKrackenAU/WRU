@@ -37,8 +37,18 @@
         </div>
       </section>
 
+      <section class="panel-card" id="shellHelp">
+        <h2>Update from the shell</h2>
+        <p class="hint">Use these if the in-app button is disabled (helper not installed yet) or you prefer the terminal.</p>
+        <p><strong>Inside the WRU container</strong> (as root):</p>
+        <pre id="shellCt" class="hint" style="white-space:pre-wrap;user:0.35rem 0 1rem"></pre>
+        <p><strong>From the Proxmox host</strong>:</p>
+        <pre id="shellPve" class="hint" style="white-space:pre-wrap;margin:0.35rem 0 0"></pre>
+        <p class="hint" style="margin-top:0.75rem">After one successful shell update, <code>sudo wru-update</code> and the button below will work.</p>
+      </section>
+
       <section class="panel-card">
-        <h2>Update from GitHub</h2>
+        <h2>Update from GitHub (in-app)</h2>
         <div class="form-grid">
           <label>Git branch
             <input id="updBranch" type="text" value="main" />
@@ -47,9 +57,8 @@
             <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" />
           </label>
         </div>
-        <p class="hint">
-          Runs <code>sudo /usr/local/sbin/wru-update</code> on this host (same path as re-running the Proxmox helper inside the CT).
-          The app service restarts when finished — this page may briefly disconnect.
+        <p class="hint" id="updHint">
+          Runs <code>sudo /usr/local/sbin/wru-update</code> on this host. The service restarts when finished.
         </p>
         <div class="toolbar" style="margin-top:0.85rem">
           <button type="button" class="btn btn-primary" id="btnUpdate">Pull &amp; install update</button>

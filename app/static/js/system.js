@@ -7,11 +7,19 @@ function renderStatus(s) {
     <label>Commit<input readonly value="${escapeHtml(s.commit || "—")}" /></label>
     <label>Last updated<input readonly value="${escapeHtml(s.updated_at || "—")}" /></label>
     <label class="full">Repository<input readonly value="${escapeHtml(s.repo)}" /></label>
-    <label class="full">Update helper<input readonly value="${escapeHtml(s.can_update ? s.update_available_via : s.detail || "Unavailable")}" /></label>
+    <label class="full">Updater<input readonly value="${escapeHtml(s.can_update ? s.update_available_via : "Not installed yet — use shell command below")}" /></label>
   `;
   $("updBranch").value = s.branch || "main";
   $("updRepo").value = s.repo || "https://github.com/McKrackenAU/WRU.git";
   $("btnUpdate").disabled = !s.can_update;
+  $("shellCt").textContent = s.shell_ct || "";
+  $("shellPve").textContent = s.shell_proxmox || "";
+  if (s.detail && !s.can_update) {
+    $("updHint").textContent = s.detail;
+  } else {
+    $("updHint").innerHTML =
+      "Runs <code>sudo /usr/local/sbin/wru-update</code> on this host. The service restarts when finished.";
+  }
 }
 
 async function loadStatus() {

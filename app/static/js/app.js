@@ -319,14 +319,16 @@ function openSiteDialog(site = null) {
   });
 }
 
+function collectCouncilRows() {
+  return [...document.querySelectorAll("#councilRows .council-row")].map((row) => ({
+    council_name: row.querySelector('[data-c="name"]').value.trim(),
+    submitted_to_council_date: row.querySelector('[data-c="submitted"]').value || null,
+    no_objection_date: row.querySelector('[data-c="noobj"]').value || null,
+  }));
+}
+
 function collectCouncils() {
-  return [...document.querySelectorAll("#councilRows .council-row")]
-    .map((row) => ({
-      council_name: row.querySelector('[data-c="name"]').value.trim(),
-      submitted_to_council_date: row.querySelector('[data-c="submitted"]').value || null,
-      no_objection_date: row.querySelector('[data-c="noobj"]').value || null,
-    }))
-    .filter((c) => c.council_name);
+  return collectCouncilRows().filter((c) => c.council_name);
 }
 
 function collectSitePayload() {
@@ -378,10 +380,13 @@ async function parseKmlFile(file) {
 }
 
 async function saveSite(ev) {
-  if (ev.submitter?.value === "cancel") return;
   ev.preventDefault();
   const id = $("siteId").value;
   const payload = collectSitePayload();
+  if (!payload.road_name || !payload.site_number) {
+    alert("Road name and site number are required.");
+    return;
+  }
   try {
     const parsed = await parseKmlFile($("fKml").files?.[0]);
     if (parsed?.geometry) {
@@ -660,17 +665,36 @@ function bindEvents() {
   $("programFilter")?.addEventListener("change", loadAll);
   $("listFilter")?.addEventListener("change", loadAll);
 
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-close-dialog]");
+    if (!btn) return;
+    const dlg = document.getElementById(btn.dataset.closeDialog);
+    dlg?.close();
+  });
+
+  // Escape closes dialogs without saving (native dialog behavior); stop Enter from
+  // submitting unintended controls inside columns/detail forms.
+  ["columnsForm", "detailForm"].forEach((id) => {
+    $(id)?.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && ev.target.tagName !== "TEXTAREA") {
+        ev.preventDefault();
+      }
+    });
+  });
+
   $("btnAddCouncil")?.addEventListener("click", () => {
-    const current = collectCouncils();
+    const current = collectCouncilRows();
     current.push({ council_name: "", submitted_to_council_date: null, no_objection_date: null });
     renderCouncilRows(current);
   });
   $("councilRows")?.addEventListener("click", (ev) => {
     const btn = ev.target.closest("[data-rm-council]");
     if (!btn) return;
-    const current = collectCouncils();
-    current.splice(Number(btn.dataset.rmCouncil), 1);
-    renderCouncilRows(current);
+    const row = btn.closest(".council-row");
+    row?.remove();
+    if (!$("councilRows").querySelector(".council-row")) {
+      renderCouncilRows([]);
+    }
     scheduleAutosave();
   });
   $("siteForm")?.addEventListener("input", scheduleAutosave);

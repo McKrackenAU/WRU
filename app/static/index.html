@@ -73,10 +73,10 @@
   </div>
 
   <dialog id="siteDialog" class="panel">
-    <form method="dialog" id="siteForm">
+    <form id="siteForm">
       <header class="panel-head">
         <h2 id="siteDialogTitle">Add site</h2>
-        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-dialog="siteDialog" aria-label="Close">×</button>
       </header>
       <div class="panel-body form-grid">
         <input type="hidden" id="siteId" />
@@ -117,23 +117,23 @@
       <footer class="panel-foot">
         <button type="button" class="btn btn-danger" id="btnArchiveSite" hidden>Archive to FY</button>
         <div class="spacer"></div>
-        <button type="submit" value="cancel" class="btn">Cancel</button>
-        <button type="submit" value="save" class="btn btn-primary">Save</button>
+        <button type="button" class="btn" data-close-dialog="siteDialog">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
       </footer>
     </form>
   </dialog>
 
   <dialog id="columnsDialog" class="panel">
-    <form method="dialog" id="columnsForm">
+    <form id="columnsForm" onsubmit="return false;">
       <header class="panel-head">
         <h2>Custom columns</h2>
-        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-dialog="columnsDialog" aria-label="Close">×</button>
       </header>
       <div class="panel-body">
         <p class="hint">Any user can add or remove columns. Values are stored per site.</p>
         <ul id="columnList" class="column-list"></ul>
         <div class="add-column form-grid">
-          <label>Name<input id="colName" maxlength="128" required /></label>
+          <label>Name<input id="colName" maxlength="128" /></label>
           <label>Type
             <select id="colType">
               <option value="text">Text</option>
@@ -151,19 +151,19 @@
       <footer class="panel-foot">
         <button type="button" class="btn btn-primary" id="btnAddColumn">Add column</button>
         <div class="spacer"></div>
-        <button type="submit" value="cancel" class="btn">Close</button>
+        <button type="button" class="btn" data-close-dialog="columnsDialog">Close</button>
       </footer>
     </form>
   </dialog>
 
   <dialog id="detailDialog" class="panel panel-wide">
-    <form method="dialog">
+    <form id="detailForm" onsubmit="return false;">
       <header class="panel-head">
         <div>
           <h2 id="detailTitle">Site</h2>
           <p class="tagline" id="detailSub"></p>
         </div>
-        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+        <button type="button" class="icon-btn" data-close-dialog="detailDialog" aria-label="Close">×</button>
       </header>
       <div class="panel-body detail-split">
         <section>
@@ -213,7 +213,7 @@
         </section>
       </div>
       <footer class="panel-foot">
-        <button type="submit" value="cancel" class="btn">Close</button>
+        <button type="button" class="btn" data-close-dialog="detailDialog">Close</button>
       </footer>
     </form>
   </dialog>

@@ -33,7 +33,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = FastAPI(
     title="WRU TGS Tracker",
     description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, documents, archive, and map.",
-    version="1.4.0",
+    version="1.4.1",
 )
 
 run_migrations()

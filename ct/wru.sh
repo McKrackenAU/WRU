@@ -1059,11 +1059,11 @@ list_wru_candidate_cts() {
     [[ "$id" =~ ^[0-9]+$ ]] || continue
     [[ "$status" == "running" || "$status" == "stopped" ]] || continue
     hn="$(pct config "$id" 2>/dev/null | awk -F': ' '/^hostname:/{print $2; exit}')"
-    if pct exec "$id" -- test -d /opt/wru >/dev/null 2>&1; then
+    if [[ "$status" == "running" ]] && pct exec "$id" -- test -d /opt/wru >/dev/null 2>&1; then
       echo "$id|$hn|installed"
       continue
     fi
-    if [[ "${hn,,}" == *wru* ]] || pct config "$id" 2>/dev/null | grep -qi 'tags:.*wru'; then
+    if [[ "${hn,,}" == *wru* ]] || pct config "$id" 2>/dev/null | grep -qiE 'tags:.*\bwru\b'; then
       echo "$id|$hn|candidate"
     fi
   done < <(pct list 2>/dev/null | awk 'NR>1 {print $1, $2}')
@@ -1071,18 +1071,19 @@ list_wru_candidate_cts() {
 
 pick_update_ct() {
   local -a menu=()
-  local line id hn kind
+  local id hn kind
   while IFS='|' read -r id hn kind; do
     [[ -n "$id" ]] || continue
     menu+=("$id" "${hn:-ct$id} (${kind})")
   done < <(list_wru_candidate_cts)
 
   if [[ ${#menu[@]} -eq 0 ]]; then
-    # Fallback: list all running CTs
-    while read -r id status hn; do
-      [[ "$status" == "running" ]] || continue
-      menu+=("$id" "${hn:-ct$id}")
-    done < <(pct list 2>/dev/null | awk 'NR>1 {print $1, $2, $3}')
+    # Fallback: list all CTs by hostname from config
+    while read -r id status; do
+      [[ "$id" =~ ^[0-9]+$ ]] || continue
+      hn="$(pct config "$id" 2>/dev/null | awk -F': ' '/^hostname:/{print $2; exit}')"
+      menu+=("$id" "${hn:-ct$id} ($status)")
+    done < <(pct list 2>/dev/null | awk 'NR>1 {print $1, $2}')
   fi
 
   if [[ ${#menu[@]} -eq 0 ]]; then

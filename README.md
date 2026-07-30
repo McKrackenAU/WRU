@@ -78,17 +78,34 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ins
 
 ### Update
 
-Re-run the same `ct/wru.sh` **inside** the WRU container (or re-run `install/wru-install.sh`). App code updates; PostgreSQL data and `/opt/wru-data/uploads` are kept. DB password in `/etc/default/wru` is reused.
+**Inside the WRU LXC** (as root) — works even if `wru-update` is not installed yet:
 
-Or from the web UI: open **System** → **Pull & install update** (uses `sudo /usr/local/sbin/wru-update`).
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh)"
+```
 
-CLI on the WRU host/LXC:
+That installs `/usr/local/sbin/wru-update`. Afterward you can use:
 
 ```bash
 sudo wru-update
-# or:
-WRU_BRANCH=main sudo -E /usr/local/sbin/wru-update
 ```
+
+**From the Proxmox host** — menu option **Update existing CT from GitHub**:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
+```
+
+Or noninteractive:
+
+```bash
+mode=update CTID=230 \
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
+```
+
+**In the web UI:** open **System** → **Pull & install update** (available after the helper is installed).
+
+App code updates; PostgreSQL data and `/opt/wru-data/uploads` are kept. DB password in `/etc/default/wru` is reused.
 
 | Path | Purpose |
 |------|---------|
