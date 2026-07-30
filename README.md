@@ -25,7 +25,7 @@ Linux-hosted PostgreSQL web app for traffic guidance / MoA workflow tracking. Sa
 
 ## Proxmox Helper Script install (recommended)
 
-Helper-script style installer with a **whiptail GUI** (same pattern as VenInspect / community-scripts): creates a Debian LXC, installs PostgreSQL + WRU, enables `wru.service`, seeds sample data.
+Same UX as [Proxmox VE Helper Scripts](https://community-scripts.org): whiptail menu on the Proxmox host, then creates a Debian LXC, installs PostgreSQL + WRU, enables `wru.service`, and seeds sample data.
 
 ### On the Proxmox host
 
@@ -33,27 +33,32 @@ Helper-script style installer with a **whiptail GUI** (same pattern as VenInspec
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
 ```
 
-The GUI prompts for:
+Choose:
 
-- Container ID, hostname, CPU / RAM / disk
-- Storage and network bridge
-- **DHCP or static IPv4** (CIDR + gateway)
-- App HTTP port, git source, and root password
+1. **Default Install** — app defaults (1 CPU / 2048 MiB / 8G, DHCP, unprivileged) + storage picker
+2. **Advanced Install** — full step wizard with Back navigation:
+   - Container type, root password, CTID, hostname
+   - Disk / CPU / RAM, storage pools
+   - Bridge, **DHCP or static IPv4** (+ gateway), IPv6, MTU, VLAN, MAC
+   - DNS server / search domain, tags
+   - SSH, FUSE, TUN/TAP, nesting, keyctl, timezone, protection
+   - WRU app port, verbose mode, confirmation summary
 
-When finished it prints the CTID, root password, network summary, and `http://<ip>:<port>`.
+When finished it prints CTID, password mode, network, and `http://<ip>:<port>`.
 
-Noninteractive / automation (skip whiptail; use env defaults):
+Noninteractive / automation:
 
 ```bash
-NONINTERACTIVE=1 CTID=230 HN=wru STORAGE=local-lvm WRU_PORT=8000 \
+NONINTERACTIVE=1 mode=default CTID=230 STORAGE=local-lvm WRU_PORT=8000 \
   bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
 ```
 
-Static IP without the GUI:
+Static IP without the GUI (community-scripts style vars):
 
 ```bash
-NONINTERACTIVE=1 NET=static IP_CIDR=192.168.1.50/24 GW=192.168.1.1 \
-  CTID=230 HN=wru STORAGE=local-lvm \
+NONINTERACTIVE=1 mode=advanced \
+  var_net=192.168.1.50/24 var_gateway=192.168.1.1 \
+  var_ctid=230 var_hostname=wru var_container_storage=local-lvm \
   bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
 ```
 
@@ -120,10 +125,12 @@ Starts Postgres + the app. Uploads persist in the `wru_uploads` volume; DB in `w
 | `WRU_PORT` | `8000` | HTTP listen port |
 | `WRU_BRANCH` | `main` | Git branch used by helper scripts |
 | `WRU_REPO` | `https://github.com/McKrackenAU/WRU.git` | Git remote used by helper scripts |
-| `NET` | `dhcp` | Proxmox LXC network mode (`dhcp` or `static`) |
-| `IP_CIDR` | — | Static IPv4 CIDR when `NET=static` (e.g. `192.168.1.50/24`) |
-| `GW` | — | Gateway IP when `NET=static` |
-| `NONINTERACTIVE` | `0` | Set `1` to skip the whiptail GUI on the Proxmox host |
+| `mode` | — | `default` or `advanced` (skips main menu when set) |
+| `var_net` | `dhcp` | `dhcp` or static IPv4 CIDR (e.g. `192.168.1.50/24`) |
+| `var_gateway` | — | Gateway IP for static `var_net` |
+| `var_ctid` / `var_hostname` / `var_cpu` / `var_ram` / `var_disk` | app defaults | LXC sizing / identity |
+| `var_brg` / `var_vlan` / `var_mtu` / `var_ns` | `vmbr0` / empty | Network extras |
+| `NONINTERACTIVE` | `0` | Set `1` to skip whiptail menus (use env defaults) |
 
 ## API overview
 

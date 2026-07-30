@@ -26,7 +26,7 @@
   "config_path": "/etc/default/wru",
   "notes": [
     {
-      "text": "Whiptail GUI customizes CTID, resources, bridge, DHCP/static IP, and app port",
+      "text": "Helper-script UX: Default or Advanced Install (full IP/bridge/VLAN/DNS/features wizard)",
       "type": "info"
     },
     {
