@@ -14,9 +14,10 @@
 # Matches the community-scripts install UX:
 #   1) Default Install  — app defaults + storage picker
 #   2) Advanced Install — full step wizard (IP, bridge, VLAN, DNS, features, …)
+#   3) Update existing CT from GitHub — pull latest into an installed WRU LXC
 #
 # Env overrides (defaults / noninteractive):
-#   mode=advanced|default  CTID=230 HN=wru var_cpu=2 var_ram=4096 var_disk=16
+#   mode=advanced|default|update  CTID=230 HN=wru var_cpu=2 var_ram=4096 var_disk=16
 #   var_brg=vmbr0 var_net=192.168.1.50/24 var_gateway=192.168.1.1
 #   WRU_PORT=8000 WRU_REPO=… WRU_BRANCH=main NONINTERACTIVE=1
 
@@ -1016,9 +1017,10 @@ install_menu() {
       --ok-button "Select" --cancel-button "Exit Script" \
       --notags \
       --menu "\nChoose an option:\n Use TAB or Arrow keys to navigate, ENTER to select.\n" \
-      16 60 4 \
+      18 68 5 \
       "1" "Default Install" \
       "2" "Advanced Install" \
+      "3" "Update existing CT from GitHub" \
       --default-item "1" \
       3>&1 1>&2 2>&3) || exit_script
   elif [[ -z "$choice" ]]; then
@@ -1040,11 +1042,169 @@ install_menu() {
     base_settings
     advanced_settings
     ;;
+  3 | update | UPDATE)
+    METHOD="update"
+    ;;
   *)
     msg_error "Invalid option: $choice"
     exit 1
     ;;
   esac
+}
+
+list_wru_candidate_cts() {
+  # Prefer CTs that already have /opt/wru; also include hostname/tag matches
+  local id status hn
+  while read -r id status; do
+    [[ "$id" =~ ^[0-9]+$ ]] || continue
+    [[ "$status" == "running" || "$status" == "stopped" ]] || continue
+    hn="$(pct config "$id" 2>/dev/null | awk -F': ' '/^hostname:/{print $2; exit}')"
+    if pct exec "$id" -- test -d /opt/wru >/dev/null 2>&1; then
+      echo "$id|$hn|installed"
+      continue
+    fi
+    if [[ "${hn,,}" == *wru* ]] || pct config "$id" 2>/dev/null | grep -qi 'tags:.*wru'; then
+      echo "$id|$hn|candidate"
+    fi
+  done < <(pct list 2>/dev/null | awk 'NR>1 {print $1, $2}')
+}
+
+pick_update_ct() {
+  local -a menu=()
+  local line id hn kind
+  while IFS='|' read -r id hn kind; do
+    [[ -n "$id" ]] || continue
+    menu+=("$id" "${hn:-ct$id} (${kind})")
+  done < <(list_wru_candidate_cts)
+
+  if [[ ${#menu[@]} -eq 0 ]]; then
+    # Fallback: list all running CTs
+    while read -r id status hn; do
+      [[ "$status" == "running" ]] || continue
+      menu+=("$id" "${hn:-ct$id}")
+    done < <(pct list 2>/dev/null | awk 'NR>1 {print $1, $2, $3}')
+  fi
+
+  if [[ ${#menu[@]} -eq 0 ]]; then
+    msg_error "No LXC containers found to update"
+    exit 1
+  fi
+
+  if [[ -n "${var_ctid:-${CTID:-}}" ]]; then
+    CT_ID="${var_ctid:-$CTID}"
+    if ! pct status "$CT_ID" &>/dev/null; then
+      msg_error "CT ${CT_ID} not found"
+      exit 1
+    fi
+    return 0
+  fi
+
+  if [[ "$NONINTERACTIVE" == "1" || ! -t 0 ]]; then
+    CT_ID="${menu[0]}"
+    return 0
+  fi
+
+  CT_ID=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
+    --title "Update WRU CT" \
+    --ok-button "Update" --cancel-button "Exit" \
+    --menu "\nSelect the WRU container to update from GitHub:\n(DB + uploads are kept)" \
+    18 70 8 \
+    "${menu[@]}" \
+    3>&1 1>&2 2>&3) || exit_script
+}
+
+update_existing_ct() {
+  ensure_root
+  header_info
+  echo -e "${INFO}${BOLD}${BL}Update existing CT from GitHub${CL}\n"
+  echo -e "Repo: ${APP_GIT}  Branch: ${APP_BRANCH}\n"
+
+  pick_update_ct
+
+  if ! pct status "$CT_ID" &>/dev/null; then
+    msg_error "CT ${CT_ID} does not exist"
+    exit 1
+  fi
+
+  local st
+  st="$(pct status "$CT_ID" 2>/dev/null | awk '{print $2}')"
+  if [[ "$st" != "running" ]]; then
+    msg_info "Starting CT ${CT_ID}"
+    pct start "$CT_ID" >/dev/null
+    sleep 3
+    msg_ok "Started CT ${CT_ID}"
+  fi
+
+  # Optional branch/repo prompts
+  if [[ "$NONINTERACTIVE" != "1" && -t 0 ]]; then
+    local br repo
+    br=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
+      --title "Git branch" \
+      --inputbox "Branch to pull:" 10 60 "$APP_BRANCH" \
+      3>&1 1>&2 2>&3) || exit_script
+    APP_BRANCH="${br:-$APP_BRANCH}"
+    RAW_BASE="${WRU_RAW_BASE:-https://raw.githubusercontent.com/McKrackenAU/WRU/${APP_BRANCH}}"
+    repo=$(whiptail --backtitle "Proxmox VE Helper Scripts" \
+      --title "Git repository" \
+      --inputbox "Git clone URL:" 10 72 "$APP_GIT" \
+      3>&1 1>&2 2>&3) || exit_script
+    APP_GIT="${repo:-$APP_GIT}"
+  fi
+
+  msg_info "Fetching install script from GitHub (${APP_BRANCH})"
+  local host_tmp ct_tmp
+  host_tmp="$(mktemp)"
+  ct_tmp="/tmp/wru-install.sh"
+  # Always prefer live GitHub for updates so the host checkout isn't required
+  curl -fsSL "${RAW_BASE}/install/wru-install.sh" -o "$host_tmp"
+  chmod +x "$host_tmp"
+  msg_ok "Fetched install script"
+
+  msg_info "Updating ${APP} inside CT ${CT_ID}"
+  pct push "$CT_ID" "$host_tmp" "$ct_tmp"
+  pct exec "$CT_ID" -- chmod +x "$ct_tmp"
+  # Discover current app port if set
+  local port_in_ct
+  port_in_ct="$(pct exec "$CT_ID" -- bash -c 'source /etc/default/wru 2>/dev/null; echo "${WRU_PORT:-}"' 2>/dev/null || true)"
+  APP_PORT="${port_in_ct:-$APP_PORT}"
+
+  set +e
+  pct exec "$CT_ID" -- env \
+    WRU_REPO="$APP_GIT" \
+    WRU_BRANCH="$APP_BRANCH" \
+    WRU_PORT="$APP_PORT" \
+    bash "$ct_tmp"
+  local rc=$?
+  set -e
+  rm -f "$host_tmp"
+  if [[ "$rc" -ne 0 ]]; then
+    msg_error "Update inside CT ${CT_ID} failed (exit ${rc})"
+    exit "$rc"
+  fi
+  msg_ok "Updated ${APP}"
+
+  # Ensure in-app updater helper exists even on older install paths
+  pct exec "$CT_ID" -- bash -c '
+    set -e
+    if [[ -f /opt/wru/scripts/wru-update.sh ]]; then
+      install -m 755 /opt/wru/scripts/wru-update.sh /usr/local/sbin/wru-update
+      cat >/etc/sudoers.d/wru-update <<EOF
+wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
+wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
+wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update.service
+EOF
+      chmod 440 /etc/sudoers.d/wru-update
+    fi
+  ' || true
+
+  local ip
+  ip="$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}')"
+  echo
+  msg_ok "GitHub update complete for CT ${CT_ID}"
+  echo -e "${INFO}${YW} Access URL:${CL} ${BGN}http://${ip}:${APP_PORT}${CL}"
+  echo -e "${INFO}${YW} In-app updater:${CL} ${BL}http://${ip}:${APP_PORT}/system${CL}"
+  echo -e "${INFO}${YW} CLI updater:${CL} ${BL}pct exec ${CT_ID} -- sudo -u wru sudo /usr/local/sbin/wru-update${CL}"
+  echo -e "${INFO} Or inside the CT as root: ${BL}wru-update${CL}\n"
 }
 
 ensure_template() {
@@ -1302,9 +1462,20 @@ update_inside_container() {
   rm -f "$tmp"
 
   msg_ok "Updated ${APP} successfully"
+  if [[ -f /opt/wru/scripts/wru-update.sh ]]; then
+    install -m 755 /opt/wru/scripts/wru-update.sh /usr/local/sbin/wru-update 2>/dev/null || true
+    cat >/etc/sudoers.d/wru-update <<'EOF' 2>/dev/null || true
+wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
+wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
+wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update.service
+EOF
+    chmod 440 /etc/sudoers.d/wru-update 2>/dev/null || true
+  fi
   local ip
   ip="$(hostname -I | awk '{print $1}')"
-  echo -e "${INFO} Access URL: ${BGN}http://${ip}:${APP_PORT}${CL}\n"
+  echo -e "${INFO} Access URL: ${BGN}http://${ip}:${APP_PORT}${CL}"
+  echo -e "${INFO} In-app updater: ${BGN}http://${ip}:${APP_PORT}/system${CL}"
+  echo -e "${INFO} CLI: ${BL}sudo wru-update${CL}\n"
   exit 0
 }
 
@@ -1323,7 +1494,11 @@ create_lxc_flow() {
   ensure_root
   header_info
   install_menu
-  create_and_install
+  if [[ "$METHOD" == "update" ]]; then
+    update_existing_ct
+  else
+    create_and_install
+  fi
 }
 
 main() {

@@ -43,8 +43,16 @@ Choose:
    - DNS server / search domain, tags
    - SSH, FUSE, TUN/TAP, nesting, keyctl, timezone, protection
    - WRU app port, verbose mode, confirmation summary
+3. **Update existing CT from GitHub** — pick an installed WRU LXC and pull/reinstall the latest code (keeps DB + uploads). Also installs the in-app updater (`/system` and `sudo wru-update`).
 
 When finished it prints CTID, password mode, network, and `http://<ip>:<port>`.
+
+Update an existing CT from the Proxmox host (noninteractive):
+
+```bash
+mode=update CTID=230 \
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
+```
 
 Noninteractive / automation:
 
