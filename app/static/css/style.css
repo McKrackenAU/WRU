@@ -320,6 +320,22 @@ html.dark .bar-fill {
   color: var(--ventia-ink);
 }
 
+.progress-bar {
+  margin-top: 0.25rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ventia-border) 70%, transparent);
+  overflow: hidden;
+  min-width: 4.5rem;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+
 .progress-mini {
   display: inline-block;
   min-width: 2.5rem;

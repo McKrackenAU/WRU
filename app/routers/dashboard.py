@@ -5,11 +5,12 @@ from collections import Counter
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..calculations import must_have_status, on_permits_priority_list
+from ..calculations import compute_today_priority, must_have_status
 from ..database import get_db
-from ..models import WORKFLOW_LABELS, WORKFLOW_STAGES, Site, TrackingEvent
+from ..models import Site, TrackingEvent
 from ..schemas import DashboardOut
-from ..services import compute_today_priority, ordered_workflow
+from ..services import site_to_dict
+from ..stage_registry import active_stages
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 def dashboard(db: Session = Depends(get_db)):
     sites = db.query(Site).filter(Site.archived.is_(False)).all()
     archived_count = db.query(Site).filter(Site.archived.is_(True)).count()
+    stages = active_stages(db)
 
     stage_counts = Counter()
     council_counts = Counter()
@@ -25,17 +27,11 @@ def dashboard(db: Session = Depends(get_db)):
     priority_counts = Counter()
     must_counts = Counter()
     permits = 0
+    trims = 0
 
     for site in sites:
-        metrics_stage = None
-        steps = ordered_workflow(site)
-        # current furthest completed
-        for step in reversed(steps):
-            if step.completed:
-                metrics_stage = step.stage
-                break
-        if metrics_stage is None:
-            metrics_stage = "not_started"
+        data = site_to_dict(site, db=db)
+        metrics_stage = data["metrics"].get("current_stage") or "not_started"
         stage_counts[metrics_stage] += 1
 
         councils = [c.council_name for c in site.councils] or ["(unassigned)"]
@@ -45,18 +41,19 @@ def dashboard(db: Session = Depends(get_db)):
         program_counts[site.program or "(no program)"] += 1
         priority_counts[compute_today_priority(site)] += 1
         must_counts[must_have_status(site)["band"]] += 1
-        if on_permits_priority_list(site):
+        if data["metrics"].get("on_permits_priority_list"):
             permits += 1
+        if data["metrics"].get("on_trims_priority_list"):
+            trims += 1
 
-    by_stage = []
-    for key in WORKFLOW_STAGES:
-        by_stage.append(
-            {
-                "key": key,
-                "label": WORKFLOW_LABELS[key],
-                "count": stage_counts.get(key, 0),
-            }
-        )
+    by_stage = [
+        {
+            "key": s.key,
+            "label": s.label,
+            "count": stage_counts.get(s.key, 0),
+        }
+        for s in stages
+    ]
     by_stage.insert(
         0,
         {"key": "not_started", "label": "Not started", "count": stage_counts.get("not_started", 0)},
@@ -112,5 +109,6 @@ def dashboard(db: Session = Depends(get_db)):
             "none": must_counts.get("none", 0),
         },
         "permits_priority_count": permits,
+        "trims_priority_count": trims,
         "recent_tracking": recent_tracking,
     }

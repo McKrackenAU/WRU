@@ -33,7 +33,9 @@
           <p>Current financial-year TGS / MoA register</p>
         </div>
         <div class="toolbar">
-          <a class="btn" href="/api/export/priority-list.csv">Export priority list</a>
+          <a class="btn" href="/lists">Client lists</a>
+          <a class="btn" href="/api/export/permits-list.xlsx">Permits Excel</a>
+          <a class="btn" href="/api/export/trims-list.xlsx">TRIMS Excel</a>
           <button type="button" class="btn" id="btnColumns">Columns</button>
           <button type="button" class="btn btn-primary" id="btnAddSite">Add site</button>
         </div>
@@ -45,8 +47,15 @@
           <option value="1">Priority 1 (&lt; 21 days)</option>
           <option value="2">Priority 2</option>
         </select>
+        <select id="programFilter" aria-label="Program filter"><option value="">All programs</option></select>
         <select id="stageFilter" aria-label="Stage filter"><option value="">All stages</option></select>
         <select id="councilFilter" aria-label="Council filter"><option value="">All councils</option></select>
+        <select id="listFilter" aria-label="Client list filter">
+          <option value="">All client lists</option>
+          <option value="permits">On Permits list</option>
+          <option value="trims">On TRIMS list</option>
+          <option value="none">Not on client lists</option>
+        </select>
       </div>
       <div class="table-card">
         <div class="table-scroll" id="tableScroll">
@@ -73,14 +82,29 @@
         <input type="hidden" id="siteId" />
         <label>Road name<input id="fRoad" required maxlength="255" /></label>
         <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
-        <label>Program<input id="fProgram" maxlength="128" placeholder="e.g. LCP-FMRP" /></label>
+        <label>Program category
+          <select id="fProgram"><option value="">Select…</option></select>
+        </label>
         <label>TGS reference<input id="fTgs" maxlength="128" /></label>
         <label>Indicative start<input id="fStart" type="date" /></label>
         <label>MoA must-have received<input id="fMustHave" type="date" /></label>
         <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
         <label>MoA submission date<input id="fMoaSub" type="date" /></label>
-        <label class="full">Councils (comma-separated)<input id="fCouncils" placeholder="Maribyrnong, Melbourne" /></label>
+        <label class="full"><span><input id="fGenericMoa" type="checkbox" /> This record is a generic MoA / TGS</span></label>
+        <label class="full">Link generic MoA (moves site to ready for works)
+          <select id="fLinkedGeneric"><option value="">None</option></select>
+        </label>
+        <label class="full">Markup KML (optional)<input id="fKml" type="file" accept=".kml,.xml" /></label>
+        <div class="full">
+          <div class="page-head" style="margin-bottom:0.35rem">
+            <strong>Councils</strong>
+            <button type="button" class="btn" id="btnAddCouncil">Add council</button>
+          </div>
+          <div id="councilRows"></div>
+          <p class="hint">Track submit + no-objection dates. After 21 business days without a response we assume no objection.</p>
+        </div>
         <label class="full">Comments<textarea id="fComments" rows="3"></textarea></label>
+        <p class="hint full" id="autosaveStatus" hidden></p>
         <fieldset class="full workflow-edit">
           <legend>Workflow progress</legend>
           <div id="workflowChecks" class="workflow-checks"></div>

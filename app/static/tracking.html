@@ -26,10 +26,12 @@
       <div class="page-head">
         <div>
           <h1>Program tracking</h1>
-          <p>Filter the whole active program by stage, council, priority, and permits list</p>
+          <p>Filter the whole active program by stage, council, priority, and client lists</p>
         </div>
         <div class="toolbar">
-          <a class="btn btn-primary" href="/api/export/priority-list.csv">Export priority list</a>
+          <a class="btn" href="/lists">Client lists</a>
+          <a class="btn" href="/api/export/permits-list.csv">Permits CSV</a>
+          <a class="btn btn-primary" href="/api/export/trims-list.csv">TRIMS CSV</a>
           <a class="btn" href="/api/export/sites.csv">Export all active CSV</a>
         </div>
       </div>
@@ -43,7 +45,12 @@
           <option value="1">Priority 1</option>
           <option value="2">Priority 2</option>
         </select>
-        <label class="chip"><input type="checkbox" id="permitsOnly" /> Permits priority only</label>
+        <select id="listFilter">
+          <option value="">All client lists</option>
+          <option value="permits">Permits list</option>
+          <option value="trims">TRIMS list</option>
+          <option value="none">Not on lists</option>
+        </select>
       </div>
       <div class="table-card">
         <div class="table-scroll">
@@ -57,14 +64,15 @@
                 <th>Councils</th>
                 <th>Current stage</th>
                 <th>%</th>
+                <th>Council wait</th>
                 <th>Start</th>
                 <th>Must-have</th>
                 <th>MoA #</th>
                 <th>TGS</th>
-                <th>Permits list</th>
+                <th>Client list</th>
               </tr>
             </thead>
-            <tbody id="tbody"><tr><td class="empty" colspan="12">Loading…</td></tr></tbody>
+            <tbody id="tbody"><tr><td class="empty" colspan="13">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

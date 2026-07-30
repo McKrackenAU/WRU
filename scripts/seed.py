@@ -31,17 +31,24 @@ def main() -> None:
             {
                 "road_name": "DYNON RD - 5035",
                 "site_number": "S48",
-                "program": "LCP-FMRP",
+                "program": "Lifecycle pavements",
                 "tgs_reference": "TGS-5035-A",
                 "indicative_site_start_date": today + timedelta(days=45),
                 "moa_must_have_received_date": today + timedelta(days=30),
                 "comments": "Ventia to review - 3x comments made Re: detours",
                 "moa_number": "0093225",
                 "moa_submission_date": today - timedelta(days=12),
-                "councils": ["Maribyrnong"],
+                "councils": [
+                    {
+                        "council_name": "Maribyrnong",
+                        "submitted_to_council_date": today - timedelta(days=18),
+                        "no_objection_date": None,
+                    }
+                ],
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
+                    "ventia_review": True,
                     "plan_received": True,
                     "ready_to_submit_moa": True,
                     "moa_submitted": True,
@@ -53,7 +60,7 @@ def main() -> None:
             {
                 "road_name": "HOPKINS-WHITEHALL ST - 5880",
                 "site_number": "S49",
-                "program": "LCP-FMRP",
+                "program": "Lifecycle structures",
                 "tgs_reference": "TGS-5880-B",
                 "indicative_site_start_date": today + timedelta(days=18),
                 "moa_must_have_received_date": today + timedelta(days=5),
@@ -64,6 +71,7 @@ def main() -> None:
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
+                    "ventia_review": True,
                     "plan_received": True,
                     "ready_to_submit_moa": True,
                 },
@@ -73,7 +81,7 @@ def main() -> None:
             {
                 "road_name": "FOOTSCRAY RD - 4120",
                 "site_number": "S50",
-                "program": "LCP-FMRP",
+                "program": "Assets",
                 "tgs_reference": "TGS-4120-A",
                 "indicative_site_start_date": today + timedelta(days=60),
                 "moa_must_have_received_date": today + timedelta(days=40),
@@ -84,6 +92,7 @@ def main() -> None:
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
+                    "ventia_review": True,
                     "plan_received": True,
                 },
                 "tracking": "Plan Received – checking detour extents",
@@ -92,17 +101,29 @@ def main() -> None:
             {
                 "road_name": "BALLARAT RD - 3312",
                 "site_number": "S51",
-                "program": "LCP-FMRP",
+                "program": "Routine maintenance",
                 "tgs_reference": "TGS-3312-C",
                 "indicative_site_start_date": today + timedelta(days=10),
                 "moa_must_have_received_date": today - timedelta(days=2),
                 "comments": "Priority – MoA overdue vs must-have date",
                 "moa_number": "0093401",
                 "moa_submission_date": today - timedelta(days=5),
-                "councils": ["Hobsons Bay", "Maribyrnong"],
+                "councils": [
+                    {
+                        "council_name": "Hobsons Bay",
+                        "submitted_to_council_date": today - timedelta(days=40),
+                        "no_objection_date": None,
+                    },
+                    {
+                        "council_name": "Maribyrnong",
+                        "submitted_to_council_date": today - timedelta(days=8),
+                        "no_objection_date": today - timedelta(days=1),
+                    },
+                ],
                 "workflow": {
                     "tgs_markup_completed": True,
                     "submitted_to_tmd": True,
+                    "ventia_review": True,
                     "plan_received": True,
                     "ready_to_submit_moa": True,
                     "moa_submitted": True,
@@ -120,8 +141,8 @@ def main() -> None:
             site = Site(**row, custom_fields=custom_fields, financial_year=fy, archived=False)
             db.add(site)
             db.flush()
-            ensure_workflow_steps(site)
-            apply_workflow(site, workflow)
+            ensure_workflow_steps(site, db)
+            apply_workflow(site, workflow, db)
             set_councils(site, councils)
             db.add(
                 TrackingEvent(

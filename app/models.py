@@ -19,9 +19,11 @@ from sqlalchemy.types import JSON
 
 from .database import Base
 
+# Fallback constants — live config is WorkflowStageDef (seeded from these keys).
 WORKFLOW_STAGES = [
     "tgs_markup_completed",
     "submitted_to_tmd",
+    "ventia_review",
     "plan_received",
     "ready_to_submit_moa",
     "moa_submitted",
@@ -33,14 +35,15 @@ WORKFLOW_STAGES = [
 
 WORKFLOW_LABELS = {
     "tgs_markup_completed": "TGS Markup completed",
-    "submitted_to_tmd": "Submitted to TMD",
-    "plan_received": "Plan Received",
-    "ready_to_submit_moa": "Ready To Submit MoA",
-    "moa_submitted": "MoA Submitted",
-    "moa_with_trims": "MoA WITH TRIMS",
-    "revision_needed": "Revision Needed",
-    "moa_received": "MoA Received",
-    "ready_for_works": "Ready for Works",
+    "submitted_to_tmd": "Submitted to traffic management (waiting for plans)",
+    "ventia_review": "Ventia review",
+    "plan_received": "Plan received",
+    "ready_to_submit_moa": "Waiting to submit to DTP",
+    "moa_submitted": "MoA submitted (Permits team)",
+    "moa_with_trims": "MoA with TRIMS team",
+    "revision_needed": "Revision needed",
+    "moa_received": "MoA received / approved",
+    "ready_for_works": "Ready for works",
 }
 
 DOC_CATEGORIES = [
@@ -52,6 +55,32 @@ DOC_CATEGORIES = [
     "photo",
     "other",
 ]
+
+
+class WorkflowStageDef(Base):
+    """Admin-configurable workflow stages (order, labels, client-list roles)."""
+
+    __tablename__ = "workflow_stage_defs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # none | permits | trims | complete
+    list_role: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+    counts_toward_progress: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ProgramCategory(Base):
+    """Parent application categories (Lifecycle pavements, Assets, etc.)."""
+
+    __tablename__ = "program_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class Site(Base):
@@ -67,6 +96,10 @@ class Site(Base):
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
     moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     moa_submission_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_generic_moa: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    linked_generic_moa_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     financial_year: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -109,6 +142,8 @@ class SiteCouncil(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
     council_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    submitted_to_council_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    no_objection_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     site: Mapped[Site] = relationship(back_populates="councils")
 

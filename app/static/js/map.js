@@ -2,6 +2,8 @@ import { $, api, escapeHtml, injectChrome, userName } from "./common.js";
 
 let map;
 let geoLayer;
+let drawLayer;
+let drawnGeometry = null;
 let sites = [];
 
 function popupHtml(props) {
@@ -33,6 +35,17 @@ function popupHtml(props) {
       </label>`;
   }
   return body;
+}
+
+function setDrawnGeometry(geometry) {
+  drawnGeometry = geometry;
+  const btn = $("btnSaveDrawn");
+  if (btn) btn.disabled = !geometry;
+}
+
+function clearDrawing() {
+  if (drawLayer) drawLayer.clearLayers();
+  setDrawnGeometry(null);
 }
 
 async function refreshLayers() {
@@ -108,6 +121,69 @@ async function uploadKml() {
   await refreshMap();
 }
 
+async function saveDrawnSite() {
+  const road = $("drawRoad").value.trim();
+  const siteNo = $("drawSiteNo").value.trim();
+  if (!road || !siteNo) return alert("Road name and site number are required");
+  if (!drawnGeometry) return alert("Draw a point, line, or polygon first");
+  try {
+    await api("/api/sites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        road_name: road,
+        site_number: siteNo,
+        program: $("drawProgram").value || null,
+        geometry: drawnGeometry,
+        geometry_name: road,
+      }),
+    });
+    $("drawRoad").value = "";
+    $("drawSiteNo").value = "";
+    clearDrawing();
+    sites = await api("/api/sites?archived=false");
+    const archived = await api("/api/sites?archived=true");
+    sites = [...sites, ...archived];
+    await refreshLayers();
+    await refreshMap();
+    alert("Site added to the register and map.");
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function setupDraw() {
+  drawLayer = new L.FeatureGroup();
+  map.addLayer(drawLayer);
+  const control = new L.Control.Draw({
+    edit: { featureGroup: drawLayer, remove: true },
+    draw: {
+      marker: true,
+      polyline: true,
+      polygon: true,
+      rectangle: true,
+      circle: false,
+      circlemarker: false,
+    },
+  });
+  map.addControl(control);
+  map.on(L.Draw.Event.CREATED, (e) => {
+    drawLayer.clearLayers();
+    drawLayer.addLayer(e.layer);
+    const gj = e.layer.toGeoJSON();
+    setDrawnGeometry(gj.geometry);
+  });
+  map.on(L.Draw.Event.DELETED, () => setDrawnGeometry(null));
+  map.on(L.Draw.Event.EDITED, () => {
+    const layers = drawLayer.getLayers();
+    if (!layers.length) {
+      setDrawnGeometry(null);
+      return;
+    }
+    setDrawnGeometry(layers[0].toGeoJSON().geometry);
+  });
+}
+
 async function init() {
   injectChrome({ active: "/map" });
   map = L.map("mapCanvas").setView([-37.8136, 144.9631], 11);
@@ -115,12 +191,18 @@ async function init() {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap",
   }).addTo(map);
+  setupDraw();
 
   const meta = await api("/api/meta");
   $("fyFilter").innerHTML =
     `<option value="">All years</option>` +
     (meta.financial_years || [])
       .map((y) => `<option value="${escapeHtml(y)}">${escapeHtml(y)}</option>`)
+      .join("");
+  $("drawProgram").innerHTML =
+    `<option value="">Program…</option>` +
+    (meta.programs || [])
+      .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
       .join("");
 
   sites = await api("/api/sites?archived=false");
@@ -132,6 +214,8 @@ async function init() {
     await refreshMap();
   });
   $("btnUploadKml").addEventListener("click", uploadKml);
+  $("btnSaveDrawn").addEventListener("click", saveDrawnSite);
+  $("btnClearDrawn").addEventListener("click", clearDrawing);
   $("layerList").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-del-layer]");
     if (!btn) return;

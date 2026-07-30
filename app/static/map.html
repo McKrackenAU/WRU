@@ -27,11 +27,20 @@
       <div class="page-head">
         <div>
           <h1>Works map</h1>
-          <p>Import prior-year KML polygons and click through to that year’s TGS / MoA</p>
+          <p>Import KML, draw a site markup, and click through to that year’s TGS / MoA</p>
         </div>
       </div>
       <div class="map-layout">
         <aside class="panel-card map-side">
+          <h2>Add site from map</h2>
+          <p class="hint">Draw a point, line, or polygon with the map tools, then save it to the register.</p>
+          <div class="filters" style="margin:0 0 0.75rem; flex-direction:column; align-items:stretch">
+            <input id="drawRoad" type="text" placeholder="Road name" />
+            <input id="drawSiteNo" type="text" placeholder="Site number" />
+            <select id="drawProgram"><option value="">Program…</option></select>
+            <button type="button" class="btn btn-primary" id="btnSaveDrawn" disabled>Save drawn site</button>
+            <button type="button" class="btn" id="btnClearDrawn">Clear drawing</button>
+          </div>
           <h2>KML layers</h2>
           <div class="filters" style="margin:0 0 0.75rem; flex-direction:column; align-items:stretch">
             <select id="fyFilter"><option value="">All years</option></select>
@@ -47,7 +56,9 @@
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
   <script type="module" src="/static/js/map.js"></script>
 </body>
 </html>

@@ -45,6 +45,26 @@ def _feature_out(feat: MapFeature) -> dict:
     }
 
 
+@router.post("/parse-kml")
+async def parse_kml(file: UploadFile = File(...)):
+    """Parse a KML upload and return placemark geometries (for site register attach)."""
+    content = await file.read()
+    if len(content) > MAX_KML_BYTES:
+        raise HTTPException(status_code=400, detail="KML too large")
+    try:
+        features = parse_kml_features(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not features:
+        raise HTTPException(status_code=400, detail="No placemark geometries found in KML")
+    return {
+        "feature_count": len(features),
+        "features": features,
+        "primary_geometry": features[0]["geometry"],
+        "primary_name": features[0].get("name"),
+    }
+
+
 @router.get("/layers", response_model=list[MapLayerOut])
 def list_layers(financial_year: str | None = None, db: Session = Depends(get_db)):
     query = db.query(MapLayer)

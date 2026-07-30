@@ -14,9 +14,11 @@ from .models import (  # noqa: F401 — register metadata
     LabourRate,
     MapFeature,
     MapLayer,
+    ProgramCategory,
     Site,
     SiteCouncil,
     TrackingEvent,
+    WorkflowStageDef,
     WorkflowStep,
 )
 
@@ -67,6 +69,16 @@ def run_migrations() -> None:
     ensure_column("cost_settings", "meal_allowance", "meal_allowance DOUBLE PRECISION NOT NULL DEFAULT 30")
     ensure_column("cost_settings", "meal_after_hours", "meal_after_hours DOUBLE PRECISION NOT NULL DEFAULT 9.5")
 
+    # site / council expansions for generic MoA + council SLA
+    ensure_column("sites", "is_generic_moa", "is_generic_moa BOOLEAN NOT NULL DEFAULT FALSE")
+    ensure_column(
+        "sites",
+        "linked_generic_moa_id",
+        "linked_generic_moa_id INTEGER REFERENCES sites(id) ON DELETE SET NULL",
+    )
+    ensure_column("site_councils", "submitted_to_council_date", "submitted_to_council_date DATE")
+    ensure_column("site_councils", "no_objection_date", "no_objection_date DATE")
+
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_financial_year ON sites (financial_year)"))
@@ -78,6 +90,18 @@ def run_migrations() -> None:
         conn.execute(
             text("CREATE INDEX IF NOT EXISTS ix_cost_estimates_moa_number ON cost_estimates (moa_number)")
         )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_is_generic_moa ON sites (is_generic_moa)"))
+
+    # Seed configurable stages / program categories
+    from .database import SessionLocal
+    from .stage_registry import ensure_program_seed, ensure_stage_seed
+
+    db = SessionLocal()
+    try:
+        ensure_stage_seed(db)
+        ensure_program_seed(db)
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

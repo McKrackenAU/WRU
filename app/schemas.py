@@ -55,6 +55,16 @@ class TrackingEventCreate(BaseModel):
     created_by: str | None = None
 
 
+class CouncilIn(BaseModel):
+    council_name: str = Field(min_length=1, max_length=128)
+    submitted_to_council_date: date | None = None
+    no_objection_date: date | None = None
+
+
+class CouncilOut(CouncilIn):
+    id: int | None = None
+
+
 class SiteBase(BaseModel):
     road_name: str = Field(min_length=1, max_length=255)
     site_number: str = Field(min_length=1, max_length=64)
@@ -65,13 +75,34 @@ class SiteBase(BaseModel):
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None
+    is_generic_moa: bool = False
+    linked_generic_moa_id: int | None = None
     financial_year: str | None = None
     councils: list[str] = Field(default_factory=list)
+    council_details: list[CouncilOut] = Field(default_factory=list)
     custom_fields: dict[str, Any] = Field(default_factory=dict)
 
 
-class SiteCreate(SiteBase):
+class SiteCreate(BaseModel):
+    road_name: str = Field(min_length=1, max_length=255)
+    site_number: str = Field(min_length=1, max_length=64)
+    program: str | None = None
+    tgs_reference: str | None = None
+    indicative_site_start_date: date | None = None
+    moa_must_have_received_date: date | None = None
+    comments: str | None = None
+    moa_number: str | None = None
+    moa_submission_date: date | None = None
+    is_generic_moa: bool = False
+    linked_generic_moa_id: int | None = None
+    financial_year: str | None = None
+    # Accept names or detailed council rows
+    councils: list[str | CouncilIn] = Field(default_factory=list)
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     workflow: dict[str, bool] | None = None
+    # Optional GeoJSON geometry to place the site on the map
+    geometry: dict[str, Any] | None = None
+    geometry_name: str | None = None
 
 
 class SiteUpdate(BaseModel):
@@ -84,10 +115,14 @@ class SiteUpdate(BaseModel):
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None
+    is_generic_moa: bool | None = None
+    linked_generic_moa_id: int | None = None
     financial_year: str | None = None
-    councils: list[str] | None = None
+    councils: list[str | CouncilIn] | None = None
     custom_fields: dict[str, Any] | None = None
     workflow: dict[str, bool] | None = None
+    geometry: dict[str, Any] | None = None
+    geometry_name: str | None = None
 
 
 class SiteArchiveRequest(BaseModel):
@@ -140,9 +175,10 @@ class CustomColumnOut(BaseModel):
 
 
 class MetaOut(BaseModel):
-    workflow_stages: list[dict[str, str]]
+    workflow_stages: list[dict[str, Any]]
     doc_categories: list[str]
     priority_threshold_days: int = 21
+    council_no_objection_business_days: int = 21
     financial_years: list[str]
     programs: list[str] = Field(default_factory=list)
     councils: list[str] = Field(default_factory=list)
@@ -184,4 +220,5 @@ class DashboardOut(BaseModel):
     priority: dict[str, Any]
     must_have: dict[str, Any]
     permits_priority_count: int
+    trims_priority_count: int = 0
     recent_tracking: list[dict[str, Any]]

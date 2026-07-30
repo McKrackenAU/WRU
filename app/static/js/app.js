@@ -12,9 +12,18 @@ import {
 const state = {
   sites: [],
   columns: [],
-  meta: { workflow_stages: [], priority_threshold_days: 21, councils: [] },
+  meta: { workflow_stages: [], priority_threshold_days: 21, councils: [], programs: [] },
   detailSiteId: null,
+  genericMoas: [],
+  autosaveTimer: null,
+  suppressAutosave: false,
 };
+
+function progressBarHtml(pct) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  const hue = (p * 1.2).toFixed(0); // 0 red-ish → ~120 green
+  return `<div class="progress-bar" title="${p}%"><span style="width:${p}%;background:hsl(${hue},70%,42%)"></span><span class="sr-only">${p}%</span></div>`;
+}
 
 function setStatus(msg) {
   $("statusLine").textContent = msg;
@@ -29,6 +38,7 @@ function workflowMap(site) {
 function fillFilterOptions() {
   const stageSel = $("stageFilter");
   const councilSel = $("councilFilter");
+  const programSel = $("programFilter");
   if (stageSel) {
     const cur = stageSel.value;
     stageSel.innerHTML =
@@ -37,6 +47,15 @@ function fillFilterOptions() {
         .map((s) => `<option value="${s.key}">${escapeHtml(s.label)}</option>`)
         .join("");
     stageSel.value = cur;
+  }
+  if (programSel) {
+    const cur = programSel.value;
+    programSel.innerHTML =
+      `<option value="">All programs</option>` +
+      (state.meta.programs || [])
+        .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+        .join("");
+    programSel.value = cur;
   }
   if (councilSel) {
     const cur = councilSel.value;
@@ -66,7 +85,9 @@ function renderHead() {
       <th>Start</th>
       <th>MoA must-have</th>
       <th>Pri</th>
-      <th>%</th>
+      <th>Progress</th>
+      <th>List</th>
+      <th>Council wait</th>
       ${stages.map((s) => `<th class="stage" title="${escapeHtml(s.label)}">${escapeHtml(s.label)}</th>`).join("")}
       <th>Comments</th>
       <th>MoA #</th>
@@ -117,7 +138,13 @@ function renderBody() {
           <td class="mono">${fmtDate(site.indicative_site_start_date)}</td>
           <td class="mono"><span class="${mustBandClass(must.band)}">${fmtDate(site.moa_must_have_received_date)} ${must.label && must.label !== "—" ? `(${escapeHtml(must.label)})` : ""}</span></td>
           <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
-          <td class="progress-mini">${m.workflow_progress_pct ?? 0}%</td>
+          <td>${progressBarHtml(m.workflow_progress_pct)}${m.workflow_progress_pct ?? 0}%</td>
+          <td class="mono">${escapeHtml(m.client_list || "none")}</td>
+          <td class="mono">${
+            m.max_council_business_days_waiting != null
+              ? `${m.max_council_business_days_waiting}d`
+              : "—"
+          }</td>
           ${stageCells}
           <td class="comments">${escapeHtml(site.comments || "")}</td>
           <td class="mono">${escapeHtml(site.moa_number || "")}</td>
@@ -149,26 +176,80 @@ async function loadAll() {
   const priority = $("priorityFilter").value;
   const stage = $("stageFilter")?.value;
   const council = $("councilFilter")?.value;
+  const program = $("programFilter")?.value;
+  const list = $("listFilter")?.value;
   if (q) params.set("q", q);
   if (priority) params.set("priority", priority);
   if (stage) params.set("stage", stage);
   if (council) params.set("council", council);
+  if (program) params.set("program", program);
+  if (list) params.set("client_list", list);
 
-  const [meta, columns, sites] = await Promise.all([
+  const [meta, columns, sites, generics] = await Promise.all([
     api("/api/meta"),
     api("/api/columns"),
     api(`/api/sites?${params}`),
+    api("/api/sites/generic-moas"),
   ]);
   state.meta = meta;
   state.columns = columns;
   state.sites = sites;
+  state.genericMoas = generics;
   fillFilterOptions();
+  fillProgramSelect();
+  fillGenericSelect();
   renderHead();
   renderBody();
   const pri = sites.filter((s) => s.metrics?.on_permits_priority_list).length;
+  const trims = sites.filter((s) => s.metrics?.on_trims_priority_list).length;
   setStatus(
-    `${sites.length} active site${sites.length === 1 ? "" : "s"} · ${pri} on permits priority list`
+    `${sites.length} active · ${pri} Permits list · ${trims} TRIMS list`
   );
+}
+
+function fillProgramSelect(selected = "") {
+  const sel = $("fProgram");
+  if (!sel) return;
+  const cur = selected || sel.value;
+  sel.innerHTML =
+    `<option value="">Select…</option>` +
+    (state.meta.programs || [])
+      .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+      .join("");
+  if (cur) sel.value = cur;
+}
+
+function fillGenericSelect(selected = "") {
+  const sel = $("fLinkedGeneric");
+  if (!sel) return;
+  const cur = selected != null && selected !== "" ? String(selected) : sel.value;
+  sel.innerHTML =
+    `<option value="">None</option>` +
+    state.genericMoas
+      .map(
+        (g) =>
+          `<option value="${g.id}">${escapeHtml(g.moa_number || g.site_number)} — ${escapeHtml(g.road_name)}</option>`
+      )
+      .join("");
+  if (cur) sel.value = cur;
+}
+
+function renderCouncilRows(details = []) {
+  const wrap = $("councilRows");
+  if (!wrap) return;
+  const rows = details.length
+    ? details
+    : [{ council_name: "", submitted_to_council_date: "", no_objection_date: "" }];
+  wrap.innerHTML = rows
+    .map(
+      (c, idx) => `<div class="form-grid council-row" data-idx="${idx}" style="margin-bottom:0.45rem">
+      <label>Council<input data-c="name" value="${escapeHtml(c.council_name || "")}" /></label>
+      <label>Submitted to council<input data-c="submitted" type="date" value="${c.submitted_to_council_date || ""}" /></label>
+      <label>No objection<input data-c="noobj" type="date" value="${c.no_objection_date || ""}" /></label>
+      <button type="button" class="btn btn-danger" data-rm-council="${idx}">Remove</button>
+    </div>`
+    )
+    .join("");
 }
 
 function buildWorkflowChecks(selected = {}) {
@@ -211,22 +292,41 @@ function buildCustomFields(values = {}) {
 }
 
 function openSiteDialog(site = null) {
-  $("siteDialogTitle").textContent = site ? "Edit site" : "Add site";
+  state.suppressAutosave = true;
+  $("siteDialogTitle").textContent = site ? "Edit site (autosaves)" : "Add site";
   $("siteId").value = site ? site.id : "";
   $("fRoad").value = site?.road_name || "";
   $("fSiteNo").value = site?.site_number || "";
-  $("fProgram").value = site?.program || "";
+  fillProgramSelect(site?.program || "");
   $("fTgs").value = site?.tgs_reference || "";
   $("fStart").value = site?.indicative_site_start_date || "";
   $("fMustHave").value = site?.moa_must_have_received_date || "";
   $("fMoaNo").value = site?.moa_number || "";
   $("fMoaSub").value = site?.moa_submission_date || "";
-  $("fCouncils").value = (site?.councils || []).join(", ");
+  $("fGenericMoa").checked = !!site?.is_generic_moa;
+  fillGenericSelect(site?.linked_generic_moa_id || "");
+  renderCouncilRows(site?.council_details || site?.metrics?.councils || []);
   $("fComments").value = site?.comments || "";
+  $("fKml").value = "";
   buildWorkflowChecks(site ? workflowMap(site) : {});
   buildCustomFields(site?.custom_fields || {});
   $("btnArchiveSite").hidden = !site;
+  $("autosaveStatus").hidden = !site;
+  $("autosaveStatus").textContent = site ? "Changes autosave while editing." : "";
   $("siteDialog").showModal();
+  queueMicrotask(() => {
+    state.suppressAutosave = false;
+  });
+}
+
+function collectCouncils() {
+  return [...document.querySelectorAll("#councilRows .council-row")]
+    .map((row) => ({
+      council_name: row.querySelector('[data-c="name"]').value.trim(),
+      submitted_to_council_date: row.querySelector('[data-c="submitted"]').value || null,
+      no_objection_date: row.querySelector('[data-c="noobj"]').value || null,
+    }))
+    .filter((c) => c.council_name);
 }
 
 function collectSitePayload() {
@@ -242,10 +342,7 @@ function collectSitePayload() {
     else if (el.type === "number") custom_fields[key] = el.value === "" ? null : Number(el.value);
     else custom_fields[key] = el.value;
   }
-  const councils = $("fCouncils")
-    .value.split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const linked = $("fLinkedGeneric").value;
   return {
     road_name: $("fRoad").value.trim(),
     site_number: $("fSiteNo").value.trim(),
@@ -255,10 +352,28 @@ function collectSitePayload() {
     moa_must_have_received_date: $("fMustHave").value || null,
     moa_number: $("fMoaNo").value.trim() || null,
     moa_submission_date: $("fMoaSub").value || null,
+    is_generic_moa: $("fGenericMoa").checked,
+    linked_generic_moa_id: linked ? Number(linked) : null,
     comments: $("fComments").value.trim() || null,
-    councils,
+    councils: collectCouncils(),
     custom_fields,
     workflow,
+  };
+}
+
+async function parseKmlFile(file) {
+  if (!file) return null;
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/map/parse-kml", { method: "POST", body: fd });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Could not parse KML");
+  }
+  const data = await res.json();
+  return {
+    geometry: data.primary_geometry,
+    name: data.primary_name || null,
   };
 }
 
@@ -268,6 +383,11 @@ async function saveSite(ev) {
   const id = $("siteId").value;
   const payload = collectSitePayload();
   try {
+    const parsed = await parseKmlFile($("fKml").files?.[0]);
+    if (parsed?.geometry) {
+      payload.geometry = parsed.geometry;
+      payload.geometry_name = parsed.name || payload.road_name;
+    }
     if (id) {
       await api(`/api/sites/${id}`, {
         method: "PATCH",
@@ -286,6 +406,34 @@ async function saveSite(ev) {
   } catch (err) {
     alert(err.message);
   }
+}
+
+function scheduleAutosave() {
+  if (state.suppressAutosave) return;
+  const id = $("siteId")?.value;
+  if (!id || !$("siteDialog")?.open) return;
+  clearTimeout(state.autosaveTimer);
+  state.autosaveTimer = setTimeout(async () => {
+    try {
+      const payload = collectSitePayload();
+      await api(`/api/sites/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      $("autosaveStatus").hidden = false;
+      $("autosaveStatus").textContent = `Saved ${new Date().toLocaleTimeString()}`;
+      // Refresh list quietly so progress / client-list columns stay in sync
+      const updated = await api(`/api/sites/${id}`);
+      const idx = state.sites.findIndex((s) => s.id === Number(id));
+      if (idx >= 0) state.sites[idx] = updated;
+      else await loadAll();
+      renderBody();
+    } catch (err) {
+      $("autosaveStatus").hidden = false;
+      $("autosaveStatus").textContent = `Autosave failed: ${err.message}`;
+    }
+  }, 700);
 }
 
 async function archiveSite() {
@@ -509,6 +657,24 @@ function bindEvents() {
   $("priorityFilter").addEventListener("change", loadAll);
   $("stageFilter")?.addEventListener("change", loadAll);
   $("councilFilter")?.addEventListener("change", loadAll);
+  $("programFilter")?.addEventListener("change", loadAll);
+  $("listFilter")?.addEventListener("change", loadAll);
+
+  $("btnAddCouncil")?.addEventListener("click", () => {
+    const current = collectCouncils();
+    current.push({ council_name: "", submitted_to_council_date: null, no_objection_date: null });
+    renderCouncilRows(current);
+  });
+  $("councilRows")?.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-rm-council]");
+    if (!btn) return;
+    const current = collectCouncils();
+    current.splice(Number(btn.dataset.rmCouncil), 1);
+    renderCouncilRows(current);
+    scheduleAutosave();
+  });
+  $("siteForm")?.addEventListener("input", scheduleAutosave);
+  $("siteForm")?.addEventListener("change", scheduleAutosave);
 
   $("tableBody").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-action]");
