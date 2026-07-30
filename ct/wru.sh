@@ -133,7 +133,7 @@ EOF
   echo -e "\n${INFO} Repo: ${APP_GIT} (${APP_BRANCH})\n"
 }
 
-trap 'msg_error "Script failed near line $LINENO"; exit 1' ERR
+trap 'msg_error "Script failed near line $LINENO: $BASH_COMMAND"; exit 1' ERR
 
 exit_script() {
   clear 2>/dev/null || true
@@ -292,6 +292,10 @@ select_storage() {
     --radiolist "Which storage pool for ${content_label,,}?\n(Spacebar to select)" \
     16 72 6 "${menu[@]}" 3>&1 1>&2 2>&3) || exit_script
   selected="${selected%"${selected##*[![:space:]]}"}"
+  if [[ -z "$selected" || -z "${map[$selected]+x}" ]]; then
+    msg_error "No valid storage selected"
+    exit 1
+  fi
   STORAGE_RESULT="${map[$selected]}"
 }
 
@@ -1232,12 +1236,15 @@ create_and_install() {
     WRU_BRANCH="$APP_BRANCH"
     WRU_PORT="$APP_PORT"
   )
-  if [[ "$VERBOSE" == "yes" ]]; then
-    pct exec "$CT_ID" -- env "${install_env[@]}" bash "$ct_tmp"
-  else
-    pct exec "$CT_ID" -- env "${install_env[@]}" bash "$ct_tmp"
-  fi
+  set +e
+  pct exec "$CT_ID" -- env "${install_env[@]}" bash "$ct_tmp"
+  local install_rc=$?
+  set -e
   rm -f "$host_tmp"
+  if [[ "$install_rc" -ne 0 ]]; then
+    msg_error "Install inside CT ${CT_ID} failed (exit ${install_rc}). Check: pct enter ${CT_ID}"
+    exit "$install_rc"
+  fi
   msg_ok "Installed ${APP}"
 
   local ip

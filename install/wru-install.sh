@@ -63,13 +63,17 @@ else
     local msg="$1"
     echo -e "${BFR} ${CROSS} ${RD}${msg}${CL}"
   }
+  msg_warn() {
+    local msg="$1"
+    echo -e " ${YW}⚠ ${msg}${CL}"
+  }
 
   STD="silent"
   silent() { "$@" >/dev/null 2>&1; }
 
   catch_errors() {
     set -Eeuo pipefail
-    trap 'msg_error "Failed at line $LINENO"; exit 1' ERR
+    trap 'msg_error "Failed at line $LINENO: $BASH_COMMAND"; exit 1' ERR
   }
 
   network_check() {
@@ -115,6 +119,9 @@ fi
 if ! declare -F silent >/dev/null 2>&1 && [[ "${STD:-}" == "silent" ]]; then
   silent() { "$@" >/dev/null 2>&1; }
 fi
+if ! declare -F msg_warn >/dev/null 2>&1; then
+  msg_warn() { echo -e " ⚠ ${1}"; }
+fi
 
 urlencode() {
   python3 - <<'PY' "$1"
@@ -143,6 +150,7 @@ $STD apt-get install -y \
   python3 \
   python3-venv \
   python3-pip \
+  python3-full \
   git \
   curl \
   ca-certificates \
@@ -151,16 +159,68 @@ $STD apt-get install -y \
   libpq5
 msg_ok "Installed Dependencies"
 
-msg_info "Starting PostgreSQL"
-systemctl enable -q --now postgresql
-# Wait for local socket readiness
-for _ in $(seq 1 30); do
-  if su -s /bin/bash postgres -c "psql -tAc 'SELECT 1'" >/dev/null 2>&1; then
-    break
+ensure_postgres_running() {
+  msg_info "Starting PostgreSQL"
+  systemctl enable -q postgresql 2>/dev/null || true
+  systemctl start postgresql 2>/dev/null || service postgresql start 2>/dev/null || true
+
+  local ready=0
+  local _
+  for _ in $(seq 1 60); do
+    if su -s /bin/bash postgres -c "psql -tAc 'SELECT 1'" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    # Older / clustered layouts
+    if systemctl start 'postgresql@*-main' 2>/dev/null; then
+      :
+    fi
+    sleep 1
+  done
+  if [[ "$ready" -ne 1 ]]; then
+    msg_error "PostgreSQL did not become ready (socket /var/run/postgresql)"
+    exit 1
   fi
-  sleep 1
-done
-msg_ok "PostgreSQL running"
+  msg_ok "PostgreSQL running"
+}
+
+configure_postgres_auth() {
+  # Allow password auth over local TCP so the app can use 127.0.0.1
+  local hba conf
+  hba="$(ls -1 /etc/postgresql/*/main/pg_hba.conf 2>/dev/null | head -n1 || true)"
+  conf="$(ls -1 /etc/postgresql/*/main/postgresql.conf 2>/dev/null | head -n1 || true)"
+
+  if [[ -n "$conf" ]]; then
+    if grep -qE "^#?listen_addresses\s*=" "$conf"; then
+      sed -i "s/^#\?listen_addresses\s*=.*/listen_addresses = 'localhost'/" "$conf"
+    else
+      echo "listen_addresses = 'localhost'" >>"$conf"
+    fi
+  fi
+
+  if [[ -n "$hba" ]]; then
+    # Remove previous WRU markers, then insert scram rules near the top (after comments)
+    sed -i '/# WRU-BEGIN/,/# WRU-END/d' "$hba"
+    local tmp
+    tmp="$(mktemp)"
+    {
+      echo "# WRU-BEGIN"
+      echo "local   ${PG_DB}   ${PG_USER}                   scram-sha-256"
+      echo "host    ${PG_DB}   ${PG_USER}   127.0.0.1/32    scram-sha-256"
+      echo "host    ${PG_DB}   ${PG_USER}   ::1/128         scram-sha-256"
+      echo "# WRU-END"
+      cat "$hba"
+    } >"$tmp"
+    mv "$tmp" "$hba"
+    chown postgres:postgres "$hba" 2>/dev/null || true
+  fi
+
+  systemctl reload postgresql 2>/dev/null || service postgresql reload 2>/dev/null || \
+    su -s /bin/bash postgres -c "psql -c \"SELECT pg_reload_conf()\"" >/dev/null 2>&1 || true
+}
+
+ensure_postgres_running
+configure_postgres_auth
 
 PG_PASS="$(load_existing_pg_password)"
 if [[ -z "$PG_PASS" ]]; then
@@ -191,7 +251,15 @@ SQL
 msg_ok "Database ${PG_DB} ready"
 
 PG_PASS_ENC="$(urlencode "$PG_PASS")"
-DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@${PG_HOST}:${PG_PORT}/${PG_DB}"
+# Prefer Unix socket (reliable in LXC); TCP 127.0.0.1 as fallback
+PG_SOCKET_DIR="/var/run/postgresql"
+if [[ -d "$PG_SOCKET_DIR" ]] && compgen -G "${PG_SOCKET_DIR}/.s.PGSQL.*" >/dev/null; then
+  DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@/${PG_DB}?host=${PG_SOCKET_DIR}"
+  PG_HOST="$PG_SOCKET_DIR"
+else
+  PG_HOST="${POSTGRES_HOST:-127.0.0.1}"
+  DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@${PG_HOST}:${PG_PORT}/${PG_DB}"
+fi
 
 msg_info "Creating application user"
 if ! id -u "$APP_USER" >/dev/null 2>&1; then
@@ -213,11 +281,19 @@ rm -rf "$APP_DIR/data"
 msg_ok "Deployed ${APP} (${APP_BRANCH})"
 
 msg_info "Creating Python virtualenv"
-python3 -m venv "$APP_DIR/.venv"
+if ! python3 -m venv "$APP_DIR/.venv"; then
+  msg_error "python3 -m venv failed — installing python3-venv and retrying"
+  $STD apt-get install -y python3-venv python3-full
+  python3 -m venv "$APP_DIR/.venv"
+fi
 # shellcheck disable=SC1091
 source "$APP_DIR/.venv/bin/activate"
-$STD pip install --upgrade pip
-$STD pip install -r "$APP_DIR/requirements.txt"
+if ! command -v pip >/dev/null 2>&1; then
+  msg_error "venv pip missing after create"
+  exit 1
+fi
+pip install --upgrade pip
+pip install -r "$APP_DIR/requirements.txt"
 deactivate
 msg_ok "Installed Python packages"
 
@@ -236,7 +312,12 @@ chmod 640 /etc/default/wru
 chown root:"${APP_USER}" /etc/default/wru
 msg_ok "Wrote /etc/default/wru"
 
-msg_info "Seeding database"
+msg_info "Setting permissions"
+chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$DATA_DIR"
+chmod 755 "$APP_DIR" "$DATA_DIR"
+msg_ok "Permissions set"
+
+msg_info "Migrating and seeding database"
 # shellcheck disable=SC1091
 source "$APP_DIR/.venv/bin/activate"
 set -a
@@ -244,15 +325,28 @@ set -a
 source /etc/default/wru
 set +a
 cd "$APP_DIR"
+
+# Prove DB login works before migrations (shows real errors)
+python3 - <<'PY'
+import os, sys
+from sqlalchemy import create_engine, text
+url = os.environ["DATABASE_URL"]
+try:
+    eng = create_engine(url, pool_pre_ping=True)
+    with eng.connect() as conn:
+        conn.execute(text("SELECT 1"))
+except Exception as exc:
+    print(f"Database connection failed: {exc}", file=sys.stderr)
+    sys.exit(1)
+print("Database connection OK")
+PY
+
 python3 -c "from app.migrate import run_migrations; run_migrations()"
-python3 scripts/seed.py
+if ! python3 scripts/seed.py; then
+  msg_warn "Sample seed failed (schema is migrated); continuing"
+fi
 deactivate
 msg_ok "Database ready"
-
-msg_info "Setting permissions"
-chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$DATA_DIR"
-chmod 755 "$APP_DIR" "$DATA_DIR"
-msg_ok "Permissions set"
 
 msg_info "Creating Service"
 cat <<EOF >/etc/systemd/system/${SERVICE_NAME}.service
