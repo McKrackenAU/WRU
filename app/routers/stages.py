@@ -58,7 +58,15 @@ def _slug_key(label: str) -> str:
 
 
 def _backfill_stage_steps(db: Session, stage_key: str) -> None:
-    """Ensure every site has a WorkflowStep row for a newly activated stage key."""
+    """Ensure every site has a WorkflowStep row for a newly activated stage key.
+
+    If a site is already past a complete-role stage (received / ready for works),
+    auto-complete the new step so progress bars do not regress.
+    """
+    from datetime import datetime, timezone
+
+    from ..stage_registry import active_stages
+
     site_ids = [sid for (sid,) in db.query(Site.id).all()]
     if not site_ids:
         return
@@ -68,10 +76,29 @@ def _backfill_stage_steps(db: Session, stage_key: str) -> None:
         .filter(WorkflowStep.stage == stage_key)
         .all()
     }
+    complete_keys = {s.key for s in active_stages(db) if s.list_role == "complete"}
+    done_complete = {
+        site_id
+        for (site_id,) in db.query(WorkflowStep.site_id)
+        .filter(
+            WorkflowStep.stage.in_(complete_keys) if complete_keys else False,
+            WorkflowStep.completed.is_(True),
+        )
+        .all()
+    } if complete_keys else set()
+    now = datetime.now(timezone.utc)
     for site_id in site_ids:
         if site_id in existing:
             continue
-        db.add(WorkflowStep(site_id=site_id, stage=stage_key, completed=False))
+        already_complete = site_id in done_complete
+        db.add(
+            WorkflowStep(
+                site_id=site_id,
+                stage=stage_key,
+                completed=already_complete,
+                completed_at=now if already_complete else None,
+            )
+        )
 
 
 @router.get("/stages", response_model=list[StageOut])
