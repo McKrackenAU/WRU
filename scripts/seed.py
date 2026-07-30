@@ -95,7 +95,7 @@ def main() -> None:
                     "ventia_review": True,
                     "plan_received": True,
                 },
-                "tracking": "Plan Received – checking detour extents",
+                "tracking": "Plan Received - checking detour extents",
                 "custom_fields": {},
             },
             {
@@ -105,7 +105,7 @@ def main() -> None:
                 "tgs_reference": "TGS-3312-C",
                 "indicative_site_start_date": today + timedelta(days=10),
                 "moa_must_have_received_date": today - timedelta(days=2),
-                "comments": "Priority – MoA overdue vs must-have date",
+                "comments": "Priority - MoA overdue vs must-have date",
                 "moa_number": "0093401",
                 "moa_submission_date": today - timedelta(days=5),
                 "councils": [

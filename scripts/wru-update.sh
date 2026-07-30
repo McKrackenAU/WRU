@@ -161,6 +161,12 @@ else
     || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh" -o "$HELPER_BIN"
   chmod 755 "$HELPER_BIN"
 fi
+# Minimal LXCs may lack sudo /etc/sudoers.d
+apt-get install -y sudo >/dev/null 2>&1 || true
+mkdir -p /etc/sudoers.d
+if [[ -f /etc/sudoers ]] && ! grep -qE '^[@#]includedir[[:space:]]+/etc/sudoers\.d' /etc/sudoers; then
+  printf '\n#includedir /etc/sudoers.d\n' >>/etc/sudoers
+fi
 cat >/etc/sudoers.d/wru-update <<'EOF'
 # Allow WRU service user to pull/install updates from GitHub without a password
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
@@ -168,7 +174,12 @@ wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update.service
 EOF
 chmod 440 /etc/sudoers.d/wru-update
-echo "Installed CLI updater: ${HELPER_BIN} (and sudo for user wru)"
+if command -v visudo >/dev/null 2>&1 && ! visudo -cf /etc/sudoers.d/wru-update >/dev/null 2>&1; then
+  echo "Warning: sudoers file invalid — removed" >&2
+  rm -f /etc/sudoers.d/wru-update
+else
+  echo "Installed CLI updater: ${HELPER_BIN} (and sudo for user wru)"
+fi
 
 commit="unknown"
 if command -v git >/dev/null 2>&1 && [[ -d "$APP_DIR/.git" ]]; then

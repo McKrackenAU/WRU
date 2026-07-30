@@ -154,9 +154,21 @@ $STD apt-get install -y \
   git \
   curl \
   ca-certificates \
+  sudo \
+  locales \
   postgresql \
   postgresql-contrib \
   libpq5
+# Ensure UTF-8 locale so seed/app strings are not forced through ASCII
+if ! locale -a 2>/dev/null | grep -qiE '^(C\.UTF-8|en_US\.utf8|en_US\.UTF-8)$'; then
+  sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen 2>/dev/null || true
+  echo 'en_US.UTF-8 UTF-8' >>/etc/locale.gen 2>/dev/null || true
+  $STD locale-gen en_US.UTF-8 || true
+fi
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
 msg_ok "Installed Dependencies"
 
 ensure_postgres_running() {
@@ -239,12 +251,13 @@ BEGIN
   END IF;
 END
 \$\$;
-SELECT 'CREATE DATABASE ${PG_DB} OWNER ${PG_USER}'
+SELECT 'CREATE DATABASE ${PG_DB} OWNER ${PG_USER} ENCODING ''UTF8'' TEMPLATE template0'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${PG_DB}')\gexec
 GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER};
 SQL
-# Schema privileges for Postgres 15+
+# Prefer UTF-8 client encoding on existing DBs (SQL_ASCII templates break Unicode seed)
 su -s /bin/bash postgres -c "psql -d ${PG_DB} -v ON_ERROR_STOP=1" <<SQL
+ALTER DATABASE ${PG_DB} SET client_encoding TO 'UTF8';
 GRANT ALL ON SCHEMA public TO ${PG_USER};
 ALTER SCHEMA public OWNER TO ${PG_USER};
 SQL
@@ -254,11 +267,11 @@ PG_PASS_ENC="$(urlencode "$PG_PASS")"
 # Prefer Unix socket (reliable in LXC); TCP 127.0.0.1 as fallback
 PG_SOCKET_DIR="/var/run/postgresql"
 if [[ -d "$PG_SOCKET_DIR" ]] && compgen -G "${PG_SOCKET_DIR}/.s.PGSQL.*" >/dev/null; then
-  DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@/${PG_DB}?host=${PG_SOCKET_DIR}"
+  DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@/${PG_DB}?host=${PG_SOCKET_DIR}&client_encoding=utf8"
   PG_HOST="$PG_SOCKET_DIR"
 else
   PG_HOST="${POSTGRES_HOST:-127.0.0.1}"
-  DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@${PG_HOST}:${PG_PORT}/${PG_DB}"
+  DATABASE_URL="postgresql+psycopg2://${PG_USER}:${PG_PASS_ENC}@${PG_HOST}:${PG_PORT}/${PG_DB}?client_encoding=utf8"
 fi
 
 msg_info "Creating application user"
@@ -377,6 +390,12 @@ msg_info "Installing GitHub update helper"
 UPDATE_SRC="${APP_DIR}/scripts/wru-update.sh"
 if [[ -f "$UPDATE_SRC" ]]; then
   install -m 755 "$UPDATE_SRC" /usr/local/sbin/wru-update
+  # Minimal LXCs may lack /etc/sudoers.d until sudo is installed
+  $STD apt-get install -y sudo >/dev/null 2>&1 || true
+  mkdir -p /etc/sudoers.d
+  if [[ -f /etc/sudoers ]] && ! grep -qE '^[@#]includedir[[:space:]]+/etc/sudoers\.d' /etc/sudoers; then
+    printf '\n#includedir /etc/sudoers.d\n' >>/etc/sudoers
+  fi
   cat >/etc/sudoers.d/wru-update <<'EOF'
 # Allow WRU service user to pull/install updates from GitHub without a password
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
@@ -384,7 +403,12 @@ wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update.service
 EOF
   chmod 440 /etc/sudoers.d/wru-update
-  msg_ok "Installed /usr/local/sbin/wru-update (sudo for user wru)"
+  if command -v visudo >/dev/null 2>&1 && ! visudo -cf /etc/sudoers.d/wru-update >/dev/null 2>&1; then
+    msg_warn "sudoers file invalid — removed; in-app updates may need a manual fix"
+    rm -f /etc/sudoers.d/wru-update
+  else
+    msg_ok "Installed /usr/local/sbin/wru-update (sudo for user wru)"
+  fi
 else
   msg_warn "scripts/wru-update.sh missing — skipped update helper"
 fi

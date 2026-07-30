@@ -1189,6 +1189,11 @@ update_existing_ct() {
     set -e
     if [[ -f /opt/wru/scripts/wru-update.sh ]]; then
       install -m 755 /opt/wru/scripts/wru-update.sh /usr/local/sbin/wru-update
+      apt-get install -y sudo >/dev/null 2>&1 || true
+      mkdir -p /etc/sudoers.d
+      if [[ -f /etc/sudoers ]] && ! grep -qE "^[@#]includedir[[:space:]]+/etc/sudoers\\.d" /etc/sudoers; then
+        printf "\n#includedir /etc/sudoers.d\n" >>/etc/sudoers
+      fi
       cat >/etc/sudoers.d/wru-update <<EOF
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
@@ -1465,6 +1470,11 @@ update_inside_container() {
   msg_ok "Updated ${APP} successfully"
   if [[ -f /opt/wru/scripts/wru-update.sh ]]; then
     install -m 755 /opt/wru/scripts/wru-update.sh /usr/local/sbin/wru-update 2>/dev/null || true
+    apt-get install -y sudo >/dev/null 2>&1 || true
+    mkdir -p /etc/sudoers.d
+    if [[ -f /etc/sudoers ]] && ! grep -qE '^[@#]includedir[[:space:]]+/etc/sudoers\.d' /etc/sudoers; then
+      printf '\n#includedir /etc/sudoers.d\n' >>/etc/sudoers
+    fi
     cat >/etc/sudoers.d/wru-update <<'EOF' 2>/dev/null || true
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
