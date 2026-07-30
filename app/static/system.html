@@ -26,7 +26,7 @@
       <div class="page-head">
         <div>
           <h1>System &amp; updates</h1>
-          <p>Pull the latest WRU release from GitHub and reinstall in place. Database and uploads are kept.</p>
+          <p>Pull the latest WRU release from GitHub, or roll back to one of the last 5 installs. Database and uploads are kept.</p>
         </div>
       </div>
 
@@ -50,8 +50,8 @@
       <section class="panel-card">
         <h2>Update from GitHub (in-app)</h2>
         <div class="form-grid">
-          <label>Git branch
-            <input id="updBranch" type="text" value="main" />
+          <label>Git branch or tag
+            <input id="updBranch" type="text" value="main" placeholder="main or v0.1" />
           </label>
           <label class="full">Git repository URL
             <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" />
@@ -59,6 +59,7 @@
         </div>
         <p class="hint" id="updHint">
           Runs <code>sudo /usr/local/sbin/wru-update</code> on this host. The service restarts when finished.
+          Each update records the previous version (max 5) for rollback below.
         </p>
         <div class="toolbar" style="margin-top:0.85rem">
           <button type="button" class="btn btn-primary" id="btnUpdate">Pull &amp; install update</button>
@@ -66,6 +67,26 @@
           <span class="hint" id="updStatus"></span>
         </div>
         <pre id="updLog" class="hint" style="margin-top:1rem;white-space:pre-wrap;max-height:280px;overflow:auto" hidden></pre>
+      </section>
+
+      <section class="panel-card">
+        <h2>Version history &amp; rollback</h2>
+        <p class="hint" id="histHint">Up to 5 prior installs can be restored. Empty until the first update after this release.</p>
+        <div class="table-scroll">
+          <table class="data-table" id="histTable">
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th>Commit</th>
+                <th>Recorded</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="histBody">
+              <tr><td class="empty" colspan="4">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
   </div>

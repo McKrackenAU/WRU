@@ -390,21 +390,31 @@ else
 fi
 
 COMMIT="$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-APP_VER="$(python3 - <<'PY'
+if [[ -f "$APP_DIR/VERSION" ]]; then
+  APP_VER="$(tr -d '[:space:]' <"$APP_DIR/VERSION" | sed 's/^v//')"
+else
+  APP_VER="$(python3 - <<'PY'
 import re, pathlib
 text = pathlib.Path("/opt/wru/app/main.py").read_text()
 m = re.search(r'version\s*=\s*"([^"]+)"', text)
-print(m.group(1) if m else "unknown")
+print(m.group(1).lstrip("vV") if m else "unknown")
 PY
 )"
+fi
 cat >"/opt/${APP_SLUG}_version.txt" <<EOF
 branch=${APP_BRANCH}
 repo=${APP_GIT}
 app_version=${APP_VER}
+version_tag=v${APP_VER}
 updated_at=$(date -Is)
 commit=${COMMIT}
 EOF
 chmod 644 "/opt/${APP_SLUG}_version.txt"
+# Ensure history file exists (updater snapshots into it on subsequent upgrades)
+if [[ ! -f "/opt/${APP_SLUG}_version_history.json" ]]; then
+  echo '{"versions":[]}' >"/opt/${APP_SLUG}_version_history.json"
+  chmod 644 "/opt/${APP_SLUG}_version_history.json"
+fi
 
 # Helper MOTD tip
 if [[ -d /etc/update-motd.d ]]; then
@@ -413,7 +423,7 @@ if [[ -d /etc/update-motd.d ]]; then
 echo ""
 echo "  WRU TGS Tracker   →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}"
 echo "  Service          →  systemctl status ${SERVICE_NAME}"
-echo "  Update           →  sudo wru-update   or  /system in the UI"
+echo "  Update / rollback →  sudo wru-update   or  /system in the UI"
 echo "  Database         →  PostgreSQL (${PG_DB})"
 echo "  Uploads          →  ${DATA_DIR}/uploads"
 echo ""

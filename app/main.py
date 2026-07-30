@@ -27,13 +27,14 @@ from .routers import (
 )
 from .schemas import MetaOut
 from .stage_registry import active_programs, stage_meta
+from .version import version_string
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(
     title="WRU TGS Tracker",
     description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, documents, archive, and map.",
-    version="1.4.1",
+    version=version_string(),
 )
 
 run_migrations()
