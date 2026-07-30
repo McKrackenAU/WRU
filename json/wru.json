@@ -26,6 +26,10 @@
   "config_path": "/etc/default/wru",
   "notes": [
     {
+      "text": "Whiptail GUI customizes CTID, resources, bridge, DHCP/static IP, and app port",
+      "type": "info"
+    },
+    {
       "text": "Uses local PostgreSQL (db/user wru). Credentials in /etc/default/wru",
       "type": "info"
     },

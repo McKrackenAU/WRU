@@ -4,15 +4,17 @@
 # License: Apache-2.0 | https://github.com/McKrackenAU/WRU/blob/main/LICENSE
 # Source: https://github.com/McKrackenAU/WRU
 #
-# Proxmox VE Helper Scripts–style entrypoint.
+# Proxmox VE Helper Scripts–style entrypoint with whiptail GUI.
 # Run on the Proxmox host:
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
 #
 # Or from a local checkout:
 #   bash ct/wru.sh
 #
-# Optional env overrides:
-#   WRU_BRANCH=main WRU_PORT=8000 CTID=230 HN=wru STORAGE=local-lvm bash ct/wru.sh
+# Optional env overrides (used as GUI defaults / noninteractive install):
+#   WRU_BRANCH=main WRU_PORT=8000 CTID=230 HN=wru STORAGE=local-lvm \
+#   NET=static IP_CIDR=192.168.1.50/24 GW=192.168.1.1 bash ct/wru.sh
+#   NONINTERACTIVE=1  — skip whiptail; use env/defaults only
 
 set -eEuo pipefail
 
@@ -33,6 +35,10 @@ PASSWORD="${PASSWORD:-}"
 BRIDGE="${BRIDGE:-vmbr0}"
 STORAGE="${STORAGE:-}"
 CTID="${CTID:-}"
+NET="${NET:-dhcp}"
+IP_CIDR="${IP_CIDR:-}"
+GW="${GW:-}"
+NONINTERACTIVE="${NONINTERACTIVE:-0}"
 
 YW=$'\033[33m'
 BL=$'\033[36m'
@@ -41,6 +47,7 @@ BGN=$'\033[4;92m'
 GN=$'\033[1;92m'
 DGN=$'\033[32m'
 CL=$'\033[m'
+BOLD=$'\033[1m'
 BFR=$'\r\033[K'
 HOLD="-"
 CM="${GN}✓${CL}"
@@ -61,7 +68,7 @@ header_info() {
    |__/|__/_/ /_/_/ |_|\____/
 
   WRU TGS Tracker
-  Proxmox Helper Script Installer
+  Proxmox Helper Script Installer (whiptail GUI)
 EOF
   echo -e "\n${INFO} Repo: ${APP_GIT} (${APP_BRANCH})\n"
 }
@@ -120,8 +127,197 @@ ensure_root() {
   fi
 }
 
+need_whiptail() {
+  if command -v whiptail >/dev/null 2>&1; then
+    return 0
+  fi
+  msg_info "Installing whiptail"
+  apt-get update -qq
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq whiptail >/dev/null
+  msg_ok "whiptail installed"
+}
+
+validate_static_net() {
+  if [[ -z "$IP_CIDR" || "$IP_CIDR" != */* ]]; then
+    msg_error "Static IP must be CIDR form, e.g. 192.168.1.50/24"
+    exit 1
+  fi
+  if [[ -z "$GW" ]]; then
+    msg_error "Gateway (GW) is required for static networking"
+    exit 1
+  fi
+}
+
+net0_arg() {
+  if [[ "$NET" == "static" ]]; then
+    validate_static_net
+    echo "name=eth0,bridge=${BRIDGE},ip=${IP_CIDR},gw=${GW}"
+  else
+    echo "name=eth0,bridge=${BRIDGE},ip=dhcp"
+  fi
+}
+
+pick_storage_gui() {
+  local list=()
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    list+=("$line" "")
+  done < <(pvesm status -content rootdir 2>/dev/null | awk 'NR>1 {print $1}')
+  if [[ ${#list[@]} -eq 0 ]]; then
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      list+=("$line" "")
+    done < <(pvesm status 2>/dev/null | awk 'NR>1 {print $1}')
+  fi
+  if [[ ${#list[@]} -eq 0 ]]; then
+    msg_error "No Proxmox storage found. Set STORAGE=..."
+    exit 1
+  fi
+  local default_idx=1
+  local i=1
+  local name
+  for ((i = 0; i < ${#list[@]}; i += 2)); do
+    name="${list[$i]}"
+    if [[ -n "$STORAGE" && "$name" == "$STORAGE" ]]; then
+      default_idx=$((i / 2 + 1))
+      break
+    fi
+  done
+  STORAGE=$(whiptail --backtitle "$APP" --title "Storage" \
+    --default-item "${list[$(( (default_idx - 1) * 2 ))]}" \
+    --menu "Select storage for the CT root disk:" 18 60 10 \
+    "${list[@]}" 3>&1 1>&2 2>&3) || exit 1
+}
+
+gui_settings() {
+  need_whiptail
+
+  if ! whiptail --backtitle "$APP" --title "$APP LXC" \
+    --yesno "Create a new unprivileged Debian LXC and install ${APP}?\n\nCustomize CTID, resources, bridge, IP (DHCP or static), and app port." 13 72; then
+    echo "Cancelled."
+    exit 0
+  fi
+
+  CTID=$(whiptail --backtitle "$APP" --title "Container ID" \
+    --inputbox "LXC Container ID:" 8 50 "${CTID:-$(next_ctid)}" 3>&1 1>&2 2>&3) || exit 1
+  HN=$(whiptail --backtitle "$APP" --title "Hostname" \
+    --inputbox "Hostname:" 8 50 "$HN" 3>&1 1>&2 2>&3) || exit 1
+  var_cpu=$(whiptail --backtitle "$APP" --title "CPU" \
+    --inputbox "CPU cores:" 8 50 "$var_cpu" 3>&1 1>&2 2>&3) || exit 1
+  var_ram=$(whiptail --backtitle "$APP" --title "RAM" \
+    --inputbox "RAM (MiB):" 8 50 "$var_ram" 3>&1 1>&2 2>&3) || exit 1
+  var_disk=$(whiptail --backtitle "$APP" --title "Disk" \
+    --inputbox "Root disk size (GiB):" 8 50 "$var_disk" 3>&1 1>&2 2>&3) || exit 1
+
+  pick_storage_gui
+
+  BRIDGE=$(whiptail --backtitle "$APP" --title "Bridge" \
+    --inputbox "Network bridge:" 8 50 "$BRIDGE" 3>&1 1>&2 2>&3) || exit 1
+
+  NET=$(whiptail --backtitle "$APP" --title "IP configuration" \
+    --default-item "$NET" \
+    --menu "Network mode:" 14 60 4 \
+    "dhcp" "DHCP (automatic)" \
+    "static" "Static IPv4 (CIDR + gateway)" 3>&1 1>&2 2>&3) || exit 1
+
+  if [[ "$NET" == "static" ]]; then
+    IP_CIDR=$(whiptail --backtitle "$APP" --title "Static IP" \
+      --inputbox "IPv4 CIDR (e.g. 192.168.1.50/24):" 8 60 "${IP_CIDR}" 3>&1 1>&2 2>&3) || exit 1
+    GW=$(whiptail --backtitle "$APP" --title "Gateway" \
+      --inputbox "Gateway IP:" 8 50 "${GW}" 3>&1 1>&2 2>&3) || exit 1
+    validate_static_net
+  else
+    IP_CIDR=""
+    GW=""
+  fi
+
+  APP_PORT=$(whiptail --backtitle "$APP" --title "App port" \
+    --inputbox "WRU HTTP listen port:" 8 50 "$APP_PORT" 3>&1 1>&2 2>&3) || exit 1
+
+  local src
+  src=$(whiptail --backtitle "$APP" --title "Git source" \
+    --menu "Where should the CT clone WRU from?" 15 72 4 \
+    "github" "GitHub — ${APP_GIT}" \
+    "custom" "Enter a custom git URL" 3>&1 1>&2 2>&3) || exit 1
+
+  if [[ "$src" == "custom" ]]; then
+    APP_GIT=$(whiptail --backtitle "$APP" --title "Custom git URL" \
+      --inputbox "Git clone URL:" 8 72 "$APP_GIT" 3>&1 1>&2 2>&3) || exit 1
+    APP_BRANCH=$(whiptail --backtitle "$APP" --title "Git branch" \
+      --inputbox "Branch:" 8 50 "$APP_BRANCH" 3>&1 1>&2 2>&3) || exit 1
+  fi
+
+  if [[ -z "$PASSWORD" ]]; then
+    PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 16)"
+  fi
+  PASSWORD=$(whiptail --backtitle "$APP" --title "Root password" \
+    --inputbox "LXC root password (leave as-is or change):" 9 60 "$PASSWORD" 3>&1 1>&2 2>&3) || exit 1
+
+  local net_summary
+  if [[ "$NET" == "static" ]]; then
+    net_summary="static ${IP_CIDR} gw ${GW}"
+  else
+    net_summary="dhcp"
+  fi
+
+  local summary
+  summary=$(
+    cat <<EOF
+CTID:       $CTID
+Hostname:   $HN
+CPU / RAM:  ${var_cpu} / ${var_ram} MiB
+Disk:       ${var_disk}G on $STORAGE
+Bridge:     $BRIDGE
+Network:    $net_summary
+App port:   $APP_PORT
+Git:        $APP_GIT ($APP_BRANCH)
+Root pass:  $PASSWORD
+EOF
+  )
+  whiptail --backtitle "$APP" --title "Confirm" --yesno "Create container with these settings?\n\n$summary" 22 72 || exit 0
+}
+
+noninteractive_settings() {
+  CTID="${CTID:-$(next_ctid)}"
+  STORAGE="$(default_storage)"
+  if [[ -z "$STORAGE" ]]; then
+    msg_error "No storage with rootdir content found. Set STORAGE=..."
+    exit 1
+  fi
+  if [[ -z "$PASSWORD" ]]; then
+    PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 16)"
+  fi
+  if [[ "$NET" == "static" ]]; then
+    validate_static_net
+  fi
+
+  echo -e "${INFO} Noninteractive defaults"
+  echo -e "  CTID:      ${BL}${CTID}${CL}"
+  echo -e "  Hostname:  ${BL}${HN}${CL}"
+  echo -e "  OS:        ${BL}${var_os} ${var_version}${CL}"
+  echo -e "  CPU/RAM:   ${BL}${var_cpu} / ${var_ram}MiB${CL}"
+  echo -e "  Disk:      ${BL}${var_disk}G${CL}"
+  echo -e "  Storage:   ${BL}${STORAGE}${CL}"
+  echo -e "  Bridge:    ${BL}${BRIDGE}${CL}"
+  if [[ "$NET" == "static" ]]; then
+    echo -e "  Network:   ${BL}static ${IP_CIDR} gw ${GW}${CL}"
+  else
+    echo -e "  Network:   ${BL}dhcp${CL}"
+  fi
+  echo -e "  App port:  ${BL}${APP_PORT}${CL}"
+  echo -e "  Root pass: ${BL}${PASSWORD}${CL}"
+  echo
+}
+
 ensure_template() {
   local storage_tmpl="local"
+  if pvesm status -content vztmpl 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx local; then
+    storage_tmpl="local"
+  else
+    storage_tmpl="$(pvesm status -content vztmpl 2>/dev/null | awk 'NR>1 {print $1; exit}')"
+    storage_tmpl="${storage_tmpl:-local}"
+  fi
+
   msg_info "Refreshing appliance templates"
   pveam update >/dev/null 2>&1 || true
   msg_ok "Template catalog refreshed"
@@ -180,37 +376,21 @@ create_lxc() {
   ensure_root
   header_info
 
-  CTID="${CTID:-$(next_ctid)}"
-  STORAGE="$(default_storage)"
-  if [[ -z "$STORAGE" ]]; then
-    msg_error "No storage with rootdir content found. Set STORAGE=..."
+  if [[ "$NONINTERACTIVE" == "1" ]] || [[ ! -t 0 ]]; then
+    noninteractive_settings
+  else
+    gui_settings
+  fi
+
+  if pct status "$CTID" &>/dev/null; then
+    msg_error "CT ${CTID} already exists"
     exit 1
-  fi
-  if [[ -z "$PASSWORD" ]]; then
-    PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 16)"
-  fi
-
-  echo -e "${INFO} Defaults"
-  echo -e "  CTID:      ${BL}${CTID}${CL}"
-  echo -e "  Hostname:  ${BL}${HN}${CL}"
-  echo -e "  OS:        ${BL}${var_os} ${var_version}${CL}"
-  echo -e "  CPU/RAM:   ${BL}${var_cpu} / ${var_ram}MiB${CL}"
-  echo -e "  Disk:      ${BL}${var_disk}G${CL}"
-  echo -e "  Storage:   ${BL}${STORAGE}${CL}"
-  echo -e "  Bridge:    ${BL}${BRIDGE}${CL}"
-  echo -e "  Root pass: ${BL}${PASSWORD}${CL}"
-  echo
-
-  if [[ -t 0 ]]; then
-    read -r -p "Proceed with these settings? [Y/n] " ans
-    ans="${ans:-Y}"
-    if [[ ! "$ans" =~ ^[Yy]$ ]]; then
-      echo "Aborted."
-      exit 0
-    fi
   fi
 
   ensure_template
+
+  local net_arg
+  net_arg="$(net0_arg)"
 
   msg_info "Creating LXC ${CTID}"
   pct create "$CTID" "$TEMPLATE_PATH" \
@@ -218,7 +398,7 @@ create_lxc() {
     --cores "$var_cpu" \
     --memory "$var_ram" \
     --rootfs "${STORAGE}:${var_disk}" \
-    --net0 "name=eth0,bridge=${BRIDGE},ip=dhcp" \
+    --net0 "$net_arg" \
     --unprivileged "$var_unprivileged" \
     --features nesting=1 \
     --onboot 1 \
@@ -236,7 +416,7 @@ create_lxc() {
     sleep 2
   done
   if [[ "$ready" -ne 1 ]]; then
-    msg_error "Container network did not come up in time"
+    msg_error "Container network did not come up in time (check bridge / DHCP / static IP + gateway)"
     exit 1
   fi
   msg_ok "Network ready"
@@ -257,7 +437,11 @@ create_lxc() {
   msg_ok "Installed ${APP}"
 
   local ip
-  ip="$(pct exec "$CTID" -- hostname -I | awk '{print $1}')"
+  if [[ "$NET" == "static" ]]; then
+    ip="${IP_CIDR%%/*}"
+  else
+    ip="$(pct exec "$CTID" -- hostname -I | awk '{print $1}')"
+  fi
   pct set "$CTID" -description $'WRU TGS Tracker\nURL: http://'"${ip}"':'"${APP_PORT}"$'\nRepo: '"${APP_GIT}"$'\nBranch: '"${APP_BRANCH}" >/dev/null || true
 
   echo
@@ -265,6 +449,11 @@ create_lxc() {
   echo -e " ${HOLD} ${YW}Creating:${CL} ${GN}${APP} LXC is ready${CL}"
   echo -e "${INFO}${YW} CTID:${CL} ${BL}${CTID}${CL}"
   echo -e "${INFO}${YW} Root password:${CL} ${BL}${PASSWORD}${CL}"
+  if [[ "$NET" == "static" ]]; then
+    echo -e "${INFO}${YW} Network:${CL} ${BL}${IP_CIDR} gw ${GW}${CL}"
+  else
+    echo -e "${INFO}${YW} Network:${CL} ${BL}dhcp${CL}"
+  fi
   echo -e " ${HOLD} ${DGN}Access URL:${CL} ${BGN}http://${ip}:${APP_PORT}${CL}\n"
 }
 

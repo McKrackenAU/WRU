@@ -25,7 +25,7 @@ Linux-hosted PostgreSQL web app for traffic guidance / MoA workflow tracking. Sa
 
 ## Proxmox Helper Script install (recommended)
 
-Helper-script style installer (same flow as community-scripts): creates a Debian LXC, installs PostgreSQL + WRU, enables `wru.service`, seeds sample data.
+Helper-script style installer with a **whiptail GUI** (same pattern as VenInspect / community-scripts): creates a Debian LXC, installs PostgreSQL + WRU, enables `wru.service`, seeds sample data.
 
 ### On the Proxmox host
 
@@ -33,14 +33,29 @@ Helper-script style installer (same flow as community-scripts): creates a Debian
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
 ```
 
-Optional overrides:
+The GUI prompts for:
+
+- Container ID, hostname, CPU / RAM / disk
+- Storage and network bridge
+- **DHCP or static IPv4** (CIDR + gateway)
+- App HTTP port, git source, and root password
+
+When finished it prints the CTID, root password, network summary, and `http://<ip>:<port>`.
+
+Noninteractive / automation (skip whiptail; use env defaults):
 
 ```bash
-CTID=230 HN=wru STORAGE=local-lvm WRU_PORT=8000 \
+NONINTERACTIVE=1 CTID=230 HN=wru STORAGE=local-lvm WRU_PORT=8000 \
   bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
 ```
 
-When finished it prints the CTID, root password, and `http://<ip>:8000`.
+Static IP without the GUI:
+
+```bash
+NONINTERACTIVE=1 NET=static IP_CIDR=192.168.1.50/24 GW=192.168.1.1 \
+  CTID=230 HN=wru STORAGE=local-lvm \
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
+```
 
 ### Install into an existing Debian/Ubuntu LXC or VM
 
@@ -105,6 +120,10 @@ Starts Postgres + the app. Uploads persist in the `wru_uploads` volume; DB in `w
 | `WRU_PORT` | `8000` | HTTP listen port |
 | `WRU_BRANCH` | `main` | Git branch used by helper scripts |
 | `WRU_REPO` | `https://github.com/McKrackenAU/WRU.git` | Git remote used by helper scripts |
+| `NET` | `dhcp` | Proxmox LXC network mode (`dhcp` or `static`) |
+| `IP_CIDR` | — | Static IPv4 CIDR when `NET=static` (e.g. `192.168.1.50/24`) |
+| `GW` | — | Gateway IP when `NET=static` |
+| `NONINTERACTIVE` | `0` | Set `1` to skip the whiptail GUI on the Proxmox host |
 
 ## API overview
 
