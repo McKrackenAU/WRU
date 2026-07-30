@@ -150,6 +150,8 @@ def _settings(**kwargs):
         travel_allowance=45,
         meal_allowance=30,
         meal_after_hours=9.5,
+        day_start_hour=6.0,
+        day_end_hour=18.0,
     )
     base.update(kwargs)
     return SimpleNamespace(**base)
@@ -174,6 +176,38 @@ def test_standard_includes_booking_and_allowances():
     assert out["per_shift"]["allowances"]["meal_total"] == 600
     assert out["site_traffic_total"] == out["site_crew_total"]
 
+
+def test_days_of_work_from_shift_start_sets_end_and_shifts():
+    out = calculate_standard(
+        {
+            "days_of_work": 5,
+            "shifts_per_day": 1,
+            "shift_hours": 10,
+            "shift_start_time": "20:00",
+            "works_start": "2026-08-01",
+            "vms_quantity": 0,
+            "resources": {"people": 4, "vehicles": 2, "tmas": 0, "spotters": 0},
+        },
+        _settings(),
+        _default_rates(),
+    )
+    echo = out["inputs_echo"]
+    assert echo["days_of_work"] == 5
+    assert echo["works_start"] == "2026-08-01"
+    assert echo["works_end"] == "2026-08-05"
+    assert echo["total_shifts"] == 5
+    assert echo["shift_type"] == "night"  # midpoint of 20:00+5h = 01:00
+
+
+def test_night_window_config_classifies_day_shift():
+    from app.cost_engine import classify_shift_type
+    from datetime import datetime
+
+    assert classify_shift_type(datetime(2026, 8, 1, 10, 0), day_start_hour=6, day_end_hour=18) == "day"
+    assert classify_shift_type(datetime(2026, 8, 1, 22, 0), day_start_hour=6, day_end_hour=18) == "night"
+    # Custom window: day = 07:00–19:00
+    assert classify_shift_type(7.5, day_start_hour=7, day_end_hour=19) == "day"
+    assert classify_shift_type(6.5, day_start_hour=7, day_end_hour=19) == "night"
 
 def test_closure_8h_no_meals_12h_has_meals_and_marks_best():
     out = calculate_closure_24h(

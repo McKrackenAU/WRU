@@ -33,6 +33,8 @@ class CostSettingsOut(BaseModel):
     travel_allowance: float
     meal_allowance: float
     meal_after_hours: float
+    day_start_hour: float
+    day_end_hour: float
 
 
 class CostSettingsUpdate(BaseModel):
@@ -44,6 +46,8 @@ class CostSettingsUpdate(BaseModel):
     travel_allowance: float | None = Field(default=None, ge=0)
     meal_allowance: float | None = Field(default=None, ge=0)
     meal_after_hours: float | None = Field(default=None, gt=0, le=24)
+    day_start_hour: float | None = Field(default=None, ge=0, lt=24)
+    day_end_hour: float | None = Field(default=None, ge=0, lt=24)
 
 
 class LabourRateIn(BaseModel):
@@ -113,6 +117,8 @@ def get_or_create_settings(db: Session) -> CostSettings:
         travel_allowance=45.0,
         meal_allowance=30.0,
         meal_after_hours=9.5,
+        day_start_hour=6.0,
+        day_end_hour=18.0,
     )
     db.add(row)
     db.commit()

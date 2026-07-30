@@ -263,6 +263,9 @@ class CostSettings(Base):
     travel_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=45.0)
     meal_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=30.0)
     meal_after_hours: Mapped[float] = mapped_column(Float, nullable=False, default=9.5)
+    # Day window [day_start_hour, day_end_hour); outside = night (defaults 06:00–18:00)
+    day_start_hour: Mapped[float] = mapped_column(Float, nullable=False, default=6.0)
+    day_end_hour: Mapped[float] = mapped_column(Float, nullable=False, default=18.0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

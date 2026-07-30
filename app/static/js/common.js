@@ -88,6 +88,7 @@ const NAV_LINKS = [
   { href: "/archive", label: "Archive" },
   { href: "/stages", label: "Stages" },
   { href: "/rates", label: "Rates" },
+  { href: "/system", label: "System" },
 ];
 
 export function injectChrome({ active } = {}) {

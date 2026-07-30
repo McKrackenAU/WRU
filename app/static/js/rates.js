@@ -6,6 +6,8 @@ async function loadSettings() {
   $("travelAllow").value = s.travel_allowance;
   $("mealAllow").value = s.meal_allowance;
   $("mealAfter").value = s.meal_after_hours;
+  $("dayStart").value = s.day_start_hour ?? 6;
+  $("dayEnd").value = s.day_end_hour ?? 18;
   $("vmsLead").value = s.vms_lead_days_default;
   $("vmsDelivery").value = s.vms_delivery_rate;
   $("vmsCollection").value = s.vms_collection_rate;
@@ -21,6 +23,8 @@ async function saveSettings() {
       travel_allowance: Number($("travelAllow").value),
       meal_allowance: Number($("mealAllow").value),
       meal_after_hours: Number($("mealAfter").value),
+      day_start_hour: Number($("dayStart").value),
+      day_end_hour: Number($("dayEnd").value),
       vms_lead_days_default: Number($("vmsLead").value),
       vms_delivery_rate: Number($("vmsDelivery").value),
       vms_collection_rate: Number($("vmsCollection").value),

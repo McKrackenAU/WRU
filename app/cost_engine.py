@@ -15,6 +15,30 @@ def money(value: float) -> float:
     return round(float(value) + 1e-9, 2)
 
 
+def hour_of_day(value: datetime | float | int) -> float:
+    if isinstance(value, datetime):
+        return value.hour + value.minute / 60.0 + value.second / 3600.0
+    return float(value) % 24
+
+
+def classify_shift_type(
+    when: datetime | float | int,
+    *,
+    day_start_hour: float = 6.0,
+    day_end_hour: float = 18.0,
+) -> ShiftType:
+    """Return day if midpoint/time falls in [day_start, day_end), else night."""
+    hour = hour_of_day(when)
+    start = float(day_start_hour) % 24
+    end = float(day_end_hour) % 24
+    if start == end:
+        return "day"
+    if start < end:
+        return "day" if start <= hour < end else "night"
+    # Window wraps midnight (unusual for "day" but supported)
+    return "day" if hour >= start or hour < end else "night"
+
+
 def split_ordinary_ot(shift_hours: float, overtime_after: float) -> tuple[float, float]:
     ordinary = min(shift_hours, overtime_after)
     ot = max(0.0, shift_hours - overtime_after)
@@ -589,15 +613,57 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
         payload.get("overtime_after_hours", settings.overtime_after_hours)
     )
     shift_hours = float(payload["shift_hours"])
-    shift_type: ShiftType = payload.get("shift_type") or "day"
-    if shift_type not in ("day", "night"):
-        raise ValueError("shift_type must be 'day' or 'night'")
-    total_shifts = int(payload["total_shifts"])
+    day_start = float(getattr(settings, "day_start_hour", 6.0) or 6.0)
+    day_end = float(getattr(settings, "day_end_hour", 18.0) or 18.0)
+    if "day_start_hour" in payload:
+        day_start = float(payload["day_start_hour"])
+    if "day_end_hour" in payload:
+        day_end = float(payload["day_end_hour"])
+
+    works_start = date.fromisoformat(payload["works_start"])
+    # Days of work counted from shift start date (inclusive)
+    days_of_work = payload.get("days_of_work")
+    shifts_per_day = int(payload.get("shifts_per_day") or 1)
+    if shifts_per_day <= 0:
+        raise ValueError("shifts_per_day must be positive")
+
+    if days_of_work is not None:
+        days_of_work = int(days_of_work)
+        if days_of_work <= 0:
+            raise ValueError("days_of_work must be positive")
+        works_end = works_start + timedelta(days=days_of_work - 1)
+        total_shifts = days_of_work * shifts_per_day
+    else:
+        works_end = date.fromisoformat(payload.get("works_end") or payload["works_start"])
+        if works_end < works_start:
+            raise ValueError("works_end must be on or after works_start")
+        days_of_work = (works_end - works_start).days + 1
+        if "total_shifts" in payload:
+            total_shifts = int(payload["total_shifts"])
+        else:
+            total_shifts = days_of_work * shifts_per_day
+
     if shift_hours <= 0 or total_shifts <= 0:
         raise ValueError("shift_hours and total_shifts must be positive")
 
-    works_start = date.fromisoformat(payload["works_start"])
-    works_end = date.fromisoformat(payload.get("works_end") or payload["works_start"])
+    # Shift start time drives day/night classification when type not forced
+    shift_start_time = payload.get("shift_start_time")  # "HH:MM" or "HH:MM:SS"
+    shift_type_raw = payload.get("shift_type")
+    if shift_type_raw in ("day", "night"):
+        shift_type: ShiftType = shift_type_raw
+    elif shift_start_time:
+        try:
+            parts = [int(p) for p in str(shift_start_time).split(":")[:2]]
+            hh, mm = parts[0], parts[1] if len(parts) > 1 else 0
+        except (TypeError, ValueError) as exc:
+            raise ValueError("shift_start_time must be HH:MM") from exc
+        mid = datetime.combine(works_start, datetime.min.time()).replace(
+            hour=hh, minute=mm
+        ) + timedelta(hours=shift_hours / 2)
+        shift_type = classify_shift_type(mid, day_start_hour=day_start, day_end_hour=day_end)
+    else:
+        shift_type = "day"
+
     lead_days = int(payload.get("vms_lead_days", settings.vms_lead_days_default))
     vms_qty = int(payload.get("vms_quantity") or 0)
 
@@ -632,10 +698,15 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
         "inputs_echo": {
             "shift_hours": shift_hours,
             "shift_type": shift_type,
+            "shift_start_time": shift_start_time,
+            "days_of_work": days_of_work,
+            "shifts_per_day": shifts_per_day,
             "total_shifts": total_shifts,
             "overtime_after_hours": overtime_after,
             "works_start": works_start.isoformat(),
             "works_end": works_end.isoformat(),
+            "day_start_hour": day_start,
+            "day_end_hour": day_end,
             "resources": (labour.get("allocation") or {}).get("requested"),
         },
         "per_shift": labour,
@@ -649,14 +720,22 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
     }
 
 
-def _shift_type_sequence(start: datetime, shift_hours: float, count: int) -> list[ShiftType]:
-    """Classify each back-to-back shift as day (06:00–18:00) or night."""
+def _shift_type_sequence(
+    start: datetime,
+    shift_hours: float,
+    count: int,
+    *,
+    day_start_hour: float = 6.0,
+    day_end_hour: float = 18.0,
+) -> list[ShiftType]:
+    """Classify each back-to-back shift as day or night from midpoint vs configured window."""
     types: list[ShiftType] = []
     cursor = start
     for _ in range(count):
         mid = cursor + timedelta(hours=shift_hours / 2)
-        hour = mid.hour + mid.minute / 60
-        types.append("day" if 6 <= hour < 18 else "night")
+        types.append(
+            classify_shift_type(mid, day_start_hour=day_start_hour, day_end_hour=day_end_hour)
+        )
         cursor += timedelta(hours=shift_hours)
     return types
 
@@ -676,7 +755,19 @@ def _closure_option(
     if duration_h <= 0:
         raise ValueError("closure end must be after start")
     shifts = int(math.ceil(duration_h / shift_hours - 1e-9))
-    types = _shift_type_sequence(start, shift_hours, shifts)
+    day_start = float(
+        payload.get("day_start_hour", getattr(settings, "day_start_hour", 6.0) or 6.0)
+    )
+    day_end = float(
+        payload.get("day_end_hour", getattr(settings, "day_end_hour", 18.0) or 18.0)
+    )
+    types = _shift_type_sequence(
+        start,
+        shift_hours,
+        shifts,
+        day_start_hour=day_start,
+        day_end_hour=day_end,
+    )
 
     per_shift = []
     pack_labour_total = 0.0

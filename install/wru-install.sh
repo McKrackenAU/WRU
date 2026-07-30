@@ -373,7 +373,37 @@ systemctl daemon-reload
 systemctl enable -q --now "$SERVICE_NAME"
 msg_ok "Created and started ${SERVICE_NAME}.service"
 
-echo "${APP_BRANCH}" >"/opt/${APP_SLUG}_version.txt"
+msg_info "Installing GitHub update helper"
+UPDATE_SRC="${APP_DIR}/scripts/wru-update.sh"
+if [[ -f "$UPDATE_SRC" ]]; then
+  install -m 755 "$UPDATE_SRC" /usr/local/sbin/wru-update
+  cat >/etc/sudoers.d/wru-update <<'EOF'
+# Allow WRU service user to pull/install updates from GitHub without a password
+wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
+wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
+wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update.service
+EOF
+  chmod 440 /etc/sudoers.d/wru-update
+  msg_ok "Installed /usr/local/sbin/wru-update (sudo for user wru)"
+else
+  msg_warn "scripts/wru-update.sh missing — skipped update helper"
+fi
+
+COMMIT="$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+APP_VER="$(python3 - <<'PY'
+import re, pathlib
+text = pathlib.Path("/opt/wru/app/main.py").read_text()
+m = re.search(r'version\s*=\s*"([^"]+)"', text)
+print(m.group(1) if m else "unknown")
+PY
+)"
+cat >"/opt/${APP_SLUG}_version.txt" <<EOF
+branch=${APP_BRANCH}
+repo=${APP_GIT}
+app_version=${APP_VER}
+updated_at=$(date -Is)
+commit=${COMMIT}
+EOF
 chmod 644 "/opt/${APP_SLUG}_version.txt"
 
 # Helper MOTD tip
@@ -383,6 +413,7 @@ if [[ -d /etc/update-motd.d ]]; then
 echo ""
 echo "  WRU TGS Tracker   →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}"
 echo "  Service          →  systemctl status ${SERVICE_NAME}"
+echo "  Update           →  sudo wru-update   or  /system in the UI"
 echo "  Database         →  PostgreSQL (${PG_DB})"
 echo "  Uploads          →  ${DATA_DIR}/uploads"
 echo ""
@@ -398,5 +429,6 @@ IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo -e "\n${INFO:-ℹ} ${APP} installed."
 echo -e "Access URL: http://${IP_ADDR:-<container-ip>}:${APP_PORT}"
 echo -e "Service:    systemctl status ${SERVICE_NAME}"
+echo -e "Update:     sudo wru-update  (or open /system)"
 echo -e "Database:   PostgreSQL db=${PG_DB} user=${PG_USER}"
 echo -e "Uploads:    ${DATA_DIR}/uploads\n"

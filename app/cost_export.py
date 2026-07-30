@@ -96,8 +96,13 @@ def build_cost_workbook(
         allow = per.get("allowances") or {}
         rows = [
             ("Shift type", echo.get("shift_type")),
+            ("Shift start time", echo.get("shift_start_time")),
             ("Shift hours", echo.get("shift_hours")),
+            ("Days of work", echo.get("days_of_work")),
+            ("Shifts per day", echo.get("shifts_per_day")),
             ("Total shifts", echo.get("total_shifts")),
+            ("Works start", echo.get("works_start")),
+            ("Works end", echo.get("works_end")),
             ("Per-shift pack labour", _money(per.get("shift_labour_total"))),
             ("Per-shift travel", _money(allow.get("travel_total"))),
             ("Per-shift meals", _money(allow.get("meal_total"))),

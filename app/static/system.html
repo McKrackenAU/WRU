@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>System · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>System &amp; updates</h1>
+          <p>Pull the latest WRU release from GitHub and reinstall in place. Database and uploads are kept.</p>
+        </div>
+      </div>
+
+      <section class="panel-card">
+        <h2>Installed version</h2>
+        <div class="form-grid" id="sysMeta">
+          <p class="hint">Loading…</p>
+        </div>
+      </section>
+
+      <section class="panel-card">
+        <h2>Update from GitHub</h2>
+        <div class="form-grid">
+          <label>Git branch
+            <input id="updBranch" type="text" value="main" />
+          </label>
+          <label class="full">Git repository URL
+            <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" />
+          </label>
+        </div>
+        <p class="hint">
+          Runs <code>sudo /usr/local/sbin/wru-update</code> on this host (same path as re-running the Proxmox helper inside the CT).
+          The app service restarts when finished — this page may briefly disconnect.
+        </p>
+        <div class="toolbar" style="margin-top:0.85rem">
+          <button type="button" class="btn btn-primary" id="btnUpdate">Pull &amp; install update</button>
+          <button type="button" class="btn" id="btnRefresh">Refresh status</button>
+          <span class="hint" id="updStatus"></span>
+        </div>
+        <pre id="updLog" class="hint" style="margin-top:1rem;white-space:pre-wrap;max-height:280px;overflow:auto" hidden></pre>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/static/js/system.js"></script>
+</body>
+</html>

@@ -189,7 +189,7 @@ function renderStandard(result) {
     <div class="stat-grid">
       <div class="stat-card"><div class="label">Per shift labour</div><div class="value money-total">${money(p.shift_labour_total)}</div></div>
       <div class="stat-card"><div class="label">Per shift total (incl. allowances)</div><div class="value money-total">${money(p.shift_total)}</div></div>
-      <div class="stat-card"><div class="label">Site crew (${result.inputs_echo.total_shifts} shifts)</div><div class="value money-total">${money(result.site_crew_total ?? result.site_labour_total)}</div></div>
+      <div class="stat-card"><div class="label">Site crew (${result.inputs_echo.total_shifts} shifts · ${result.inputs_echo.days_of_work || "—"} days)</div><div class="value money-total">${money(result.site_crew_total ?? result.site_labour_total)}</div></div>
       <div class="stat-card"><div class="label">VMS total</div><div class="value money-total">${money(result.vms.vms_total)}</div></div>
       <div class="stat-card"><div class="label">Site traffic total</div><div class="value money-total">${money(result.site_traffic_total)}</div></div>
     </div>
@@ -197,7 +197,7 @@ function renderStandard(result) {
     ${allowancesBlock(p.allowances)}
     <div>
       <strong>Best rate mix (per shift)</strong>
-      (${escapeHtml(result.inputs_echo.shift_type)}, ${result.inputs_echo.shift_hours}h, OT after ${result.inputs_echo.overtime_after_hours}h)
+      (${escapeHtml(result.inputs_echo.shift_type)}${result.inputs_echo.shift_start_time ? ` from ${escapeHtml(result.inputs_echo.shift_start_time)}` : ""}, ${result.inputs_echo.shift_hours}h, OT after ${result.inputs_echo.overtime_after_hours}h)
       ${labourTable(p.lines)}
     </div>
     ${vmsBlock(result.vms)}
@@ -368,11 +368,33 @@ async function loadEstimates() {
     : `<li><p class="meta">No saved estimates yet for this view.</p></li>`;
 }
 
-async function calcStandard() {
+function addDaysISO(iso, days) {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function syncWorkSpan() {
+  const start = $("sStart").value || todayISO();
+  const days = Math.max(1, Number($("sDays").value) || 1);
+  const perDay = Math.max(1, Number($("sPerDay").value) || 1);
+  $("sStart").value = start;
+  $("sDays").value = String(days);
+  $("sPerDay").value = String(perDay);
+  $("sEnd").value = addDaysISO(start, days - 1);
+  $("sShifts").value = String(days * perDay);
+}
+
+function standardPayload() {
+  syncWorkSpan();
+  const typeSel = $("sType").value;
   const payload = {
+    days_of_work: Number($("sDays").value),
+    shifts_per_day: Number($("sPerDay").value),
     total_shifts: Number($("sShifts").value),
     shift_hours: Number($("sHours").value),
-    shift_type: $("sType").value,
+    shift_start_time: $("sStartTime").value || "20:00",
     overtime_after_hours: Number($("sOt").value),
     works_start: $("sStart").value,
     works_end: $("sEnd").value || $("sStart").value,
@@ -380,10 +402,15 @@ async function calcStandard() {
     vms_lead_days: Number($("sVmsLead").value),
     resources: resourcesFrom("s"),
   };
+  if (typeSel === "day" || typeSel === "night") payload.shift_type = typeSel;
+  return payload;
+}
+
+async function calcStandard() {
   const result = await api("/api/costs/calculate/standard", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(standardPayload()),
   });
   renderStandard(result);
 }
@@ -419,15 +446,7 @@ async function saveEstimate(mode) {
   if (!name) return;
   const inputs =
     mode === "standard"
-      ? {
-          total_shifts: Number($("sShifts").value),
-          shift_hours: Number($("sHours").value),
-          shift_type: $("sType").value,
-          works_start: $("sStart").value,
-          works_end: $("sEnd").value,
-          vms_quantity: Number($("sVmsQty").value),
-          resources: resourcesFrom("s"),
-        }
+      ? standardPayload()
       : {
           closure_start: $("cStart").value,
           closure_end: $("cEnd").value,
@@ -487,12 +506,17 @@ async function init() {
   $("sVmsLead").value = settings.vms_lead_days_default;
   $("cVmsLead").value = settings.vms_lead_days_default;
   $("sStart").value = todayISO();
-  $("sEnd").value = todayISO();
+  syncWorkSpan();
   const clo = defaultClosureTimes();
   $("cStart").value = clo.start;
   $("cEnd").value = clo.end;
 
   await loadEstimates();
+
+  ["sStart", "sDays", "sPerDay"].forEach((id) => {
+    $(id)?.addEventListener("change", syncWorkSpan);
+    $(id)?.addEventListener("input", syncWorkSpan);
+  });
 
   document.querySelectorAll(".tabs [data-tab]").forEach((btn) => {
     btn.addEventListener("click", () => {

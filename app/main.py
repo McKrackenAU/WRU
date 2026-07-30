@@ -22,6 +22,7 @@ from .routers import (
     map_layers,
     sites,
     stages,
+    system,
     tracking,
 )
 from .schemas import MetaOut
@@ -32,7 +33,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = FastAPI(
     title="WRU TGS Tracker",
     description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, documents, archive, and map.",
-    version="1.3.0",
+    version="1.4.0",
 )
 
 run_migrations()
@@ -46,6 +47,7 @@ app.include_router(export.router)
 app.include_router(map_layers.router)
 app.include_router(costs.router)
 app.include_router(stages.router)
+app.include_router(system.router)
 
 
 @app.get("/api/meta", response_model=MetaOut)
@@ -129,6 +131,11 @@ def costs_page():
 @app.get("/rates")
 def rates_page():
     return _page("rates.html")
+
+
+@app.get("/system")
+def system_page():
+    return _page("system.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

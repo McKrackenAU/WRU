@@ -68,6 +68,8 @@ def run_migrations() -> None:
     ensure_column("cost_settings", "travel_allowance", "travel_allowance DOUBLE PRECISION NOT NULL DEFAULT 45")
     ensure_column("cost_settings", "meal_allowance", "meal_allowance DOUBLE PRECISION NOT NULL DEFAULT 30")
     ensure_column("cost_settings", "meal_after_hours", "meal_after_hours DOUBLE PRECISION NOT NULL DEFAULT 9.5")
+    ensure_column("cost_settings", "day_start_hour", "day_start_hour DOUBLE PRECISION NOT NULL DEFAULT 6")
+    ensure_column("cost_settings", "day_end_hour", "day_end_hour DOUBLE PRECISION NOT NULL DEFAULT 18")
 
     # site / council expansions for generic MoA + council SLA
     ensure_column("sites", "is_generic_moa", "is_generic_moa BOOLEAN NOT NULL DEFAULT FALSE")

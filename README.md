@@ -72,6 +72,16 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ins
 
 Re-run the same `ct/wru.sh` **inside** the WRU container (or re-run `install/wru-install.sh`). App code updates; PostgreSQL data and `/opt/wru-data/uploads` are kept. DB password in `/etc/default/wru` is reused.
 
+Or from the web UI: open **System** → **Pull & install update** (uses `sudo /usr/local/sbin/wru-update`).
+
+CLI on the WRU host/LXC:
+
+```bash
+sudo wru-update
+# or:
+WRU_BRANCH=main sudo -E /usr/local/sbin/wru-update
+```
+
 | Path | Purpose |
 |------|---------|
 | `/opt/wru` | Application |

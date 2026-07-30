@@ -46,6 +46,12 @@
           <label>Meals apply when shift over (hours)
             <input id="mealAfter" type="number" min="0.5" max="24" step="0.1" />
           </label>
+          <label>Day hours start (24h)
+            <input id="dayStart" type="number" min="0" max="23.5" step="0.5" />
+          </label>
+          <label>Day hours end (24h)
+            <input id="dayEnd" type="number" min="0" max="23.5" step="0.5" />
+          </label>
           <label>VMS default lead days
             <input id="vmsLead" type="number" min="0" max="60" step="1" />
           </label>
@@ -59,7 +65,7 @@
             <input id="vmsDay" type="number" min="0" step="0.01" />
           </label>
         </div>
-        <p class="hint">Travel and meals apply to TCs, TMA drivers, and spotters. Meals only when shift length is over the meal threshold (default 9.5h).</p>
+        <p class="hint">Travel and meals apply to TCs, TMA drivers, and spotters. Meals only when shift length is over the meal threshold (default 9.5h). Day window defaults to 06:00–18:00; times outside that window use night rates (24h closure and auto shift type).</p>
         <div class="toolbar" style="margin-top:0.85rem">
           <button type="button" class="btn btn-primary" id="btnSaveSettings">Save defaults</button>
           <span class="hint" id="settingsStatus"></span>
