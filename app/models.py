@@ -1,0 +1,349 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import JSON
+
+from .database import Base
+
+# Fallback constants — live config is WorkflowStageDef (seeded from these keys).
+WORKFLOW_STAGES = [
+    "tgs_markup_completed",
+    "submitted_to_tmd",
+    "ventia_review",
+    "plan_received",
+    "ready_to_submit_moa",
+    "moa_submitted",
+    "moa_with_trims",
+    "revision_needed",
+    "moa_received",
+    "ready_for_works",
+]
+
+WORKFLOW_LABELS = {
+    "tgs_markup_completed": "TGS Markup completed",
+    "submitted_to_tmd": "Submitted to traffic management (waiting for plans)",
+    "ventia_review": "Ventia review",
+    "plan_received": "Plan received",
+    "ready_to_submit_moa": "Waiting to submit to DTP",
+    "moa_submitted": "MoA submitted (Permits team)",
+    "moa_with_trims": "MoA with TRIMS team",
+    "revision_needed": "Revision needed",
+    "moa_received": "MoA received / approved",
+    "ready_for_works": "Ready for works",
+}
+
+DOC_CATEGORIES = [
+    "email",
+    "tgs",
+    "plan",
+    "moa",
+    "correspondence",
+    "photo",
+    "other",
+]
+
+
+class WorkflowStageDef(Base):
+    """Admin-configurable workflow stages (order, labels, client-list roles)."""
+
+    __tablename__ = "workflow_stage_defs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # none | permits | trims | complete
+    list_role: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+    counts_toward_progress: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ProgramCategory(Base):
+    """Parent application categories (Lifecycle pavements, Assets, etc.)."""
+
+    __tablename__ = "program_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class Site(Base):
+    __tablename__ = "sites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    road_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    site_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    program: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    tgs_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    indicative_site_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    moa_must_have_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)
+    moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    moa_submission_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_generic_moa: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    linked_generic_moa_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    financial_year: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_fy: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    custom_fields: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    councils: Mapped[list[SiteCouncil]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", lazy="selectin"
+    )
+    workflow_steps: Mapped[list[WorkflowStep]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", lazy="joined"
+    )
+    tracking_events: Mapped[list[TrackingEvent]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", lazy="selectin"
+    )
+    documents: Mapped[list[Document]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", lazy="selectin"
+    )
+    map_features: Mapped[list[MapFeature]] = relationship(
+        back_populates="site", lazy="selectin"
+    )
+    cost_estimates: Mapped[list[CostEstimate]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class SiteCouncil(Base):
+    __tablename__ = "site_councils"
+    __table_args__ = (UniqueConstraint("site_id", "council_name", name="uq_site_council"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    council_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    submitted_to_council_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    no_objection_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    site: Mapped[Site] = relationship(back_populates="councils")
+
+
+class WorkflowStep(Base):
+    __tablename__ = "workflow_steps"
+    __table_args__ = (UniqueConstraint("site_id", "stage", name="uq_site_stage"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[str] = mapped_column(String(64), nullable=False)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    site: Mapped[Site] = relationship(back_populates="workflow_steps")
+
+
+class CustomColumn(Base):
+    __tablename__ = "custom_columns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    field_key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    field_type: Mapped[str] = mapped_column(String(32), nullable=False, default="text")
+    options: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class TrackingEvent(Base):
+    __tablename__ = "tracking_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, default="note")
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    site: Mapped[Site] = relationship(back_populates="tracking_events")
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(32), nullable=False, default="other", index=True)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    site: Mapped[Site] = relationship(back_populates="documents")
+
+
+class MapLayer(Base):
+    __tablename__ = "map_layers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    financial_year: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    feature_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    features: Mapped[list[MapFeature]] = relationship(
+        back_populates="layer", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class MapFeature(Base):
+    __tablename__ = "map_features"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    layer_id: Mapped[int] = mapped_column(ForeignKey("map_layers.id", ondelete="CASCADE"), index=True)
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    geometry: Mapped[dict] = mapped_column(JSON, nullable=False)
+    properties: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    layer: Mapped[MapLayer] = relationship(back_populates="features")
+    site: Mapped[Site | None] = relationship(back_populates="map_features")
+
+
+class CostSettings(Base):
+    """Singleton-ish settings row (id=1) for calculator defaults."""
+
+    __tablename__ = "cost_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    overtime_after_hours: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
+    vms_lead_days_default: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    vms_delivery_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    vms_collection_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    vms_day_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Per-head allowances (TCs + TMA drivers + spotters)
+    travel_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=45.0)
+    meal_allowance: Mapped[float] = mapped_column(Float, nullable=False, default=30.0)
+    meal_after_hours: Mapped[float] = mapped_column(Float, nullable=False, default=9.5)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class LabourRate(Base):
+    """Rate card: TC packs (1–4 ± vehicle), TMA, spotter, or legacy per-head."""
+
+    __tablename__ = "labour_rates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    # crew_pack | tma | spotter | legacy
+    rate_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="crew_pack")
+    # TCs covered by one unit (1–4 for crew_pack; 0 for tma; 1 for spotter/legacy)
+    pack_people: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    includes_vehicle: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    day_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    day_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    night_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    night_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CostEstimate(Base):
+    """Saved traffic management cost estimate linked to a site / MoA."""
+
+    __tablename__ = "cost_estimates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    summary_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    site: Mapped[Site | None] = relationship(back_populates="cost_estimates")
+    attachments: Mapped[list[CostEstimateAttachment]] = relationship(
+        back_populates="estimate", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class CostEstimateAttachment(Base):
+    """Files attached to a cost estimate (quotes, emails, PDFs, etc.)."""
+
+    __tablename__ = "cost_estimate_attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    estimate_id: Mapped[int] = mapped_column(
+        ForeignKey("cost_estimates.id", ondelete="CASCADE"), index=True
+    )
+    stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    estimate: Mapped[CostEstimate] = relationship(back_populates="attachments")

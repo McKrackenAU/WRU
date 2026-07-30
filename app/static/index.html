@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#004825" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
+  <title>Sites · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else {
+          document.documentElement.style.colorScheme = "light";
+        }
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Active sites</h1>
+          <p>Current financial-year TGS / MoA register</p>
+        </div>
+        <div class="toolbar">
+          <a class="btn" href="/lists">Client lists</a>
+          <a class="btn" href="/api/export/permits-list.xlsx">Permits Excel</a>
+          <a class="btn" href="/api/export/trims-list.xlsx">TRIMS Excel</a>
+          <button type="button" class="btn" id="btnColumns">Columns</button>
+          <button type="button" class="btn btn-primary" id="btnAddSite">Add site</button>
+        </div>
+      </div>
+      <div class="filters">
+        <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
+        <select id="priorityFilter" aria-label="Priority filter">
+          <option value="">All priorities</option>
+          <option value="1">Priority 1 (&lt; 21 days)</option>
+          <option value="2">Priority 2</option>
+        </select>
+        <select id="programFilter" aria-label="Program filter"><option value="">All programs</option></select>
+        <select id="stageFilter" aria-label="Stage filter"><option value="">All stages</option></select>
+        <select id="councilFilter" aria-label="Council filter"><option value="">All councils</option></select>
+        <select id="listFilter" aria-label="Client list filter">
+          <option value="">All client lists</option>
+          <option value="permits">On Permits list</option>
+          <option value="trims">On TRIMS list</option>
+          <option value="none">Not on client lists</option>
+        </select>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll" id="tableScroll">
+          <table class="data-table" id="sitesTable">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody">
+              <tr><td class="empty" colspan="20">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="foot-note" id="statusLine">Ready</p>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+
+  <dialog id="siteDialog" class="panel">
+    <form method="dialog" id="siteForm">
+      <header class="panel-head">
+        <h2 id="siteDialogTitle">Add site</h2>
+        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body form-grid">
+        <input type="hidden" id="siteId" />
+        <label>Road name<input id="fRoad" required maxlength="255" /></label>
+        <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
+        <label>Program category
+          <select id="fProgram"><option value="">Select…</option></select>
+        </label>
+        <label>TGS reference<input id="fTgs" maxlength="128" /></label>
+        <label>Indicative start<input id="fStart" type="date" /></label>
+        <label>MoA must-have received<input id="fMustHave" type="date" /></label>
+        <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
+        <label>MoA submission date<input id="fMoaSub" type="date" /></label>
+        <label class="full"><span><input id="fGenericMoa" type="checkbox" /> This record is a generic MoA / TGS</span></label>
+        <label class="full">Link generic MoA (moves site to ready for works)
+          <select id="fLinkedGeneric"><option value="">None</option></select>
+        </label>
+        <label class="full">Markup KML (optional)<input id="fKml" type="file" accept=".kml,.xml" /></label>
+        <div class="full">
+          <div class="page-head" style="margin-bottom:0.35rem">
+            <strong>Councils</strong>
+            <button type="button" class="btn" id="btnAddCouncil">Add council</button>
+          </div>
+          <div id="councilRows"></div>
+          <p class="hint">Track submit + no-objection dates. After 21 business days without a response we assume no objection.</p>
+        </div>
+        <label class="full">Comments<textarea id="fComments" rows="3"></textarea></label>
+        <p class="hint full" id="autosaveStatus" hidden></p>
+        <fieldset class="full workflow-edit">
+          <legend>Workflow progress</legend>
+          <div id="workflowChecks" class="workflow-checks"></div>
+        </fieldset>
+        <fieldset class="full" id="customFieldsEdit">
+          <legend>Custom fields</legend>
+          <div id="customFieldsGrid" class="form-grid"></div>
+        </fieldset>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-danger" id="btnArchiveSite" hidden>Archive to FY</button>
+        <div class="spacer"></div>
+        <button type="submit" value="cancel" class="btn">Cancel</button>
+        <button type="submit" value="save" class="btn btn-primary">Save</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="columnsDialog" class="panel">
+    <form method="dialog" id="columnsForm">
+      <header class="panel-head">
+        <h2>Custom columns</h2>
+        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">Any user can add or remove columns. Values are stored per site.</p>
+        <ul id="columnList" class="column-list"></ul>
+        <div class="add-column form-grid">
+          <label>Name<input id="colName" maxlength="128" required /></label>
+          <label>Type
+            <select id="colType">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+              <option value="checkbox">Checkbox</option>
+              <option value="select">Select</option>
+            </select>
+          </label>
+          <label class="full" id="colOptionsWrap" hidden>Options (comma-separated)
+            <input id="colOptions" placeholder="Option A, Option B" />
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-primary" id="btnAddColumn">Add column</button>
+        <div class="spacer"></div>
+        <button type="submit" value="cancel" class="btn">Close</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="detailDialog" class="panel panel-wide">
+    <form method="dialog">
+      <header class="panel-head">
+        <div>
+          <h2 id="detailTitle">Site</h2>
+          <p class="tagline" id="detailSub"></p>
+        </div>
+        <button type="submit" value="cancel" class="icon-btn" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body detail-split">
+        <section>
+          <h3>Tracking</h3>
+          <div class="track-compose">
+            <select id="trackType">
+              <option value="note">Note</option>
+              <option value="status">Status</option>
+              <option value="chase">Chase</option>
+              <option value="issue">Issue</option>
+            </select>
+            <textarea id="trackMessage" rows="2" placeholder="Add a tracking update…"></textarea>
+            <button type="button" class="btn btn-primary" id="btnAddTrack">Add</button>
+          </div>
+          <ul id="trackList" class="event-list"></ul>
+        </section>
+        <section>
+          <h3>MoA documents</h3>
+          <div class="upload-row" style="flex-wrap:wrap">
+            <select id="docCategory">
+              <option value="email">Email</option>
+              <option value="tgs">TGS</option>
+              <option value="plan">Plan</option>
+              <option value="moa">MoA</option>
+              <option value="correspondence">Correspondence</option>
+              <option value="photo">Photo</option>
+              <option value="other">Other</option>
+            </select>
+            <input type="text" id="docDesc" placeholder="Description" />
+            <input type="file" id="docFile" />
+            <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
+          </div>
+          <p class="hint">Attach emails (.eml/.msg), plans, TGS, MoA PDFs — all kept against this MoA/site.</p>
+          <ul id="docList" class="event-list"></ul>
+        </section>
+      </div>
+      <div class="panel-body" style="padding-top:0">
+        <section>
+          <div class="page-head" style="margin-bottom:0.5rem">
+            <div>
+              <h3 style="margin:0">Traffic cost history</h3>
+              <p class="hint" style="margin:0.25rem 0 0">Saved calculator runs and quote attachments for this MoA.</p>
+            </div>
+            <a class="btn btn-primary" id="btnOpenCosts" href="/costs">New cost estimate</a>
+          </div>
+          <ul id="costList" class="event-list"></ul>
+        </section>
+      </div>
+      <footer class="panel-foot">
+        <button type="submit" value="cancel" class="btn">Close</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

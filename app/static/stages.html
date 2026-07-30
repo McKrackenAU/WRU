@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Stages &amp; programs · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Stages &amp; program categories</h1>
+          <p>Configure workflow stages (including Permits / TRIMS / complete list roles) and parent program categories. Sites and client lists react automatically.</p>
+        </div>
+      </div>
+
+      <section class="panel-card">
+        <h2>Workflow stages</h2>
+        <p class="hint">List role: <strong>none</strong> = not on client lists · <strong>permits</strong> / <strong>trims</strong> = exclusive team list · <strong>complete</strong> = remove from both (approved / ready).</p>
+        <div class="table-card" style="box-shadow:none">
+          <div class="table-scroll" style="max-height:none">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>Key</th>
+                  <th>Position</th>
+                  <th>List role</th>
+                  <th>Progress</th>
+                  <th>Active</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="stageBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="form-grid" style="margin-top:1rem">
+          <label>Label<input id="sLabel" placeholder="e.g. Ventia review" /></label>
+          <label>Key (optional)<input id="sKey" placeholder="auto from label" /></label>
+          <label>List role
+            <select id="sRole">
+              <option value="none">none</option>
+              <option value="permits">permits</option>
+              <option value="trims">trims</option>
+              <option value="complete">complete</option>
+            </select>
+          </label>
+          <label><span><input id="sProgress" type="checkbox" checked /> Counts toward progress</span></label>
+        </div>
+        <div class="toolbar" style="margin-top:0.75rem">
+          <button type="button" class="btn btn-primary" id="btnAddStage">Add stage</button>
+        </div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>Program categories</h2>
+        <p class="hint">Parent categories for applications — Lifecycle pavements, Lifecycle structures, Assets, Routine maintenance, etc.</p>
+        <ul class="event-list" id="programList"></ul>
+        <div class="form-grid" style="margin-top:0.75rem">
+          <label>Name<input id="pName" placeholder="e.g. Lifecycle pavements" /></label>
+        </div>
+        <div class="toolbar" style="margin-top:0.75rem">
+          <button type="button" class="btn btn-primary" id="btnAddProgram">Add program</button>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/stages.js"></script>
+</body>
+</html>

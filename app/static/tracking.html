@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Tracking · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Program tracking</h1>
+          <p>Filter the whole active program by stage, council, priority, and client lists</p>
+        </div>
+        <div class="toolbar">
+          <a class="btn" href="/lists">Client lists</a>
+          <a class="btn" href="/api/export/permits-list.csv">Permits CSV</a>
+          <a class="btn btn-primary" href="/api/export/trims-list.csv">TRIMS CSV</a>
+          <a class="btn" href="/api/export/sites.csv">Export all active CSV</a>
+        </div>
+      </div>
+      <div class="filters">
+        <input id="search" type="search" placeholder="Search…" />
+        <select id="stageFilter"><option value="">All stages</option></select>
+        <select id="councilFilter"><option value="">All councils</option></select>
+        <select id="programFilter"><option value="">All programs</option></select>
+        <select id="priorityFilter">
+          <option value="">All priorities</option>
+          <option value="1">Priority 1</option>
+          <option value="2">Priority 2</option>
+        </select>
+        <select id="listFilter">
+          <option value="">All client lists</option>
+          <option value="permits">Permits list</option>
+          <option value="trims">TRIMS list</option>
+          <option value="none">Not on lists</option>
+        </select>
+      </div>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pri</th>
+                <th>Road</th>
+                <th>Site</th>
+                <th>Program</th>
+                <th>Councils</th>
+                <th>Current stage</th>
+                <th>%</th>
+                <th>Council wait</th>
+                <th>Start</th>
+                <th>Must-have</th>
+                <th>MoA #</th>
+                <th>TGS</th>
+                <th>Client list</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"><tr><td class="empty" colspan="13">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <p class="foot-note" id="statusLine"></p>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/tracking.js"></script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Client lists · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Client priority lists</h1>
+          <p>Permits and TRIMS are mutually exclusive. Approved / received MoAs leave both lists. Not yet submitted to DTP do not appear.</p>
+        </div>
+      </div>
+
+      <div class="split-2">
+        <section class="panel-card">
+          <div class="page-head" style="margin-bottom:0.75rem">
+            <div>
+              <h2 style="margin:0">Permits team</h2>
+              <p class="hint" id="permitsHint" style="margin:0.25rem 0 0">Loading…</p>
+            </div>
+            <div class="toolbar">
+              <a class="btn" href="/api/export/permits-list.csv">CSV</a>
+              <a class="btn btn-primary" href="/api/export/permits-list.xlsx">Excel</a>
+            </div>
+          </div>
+          <div class="table-card" style="box-shadow:none">
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Pri</th>
+                    <th>Road</th>
+                    <th>Site</th>
+                    <th>Program</th>
+                    <th>Stage</th>
+                    <th>Council wait</th>
+                    <th>MoA #</th>
+                  </tr>
+                </thead>
+                <tbody id="permitsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-card">
+          <div class="page-head" style="margin-bottom:0.75rem">
+            <div>
+              <h2 style="margin:0">TRIMS team</h2>
+              <p class="hint" id="trimsHint" style="margin:0.25rem 0 0">Loading…</p>
+            </div>
+            <div class="toolbar">
+              <a class="btn" href="/api/export/trims-list.csv">CSV</a>
+              <a class="btn btn-primary" href="/api/export/trims-list.xlsx">Excel</a>
+            </div>
+          </div>
+          <div class="table-card" style="box-shadow:none">
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Pri</th>
+                    <th>Road</th>
+                    <th>Site</th>
+                    <th>Program</th>
+                    <th>Stage</th>
+                    <th>Council wait</th>
+                    <th>MoA #</th>
+                  </tr>
+                </thead>
+                <tbody id="trimsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/lists.js"></script>
+</body>
+</html>

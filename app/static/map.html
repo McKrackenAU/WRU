@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Map · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHryRHqDt5lh8RSePm0QnQxmwuY=" crossorigin="" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Works map</h1>
+          <p>Import KML, draw a site markup, and click through to that year’s TGS / MoA</p>
+        </div>
+      </div>
+      <div class="map-layout">
+        <aside class="panel-card map-side">
+          <h2>Add site from map</h2>
+          <p class="hint">Draw a point, line, or polygon with the map tools, then save it to the register.</p>
+          <div class="filters" style="margin:0 0 0.75rem; flex-direction:column; align-items:stretch">
+            <input id="drawRoad" type="text" placeholder="Road name" />
+            <input id="drawSiteNo" type="text" placeholder="Site number" />
+            <select id="drawProgram"><option value="">Program…</option></select>
+            <button type="button" class="btn btn-primary" id="btnSaveDrawn" disabled>Save drawn site</button>
+            <button type="button" class="btn" id="btnClearDrawn">Clear drawing</button>
+          </div>
+          <h2>KML layers</h2>
+          <div class="filters" style="margin:0 0 0.75rem; flex-direction:column; align-items:stretch">
+            <select id="fyFilter"><option value="">All years</option></select>
+            <input id="layerName" type="text" placeholder="Layer name (optional)" />
+            <input id="kmlFile" type="file" accept=".kml,application/vnd.google-earth.kml+xml" />
+            <button type="button" class="btn btn-primary" id="btnUploadKml">Upload KML</button>
+          </div>
+          <ul class="event-list" id="layerList"></ul>
+          <p class="hint">Features auto-link when MoA # or site number appears in the KML name/properties. You can also link manually from the popup.</p>
+        </aside>
+        <div id="mapCanvas"></div>
+      </div>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script type="module" src="/static/js/map.js"></script>
+</body>
+</html>
