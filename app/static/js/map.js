@@ -148,11 +148,11 @@ async function refreshMap() {
 
   try {
     const b = geoLayer.getBounds();
-    if (b.isValid()) map.fitBounds(b.pad(0.1));
+    if (b.isValid()) map.fitBounds(b.pad(0.1), { animate: false });
   } catch (_) {
     /* empty layer */
   }
-  scheduleMapFix();
+  scheduleMapFix(true);
 }
 
 async function uploadKml() {
@@ -259,31 +259,37 @@ async function init() {
   map = L.map(canvas, {
     preferCanvas: true,
     zoomControl: true,
+    // Tile fade-in causes visible flashing while panning/zooming
+    fadeAnimation: false,
+    zoomAnimation: true,
+    markerZoomAnimation: true,
   }).setView([-37.8136, 144.9631], 11);
 
   baseTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap",
-    updateWhenIdle: false,
-    updateWhenZooming: false,
+    updateWhenIdle: true,
+    updateWhenZooming: true,
+    keepBuffer: 2,
   }).addTo(map);
 
   setupDraw();
-  map.whenReady(scheduleMapFix);
-  map.on("zoomend moveend", () => fixMapSize());
+  bindMapInteractionGuards();
+  map.whenReady(() => scheduleMapFix(true));
 
-  window.addEventListener("resize", scheduleMapFix);
+  window.addEventListener("resize", () => scheduleMapFix(true));
   document.getElementById("navToggle")?.addEventListener("click", () => {
-    setTimeout(scheduleMapFix, 50);
-    setTimeout(scheduleMapFix, 320);
+    setTimeout(() => scheduleMapFix(true), 280);
   });
 
   if (window.ResizeObserver) {
-    const ro = new ResizeObserver(() => scheduleMapFix());
-    ro.observe(canvas);
-    if (layout) ro.observe(layout);
-    const shellMain = document.querySelector(".shell-main");
-    if (shellMain) ro.observe(shellMain);
+    const ro = new ResizeObserver(() => {
+      if (mapInteracting) return;
+      scheduleMapFix(false);
+    });
+    // Observe the frame, not the Leaflet container (invalidateSize can churn that)
+    const frame = canvas.parentElement || layout || canvas;
+    ro.observe(frame);
   }
 
   const meta = await api("/api/meta");
@@ -333,7 +339,7 @@ async function init() {
 
   await refreshLayers();
   await refreshMap();
-  scheduleMapFix();
+  scheduleMapFix(true);
 }
 
 init().catch((err) => {
