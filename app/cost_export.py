@@ -248,31 +248,29 @@ def build_cost_pdf(
     site: dict[str, Any] | None = None,
     notes: str | None = None,
 ) -> bytes:
+    from .pdf_brand import GREEN, MUTED, ROW_ALT, RULE, branded_margins, draw_branded_page
+
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
-        leftMargin=16 * mm,
-        rightMargin=16 * mm,
-        topMargin=14 * mm,
-        bottomMargin=14 * mm,
         title=title,
+        **branded_margins(landscape_mode=False),
     )
+    site_bits = " · ".join(_site_lines(site)) if site else ""
+    doc.brand_eyebrow = "COST ESTIMATE"
+    doc.brand_title = title
+    doc.brand_subtitle = site_bits or "Traffic cost export"
+    doc.brand_doc_kind = "Cost Estimate"
+    doc.brand_product = "WRU TGS TRACKER"
+    doc.brand_footer_meta = site_bits[:60] if site_bits else "Traffic cost"
+
     styles = getSampleStyleSheet()
-    styles.add(
-        ParagraphStyle(
-            name="H1Ven",
-            parent=styles["Heading1"],
-            textColor=colors.HexColor("#0B3D2E"),
-            fontSize=16,
-            spaceAfter=6,
-        )
-    )
     styles.add(
         ParagraphStyle(
             name="Best",
             parent=styles["Normal"],
-            textColor=colors.HexColor("#0B3D2E"),
+            textColor=GREEN,
             fontSize=11,
             leading=14,
             spaceAfter=8,
@@ -286,23 +284,24 @@ def build_cost_pdf(
             fontSize=9,
             leading=12,
             spaceAfter=4,
+            textColor=colors.HexColor("#1a1a1a"),
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="MutedSmall",
+            parent=styles["Normal"],
+            fontSize=8,
+            leading=10,
+            spaceAfter=4,
+            textColor=MUTED,
         )
     )
 
     story: list[Any] = []
-    story.append(Paragraph("WRU TGS Tracker — Traffic cost export", styles["H1Ven"]))
-    story.append(Paragraph(title, styles["Heading2"]))
-    story.append(
-        Paragraph(
-            f"Exported {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            styles["BodySmall"],
-        )
-    )
-    for line in _site_lines(site):
-        story.append(Paragraph(line, styles["BodySmall"]))
     if notes:
-        story.append(Paragraph(f"Notes: {notes}", styles["BodySmall"]))
-    story.append(Spacer(1, 6))
+        story.append(Paragraph(f"Notes: {notes}", styles["MutedSmall"]))
+    story.append(Spacer(1, 4))
 
     booking = _booking_rows(result)
     if booking:
@@ -331,12 +330,13 @@ def build_cost_pdf(
         table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B3D2E")),
+                    ("BACKGROUND", (0, 0), (-1, 0), GREEN),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                    ("GRID", (0, 0), (-1, -1), 0.4, RULE),
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E8F5E9")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, ROW_ALT]),
+                    ("BACKGROUND", (0, -1), (-1, -1), ROW_ALT),
                     ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
                 ]
             )
@@ -360,10 +360,11 @@ def build_cost_pdf(
             pt.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1B5E4A")),
+                        ("BACKGROUND", (0, 0), (-1, 0), GREEN),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
+                        ("GRID", (0, 0), (-1, -1), 0.3, RULE),
                         ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ROW_ALT]),
                     ]
                 )
             )
@@ -411,13 +412,14 @@ def build_cost_pdf(
             )
         table = Table(data, colWidths=[42 * mm, 16 * mm, 28 * mm, 24 * mm, 24 * mm, 24 * mm, 28 * mm])
         style_cmds = [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B3D2E")),
+            ("BACKGROUND", (0, 0), (-1, 0), GREEN),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+            ("GRID", (0, 0), (-1, -1), 0.4, RULE),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
             ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ROW_ALT]),
         ]
         if best_row:
             style_cmds.append(
@@ -433,9 +435,9 @@ def build_cost_pdf(
                 "Travel applies to TCs, TMA drivers and spotters every shift. "
                 "Meals apply only when shift length exceeds the meal threshold (default 9.5h) — "
                 "so 12h shifts include meals while 8h shifts usually do not.",
-                styles["BodySmall"],
+                styles["MutedSmall"],
             )
         )
 
-    doc.build(story)
+    doc.build(story, onFirstPage=draw_branded_page, onLaterPages=draw_branded_page)
     return buf.getvalue()

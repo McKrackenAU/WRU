@@ -163,39 +163,35 @@ def _pdf_cell(text: Any, style: ParagraphStyle) -> Paragraph:
 
 
 def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
-    """Landscape A4 priority list suitable for client meetings / print."""
+    """Landscape A4 priority list with Ventia / VenInspect-style branding."""
+    from ..pdf_brand import (
+        GREEN,
+        MUTED,
+        ROW_ALT,
+        RULE,
+        WARN_TINT,
+        branded_margins,
+        draw_branded_page,
+    )
+
     buf = io.BytesIO()
-    page = landscape(A4)
     doc = SimpleDocTemplate(
         buf,
-        pagesize=page,
-        leftMargin=10 * mm,
-        rightMargin=10 * mm,
-        topMargin=10 * mm,
-        bottomMargin=10 * mm,
+        pagesize=landscape(A4),
         title=title,
+        **branded_margins(landscape_mode=True),
     )
+    doc.brand_eyebrow = "PRIORITY LIST"
+    doc.brand_title = title
+    doc.brand_subtitle = (
+        f"{team_label} · {len(rows)} site(s) · "
+        f"Council no-objection after {COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days"
+    )
+    doc.brand_doc_kind = "Priority List"
+    doc.brand_product = "WRU TGS TRACKER"
+    doc.brand_footer_meta = f"{team_label} · {len(rows)} site(s)"
+
     styles = getSampleStyleSheet()
-    styles.add(
-        ParagraphStyle(
-            name="ListTitle",
-            parent=styles["Heading1"],
-            textColor=colors.HexColor("#0B3D2E"),
-            fontSize=14,
-            leading=17,
-            spaceAfter=2,
-        )
-    )
-    styles.add(
-        ParagraphStyle(
-            name="ListSub",
-            parent=styles["Normal"],
-            fontSize=8,
-            leading=10,
-            textColor=colors.HexColor("#445055"),
-            spaceAfter=8,
-        )
-    )
     styles.add(
         ParagraphStyle(
             name="Th",
@@ -213,6 +209,7 @@ def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
             parent=styles["Normal"],
             fontSize=7.5,
             leading=9,
+            textColor=colors.HexColor("#1a1a1a"),
             alignment=TA_LEFT,
         )
     )
@@ -222,18 +219,20 @@ def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
             parent=styles["Normal"],
             fontSize=7.5,
             leading=9,
+            textColor=colors.HexColor("#1a1a1a"),
             alignment=TA_CENTER,
         )
     )
-
-    story: list[Any] = [
-        Paragraph(title, styles["ListTitle"]),
-        Paragraph(
-            f"{team_label} · Exported {date.today().isoformat()} · {len(rows)} site(s) · "
-            f"Council no-objection assumed after {COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days",
-            styles["ListSub"],
-        ),
-    ]
+    styles.add(
+        ParagraphStyle(
+            name="FootNote",
+            parent=styles["Normal"],
+            fontSize=7.5,
+            leading=9,
+            textColor=MUTED,
+            spaceBefore=6,
+        )
+    )
 
     headers = [
         "Pri",
@@ -277,49 +276,47 @@ def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
                 ]
             )
 
-    # Usable width on landscape A4 with 10mm margins ≈ 277mm
+    # Landscape A4 with 12mm margins ≈ 273mm usable
     col_widths = [
         12 * mm,  # Pri
-        42 * mm,  # Road
+        41 * mm,  # Road
         18 * mm,  # Site
         28 * mm,  # Program
         32 * mm,  # Stage
         20 * mm,  # Start
         28 * mm,  # Must-have
-        36 * mm,  # Council
+        35 * mm,  # Council
         20 * mm,  # MoA
-        41 * mm,  # Comments
+        39 * mm,  # Comments
     ]
     table = Table(data, colWidths=col_widths, repeatRows=1)
     style_cmds: list[tuple] = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B3D2E")),
+        ("BACKGROUND", (0, 0), (-1, 0), GREEN),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 3),
         ("RIGHTPADDING", (0, 0), (-1, -1), 3),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#C5D0C8")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F7F4")]),
+        ("GRID", (0, 0), (-1, -1), 0.25, RULE),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ROW_ALT]),
     ]
-    # Highlight priority 1 rows
     for i, row in enumerate(rows, start=1):
         if str(row.get("priority")) == "1":
-            style_cmds.append(
-                ("BACKGROUND", (0, i), (0, i), colors.HexColor("#FDE8D8"))
-            )
+            style_cmds.append(("BACKGROUND", (0, i), (0, i), WARN_TINT))
     if not rows:
         style_cmds.append(("SPAN", (0, 1), (-1, 1)))
     table.setStyle(TableStyle(style_cmds))
-    story.append(table)
-    story.append(Spacer(1, 6 * mm))
-    story.append(
+
+    story: list[Any] = [
+        table,
+        Spacer(1, 4 * mm),
         Paragraph(
-            "WRU TGS Tracker · Ventia — confidential priority list for client coordination.",
-            styles["ListSub"],
-        )
-    )
-    doc.build(story)
+            "Ventia — confidential priority list for client coordination.",
+            styles["FootNote"],
+        ),
+    ]
+    doc.build(story, onFirstPage=draw_branded_page, onLaterPages=draw_branded_page)
     return buf.getvalue()
 
 
