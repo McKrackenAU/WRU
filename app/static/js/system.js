@@ -20,11 +20,13 @@ function setStep(name, state) {
   if (!el) return;
   el.classList.remove("ok", "bad", "pending");
   el.classList.add(state);
+  const mark = el.querySelector(".mark");
+  if (mark) {
+    mark.textContent = state === "ok" ? "✓" : state === "bad" ? "!" : "·";
+  }
 }
 
 function renderSteps(s) {
-  const helperOk = Boolean(s.can_update) || !(s.detail || "").toLowerCase().includes("not installed");
-  // Heuristic from status fields
   if (!s.can_update && (s.detail || "").toLowerCase().includes("not installed")) {
     setStep("helper", "bad");
     setStep("sudo", "pending");
@@ -38,17 +40,26 @@ function renderSteps(s) {
     setStep("sudo", "ok");
     setStep("ready", "ok");
   }
-  void helperOk;
 }
 
 function renderStatus(s) {
   const tag = s.version_tag || (s.app_version ? `v${String(s.app_version).replace(/^v/i, "")}` : "—");
+  const commit = s.commit || "—";
+  const when = s.updated_at || "—";
+
+  if ($("nowVersion")) $("nowVersion").textContent = tag;
+  if ($("nowMeta")) {
+    $("nowMeta").textContent = [s.branch || "main", commit !== "—" ? commit : null, when !== "—" ? when : null]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   $("sysMeta").innerHTML = `
-    <label>App version<input readonly value="${escapeHtml(tag)}" /></label>
-    <label>Branch / ref<input readonly value="${escapeHtml(s.branch || "—")}" /></label>
-    <label>Commit<input readonly value="${escapeHtml(s.commit || "—")}" /></label>
-    <label>Last updated<input readonly value="${escapeHtml(s.updated_at || "—")}" /></label>
-    <label class="full">Repository<input readonly value="${escapeHtml(s.repo || "—")}" /></label>
+    <div class="version-chip accent"><span class="k">Version</span><span class="v">${escapeHtml(tag)}</span></div>
+    <div class="version-chip"><span class="k">Branch</span><span class="v">${escapeHtml(s.branch || "—")}</span></div>
+    <div class="version-chip"><span class="k">Commit</span><span class="v">${escapeHtml(commit)}</span></div>
+    <div class="version-chip"><span class="k">Updated</span><span class="v">${escapeHtml(when)}</span></div>
+    <div class="version-chip" style="grid-column:1/-1"><span class="k">Repository</span><span class="v">${escapeHtml(s.repo || "—")}</span></div>
   `;
 
   if ($("updBranch") && !$("updBranch").dataset.touched) {
@@ -69,20 +80,21 @@ function renderStatus(s) {
   if (!s.can_update) {
     $("updHint").textContent =
       s.detail ||
-      "In-app updates are not ready yet. Open “Advanced: update from the shell” and run the command once as root.";
+      "Almost there — open “Need a first-time shell setup?” below, run the command once, then hit Refresh.";
     setAlert(
       "warn",
-      `<strong>Updater not ready.</strong> ${escapeHtml(s.detail || "Run the shell update once, then refresh.")}`
+      `<strong>One quick setup step left.</strong> ${escapeHtml(
+        s.detail || "Run the shell update once as root, then refresh this page."
+      )}`
     );
   } else {
     $("updHint").textContent =
-      s.detail ||
-      "Ready. Click Pull & install — the service restarts itself when the update finishes.";
+      s.detail || "All set. Hit the green button whenever you want the latest from GitHub.";
     setAlert(
       "ok",
-      `<strong>Ready to update.</strong> Current install: ${escapeHtml(tag)}${
-        s.commit ? ` · ${escapeHtml(s.commit)}` : ""
-      }.`
+      `<strong>Ready when you are.</strong> Currently on ${escapeHtml(tag)}${
+        s.commit ? ` (${escapeHtml(s.commit)})` : ""
+      }. Database and uploads are kept.`
     );
   }
 }
@@ -92,12 +104,12 @@ function renderHistory(payload) {
   const can = payload.current?.can_update;
   const max = payload.max_history || 5;
   $("histHint").textContent = history.length
-    ? `${history.length} of ${max} prior version(s) available for rollback.`
-    : `Up to ${max} prior installs can be restored. Empty until the first update after this release.`;
+    ? `${history.length} of ${max} earlier installs ready if you need to roll back.`
+    : `After your next update we’ll keep up to ${max} earlier installs here for rollback.`;
 
   const body = $("histBody");
   if (!history.length) {
-    body.innerHTML = `<tr><td class="empty" colspan="4">No prior versions recorded yet.</td></tr>`;
+    body.innerHTML = `<tr><td class="empty" colspan="4">Nothing to roll back to yet — that’s normal on a fresh install.</td></tr>`;
     return;
   }
   body.innerHTML = history
@@ -169,10 +181,10 @@ async function waitForChange(beforeUpdatedAt, successLabel) {
       const payload = await loadVersions();
       const s = payload.current;
       if (s.updated_at && s.updated_at !== beforeUpdatedAt) {
-        $("updStatus").textContent = `${successLabel} · ${s.version_tag || s.app_version} (${s.commit || s.branch})`;
+        $("updStatus").textContent = `${successLabel} · ${s.version_tag || s.app_version}`;
         setAlert(
           "ok",
-          `<strong>${escapeHtml(successLabel)}.</strong> Now running ${escapeHtml(
+          `<strong>${escapeHtml(successLabel)}.</strong> You’re now on ${escapeHtml(
             s.version_tag || s.app_version
           )}.`
         );
@@ -185,22 +197,22 @@ async function waitForChange(beforeUpdatedAt, successLabel) {
     }
   }
   stopLogPoll();
-  $("updStatus").textContent = "Still running — check the log below, or refresh in a minute.";
-  setAlert("warn", "<strong>Update may still be running.</strong> Check the log or refresh shortly.");
+  $("updStatus").textContent = "Still working — check the log, or refresh in a minute.";
+  setAlert("warn", "<strong>Still updating.</strong> Give it another minute, or peek at the log below.");
   await refreshLog();
 }
 
 async function runUpdate() {
   if (
     !confirm(
-      "Pull latest code from GitHub and reinstall WRU?\n\nPostgreSQL data and uploads are kept. The service will restart."
+      "Update WRU from GitHub now?\n\nYour data and uploads stay. The app will restart briefly."
     )
   ) {
     return;
   }
   $("btnUpdate").disabled = true;
-  $("updStatus").textContent = "Starting update…";
-  setAlert("pending", "<strong>Update started.</strong> Waiting for the service to come back…");
+  $("updStatus").textContent = "Starting…";
+  setAlert("pending", "<strong>Update underway.</strong> Hang tight — the page will refresh when it’s back.");
   $("updLog").hidden = false;
   $("updLog").textContent = "Starting…";
   startLogPoll();
@@ -217,14 +229,14 @@ async function runUpdate() {
     $("updStatus").textContent = result.message || "Update started.";
     if (result.log_tail) $("updLog").textContent = result.log_tail;
     const before = result.status?.updated_at || "";
-    $("updStatus").textContent = "Update running — waiting for service…";
-    await waitForChange(before, "Update complete");
+    $("updStatus").textContent = "Installing — waiting for the app to come back…";
+    await waitForChange(before, "All done");
   } catch (err) {
     stopLogPoll();
     $("updStatus").textContent = "";
     $("updLog").hidden = false;
     $("updLog").textContent = String(err.message || err);
-    setAlert("bad", `<strong>Update failed to start.</strong> ${escapeHtml(err.message || err)}`);
+    setAlert("bad", `<strong>Couldn’t start the update.</strong> ${escapeHtml(err.message || err)}`);
     await loadVersions().catch(() => {});
   } finally {
     $("btnUpdate").disabled = false;
@@ -234,14 +246,14 @@ async function runUpdate() {
 async function runRollback(version) {
   if (
     !confirm(
-      `Roll back to ${version}?\n\nPostgreSQL data and uploads are kept. The current version is saved in history (max 5).`
+      `Roll back to ${version}?\n\nYour data and uploads stay. The app will restart briefly.`
     )
   ) {
     return;
   }
   $("btnUpdate").disabled = true;
-  $("updStatus").textContent = `Starting rollback to ${version}…`;
-  setAlert("pending", `<strong>Rollback to ${escapeHtml(version)} started.</strong>`);
+  $("updStatus").textContent = `Rolling back to ${version}…`;
+  setAlert("pending", `<strong>Rolling back to ${escapeHtml(version)}.</strong>`);
   $("updLog").hidden = false;
   $("updLog").textContent = "Starting…";
   startLogPoll();
@@ -255,13 +267,13 @@ async function runRollback(version) {
     $("updStatus").textContent = result.message || "Rollback started.";
     if (result.log_tail) $("updLog").textContent = result.log_tail;
     const before = result.status?.updated_at || "";
-    await waitForChange(before, `Rolled back to ${version}`);
+    await waitForChange(before, `Back on ${version}`);
   } catch (err) {
     stopLogPoll();
     $("updStatus").textContent = "";
     $("updLog").hidden = false;
     $("updLog").textContent = String(err.message || err);
-    setAlert("bad", `<strong>Rollback failed.</strong> ${escapeHtml(err.message || err)}`);
+    setAlert("bad", `<strong>Rollback didn’t start.</strong> ${escapeHtml(err.message || err)}`);
     await loadVersions().catch(() => {});
   } finally {
     $("btnUpdate").disabled = false;
@@ -286,8 +298,10 @@ async function init() {
     await loadVersions();
   } catch (err) {
     showPageError("sysMeta", err, "Could not load system status");
+    if ($("nowVersion")) $("nowVersion").textContent = "—";
+    if ($("nowMeta")) $("nowMeta").textContent = err.message;
     $("histBody").innerHTML = `<tr><td class="empty" colspan="4">${escapeHtml(err.message)}</td></tr>`;
-    setAlert("bad", `<strong>System status failed.</strong> ${escapeHtml(err.message)}`);
+    setAlert("bad", `<strong>Couldn’t load status.</strong> ${escapeHtml(err.message)}`);
   }
 }
 
