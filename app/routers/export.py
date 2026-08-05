@@ -3,11 +3,18 @@ from __future__ import annotations
 import csv
 import io
 from datetime import date
+from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response, StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
 from ..calculations import COUNCIL_NO_OBJECTION_BUSINESS_DAYS
@@ -144,6 +151,178 @@ def _xlsx_bytes(rows: list[dict], sheet_name: str, title: str) -> bytes:
     return buf.getvalue()
 
 
+def _pdf_cell(text: Any, style: ParagraphStyle) -> Paragraph:
+    raw = "" if text is None else str(text)
+    safe = (
+        raw.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\n", "<br/>")
+    )
+    return Paragraph(safe or "—", style)
+
+
+def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
+    """Landscape A4 priority list suitable for client meetings / print."""
+    buf = io.BytesIO()
+    page = landscape(A4)
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=page,
+        leftMargin=10 * mm,
+        rightMargin=10 * mm,
+        topMargin=10 * mm,
+        bottomMargin=10 * mm,
+        title=title,
+    )
+    styles = getSampleStyleSheet()
+    styles.add(
+        ParagraphStyle(
+            name="ListTitle",
+            parent=styles["Heading1"],
+            textColor=colors.HexColor("#0B3D2E"),
+            fontSize=14,
+            leading=17,
+            spaceAfter=2,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="ListSub",
+            parent=styles["Normal"],
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor("#445055"),
+            spaceAfter=8,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="Th",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7.5,
+            leading=9,
+            textColor=colors.white,
+            alignment=TA_LEFT,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="Td",
+            parent=styles["Normal"],
+            fontSize=7.5,
+            leading=9,
+            alignment=TA_LEFT,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="TdCenter",
+            parent=styles["Normal"],
+            fontSize=7.5,
+            leading=9,
+            alignment=TA_CENTER,
+        )
+    )
+
+    story: list[Any] = [
+        Paragraph(title, styles["ListTitle"]),
+        Paragraph(
+            f"{team_label} · Exported {date.today().isoformat()} · {len(rows)} site(s) · "
+            f"Council no-objection assumed after {COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days",
+            styles["ListSub"],
+        ),
+    ]
+
+    headers = [
+        "Pri",
+        "Road",
+        "Site",
+        "Program",
+        "Stage",
+        "Start",
+        "Must-have",
+        "Council / wait",
+        "MoA #",
+        "Comments",
+    ]
+    data: list[list[Any]] = [[_pdf_cell(h, styles["Th"]) for h in headers]]
+
+    if not rows:
+        data.append([_pdf_cell("No sites on this priority list.", styles["Td"])] + [""] * 9)
+    else:
+        for row in rows:
+            wait = row.get("business_days_waiting")
+            council = row.get("councils") or ""
+            if wait not in ("", None):
+                council = f"{council} ({wait}d)" if council else f"{wait}d"
+            must = row.get("moa_must_have") or ""
+            must_label = row.get("must_have_status") or ""
+            if must_label and must_label != "—":
+                must = f"{must} · {must_label}" if must else must_label
+            comments = (row.get("comments") or "")[:160]
+            data.append(
+                [
+                    _pdf_cell(row.get("priority"), styles["TdCenter"]),
+                    _pdf_cell(row.get("road_name"), styles["Td"]),
+                    _pdf_cell(row.get("site_number"), styles["Td"]),
+                    _pdf_cell(row.get("program"), styles["Td"]),
+                    _pdf_cell(row.get("current_stage"), styles["Td"]),
+                    _pdf_cell(row.get("indicative_start"), styles["Td"]),
+                    _pdf_cell(must, styles["Td"]),
+                    _pdf_cell(council, styles["Td"]),
+                    _pdf_cell(row.get("moa_number"), styles["Td"]),
+                    _pdf_cell(comments, styles["Td"]),
+                ]
+            )
+
+    # Usable width on landscape A4 with 10mm margins ≈ 277mm
+    col_widths = [
+        12 * mm,  # Pri
+        42 * mm,  # Road
+        18 * mm,  # Site
+        28 * mm,  # Program
+        32 * mm,  # Stage
+        20 * mm,  # Start
+        28 * mm,  # Must-have
+        36 * mm,  # Council
+        20 * mm,  # MoA
+        41 * mm,  # Comments
+    ]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    style_cmds: list[tuple] = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B3D2E")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#C5D0C8")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F7F4")]),
+    ]
+    # Highlight priority 1 rows
+    for i, row in enumerate(rows, start=1):
+        if str(row.get("priority")) == "1":
+            style_cmds.append(
+                ("BACKGROUND", (0, i), (0, i), colors.HexColor("#FDE8D8"))
+            )
+    if not rows:
+        style_cmds.append(("SPAN", (0, 1), (-1, 1)))
+    table.setStyle(TableStyle(style_cmds))
+    story.append(table)
+    story.append(Spacer(1, 6 * mm))
+    story.append(
+        Paragraph(
+            "WRU TGS Tracker · Ventia — confidential priority list for client coordination.",
+            styles["ListSub"],
+        )
+    )
+    doc.build(story)
+    return buf.getvalue()
+
+
 @router.get("/priority-list.csv")
 def export_permits_priority_csv(db: Session = Depends(get_db)):
     """Legacy alias — Permits team client list."""
@@ -187,6 +366,46 @@ def export_trims_xlsx(db: Session = Depends(get_db)):
             "Content-Disposition": f'attachment; filename="WRU_TRIMS_list_{date.today().isoformat()}.xlsx"'
         },
     )
+
+
+@router.get("/permits-list.pdf")
+def export_permits_pdf(db: Session = Depends(get_db)):
+    rows = _client_list_rows(db, team="permits")
+    data = _pdf_bytes(
+        rows,
+        title="DTP — Permits priority list",
+        team_label="Permits team",
+    )
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="WRU_Permits_list_{date.today().isoformat()}.pdf"'
+        },
+    )
+
+
+@router.get("/trims-list.pdf")
+def export_trims_pdf(db: Session = Depends(get_db)):
+    rows = _client_list_rows(db, team="trims")
+    data = _pdf_bytes(
+        rows,
+        title="DTP — TRIMS priority list",
+        team_label="TRIMS team",
+    )
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="WRU_TRIMS_list_{date.today().isoformat()}.pdf"'
+        },
+    )
+
+
+@router.get("/priority-list.pdf")
+def export_permits_priority_pdf(db: Session = Depends(get_db)):
+    """Legacy alias — Permits team PDF."""
+    return export_permits_pdf(db)
 
 
 @router.get("/sites.csv")
