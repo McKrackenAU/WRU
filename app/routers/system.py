@@ -12,12 +12,17 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from ..auth import require_admin
 from ..version import version_string, version_tag
 
-router = APIRouter(prefix="/api/system", tags=["system"])
+router = APIRouter(
+    prefix="/api/system",
+    tags=["system"],
+    dependencies=[Depends(require_admin)],
+)
 
 VERSION_FILE = Path("/opt/wru_version.txt")
 HISTORY_FILE = Path("/opt/wru_version_history.json")

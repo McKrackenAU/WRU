@@ -1,21 +1,32 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
+from .auth import (
+    is_admin_path,
+    is_password_change_allowed_path,
+    is_public_path,
+    require_admin,
+    secret_key,
+)
 from .database import get_db
 from .financial_year import fy_choices
 from .migrate import run_migrations
-from .models import DOC_CATEGORIES, LookupItem, Site, SiteCouncil
+from .models import DOC_CATEGORIES, LookupItem, Site, SiteCouncil, User
 from .routers import (
+    auth as auth_router,
     columns,
     costs,
     dashboard,
@@ -28,6 +39,7 @@ from .routers import (
     stages,
     system,
     tracking,
+    users as users_router,
 )
 from .schemas import MetaOut
 from .settings_store import get_rules
@@ -48,6 +60,8 @@ app = FastAPI(
 
 run_migrations()
 
+app.include_router(auth_router.router)
+app.include_router(users_router.router)
 app.include_router(sites.router)
 app.include_router(columns.router)
 app.include_router(tracking.router)
@@ -78,11 +92,52 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class AuthGateMiddleware(BaseHTTPMiddleware):
+    """Require a login session for app pages and APIs; admins for admin surfaces."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        method = request.method.upper()
+
+        if method == "OPTIONS" or is_public_path(path):
+            return await call_next(request)
+
+        user_id = request.session.get("user_id")
+        if not user_id:
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+            next_q = quote(path + (("?" + request.url.query) if request.url.query else ""))
+            return RedirectResponse(f"/login?next={next_q}", status_code=302)
+
+        if request.session.get("must_change_password") and not is_password_change_allowed_path(path):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Password change required"}, status_code=403)
+            return RedirectResponse("/login?change=1", status_code=302)
+
+        if is_admin_path(path, method) and request.session.get("role") != "admin":
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Admin access required"}, status_code=403)
+            return RedirectResponse("/", status_code=302)
+
+        return await call_next(request)
+
+
+# Starlette runs last-added middleware first on the request.
 app.add_middleware(NoCacheStaticMiddleware)
+app.add_middleware(AuthGateMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=secret_key(),
+    session_cookie="wru_session",
+    same_site="lax",
+    https_only=os.environ.get("WRU_COOKIE_HTTPS", "").strip().lower() in {"1", "true", "yes"},
+    max_age=60 * 60 * 12,
+)
 
 
 @app.get("/api/meta", response_model=MetaOut)
 def meta(db: Session = Depends(get_db)):
+    # Auth is enforced by middleware; meta is available to any logged-in user.
     rules = get_rules(db)
     ensure_lookup_seed(db)
     seeded_programs = active_programs(db)
@@ -186,6 +241,11 @@ window.addEventListener("error",function(e){{
     )
 
 
+@app.get("/login")
+def login_page():
+    return _page("login.html")
+
+
 @app.get("/")
 def index():
     return _page("index.html")
@@ -228,28 +288,33 @@ def costs_page():
 
 # —— Admin console (separate shell from day-to-day tracker) ——
 @app.get("/admin")
-def admin_home():
+def admin_home(_: User = Depends(require_admin)):
     return _page("admin.html")
 
 
 @app.get("/admin/stages")
-def admin_stages_page():
+def admin_stages_page(_: User = Depends(require_admin)):
     return _page("stages.html")
 
 
 @app.get("/admin/settings")
-def admin_settings_page():
+def admin_settings_page(_: User = Depends(require_admin)):
     return _page("settings.html")
 
 
 @app.get("/admin/rates")
-def admin_rates_page():
+def admin_rates_page(_: User = Depends(require_admin)):
     return _page("rates.html")
 
 
 @app.get("/admin/system")
-def admin_system_page():
+def admin_system_page(_: User = Depends(require_admin)):
     return _page("system.html")
+
+
+@app.get("/admin/users")
+def admin_users_page(_: User = Depends(require_admin)):
+    return _page("users.html")
 
 
 # Legacy bookmarks → admin

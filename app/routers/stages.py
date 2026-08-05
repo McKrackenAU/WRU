@@ -9,11 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin
 from ..database import get_db
 from ..models import ProgramCategory, Site, WorkflowStageDef, WorkflowStep
 from ..stage_registry import ensure_program_seed, ensure_stage_seed
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 class StageIn(BaseModel):

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin
 from ..cost_engine import (
     build_work_schedule,
     calculate_closure_24h,
@@ -20,7 +21,7 @@ from ..cost_engine import (
 )
 from ..cost_export import build_cost_pdf, build_cost_workbook
 from ..database import UPLOAD_DIR, get_db
-from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, Site
+from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, Site, User
 from ..public_holidays import holidays_between
 
 router = APIRouter(prefix="/api/costs", tags=["costs"])
@@ -297,7 +298,11 @@ def read_settings(db: Session = Depends(get_db)):
 
 
 @router.put("/settings", response_model=CostSettingsOut)
-def update_settings(payload: CostSettingsUpdate, db: Session = Depends(get_db)):
+def update_settings(
+    payload: CostSettingsUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     s = get_or_create_settings(db)
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
@@ -326,7 +331,11 @@ def _validate_rate_payload(payload: LabourRateIn) -> None:
 
 
 @router.post("/rates", response_model=LabourRateOut, status_code=201)
-def create_rate(payload: LabourRateIn, db: Session = Depends(get_db)):
+def create_rate(
+    payload: LabourRateIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     _validate_rate_payload(payload)
     if db.query(LabourRate).filter(func.lower(LabourRate.name) == payload.name.strip().lower()).first():
         raise HTTPException(status_code=400, detail="A rate category with this name already exists")
@@ -356,7 +365,12 @@ def create_rate(payload: LabourRateIn, db: Session = Depends(get_db)):
 
 
 @router.patch("/rates/{rate_id}", response_model=LabourRateOut)
-def update_rate(rate_id: int, payload: LabourRateIn, db: Session = Depends(get_db)):
+def update_rate(
+    rate_id: int,
+    payload: LabourRateIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     row = db.get(LabourRate, rate_id)
     if not row:
         raise HTTPException(status_code=404, detail="Rate not found")
@@ -394,7 +408,11 @@ def update_rate(rate_id: int, payload: LabourRateIn, db: Session = Depends(get_d
 
 
 @router.delete("/rates/{rate_id}", status_code=204)
-def delete_rate(rate_id: int, db: Session = Depends(get_db)):
+def delete_rate(
+    rate_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
     row = db.get(LabourRate, rate_id)
     if not row:
         raise HTTPException(status_code=404, detail="Rate not found")

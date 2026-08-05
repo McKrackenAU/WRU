@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Users · WRU Admin</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Users</h1>
+          <p>Create logins for your team. Admins can manage settings, imports, and updates.</p>
+        </div>
+      </div>
+
+      <section class="panel-card">
+        <h2>Add user</h2>
+        <form class="form-grid" id="createUserForm">
+          <label>
+            Username
+            <input id="newUsername" required minlength="2" maxlength="64" autocomplete="off" />
+          </label>
+          <label>
+            Display name
+            <input id="newDisplayName" maxlength="128" autocomplete="off" />
+          </label>
+          <label>
+            Role
+            <select id="newRole">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <label>
+            Password <span class="hint">(optional — generated if blank)</span>
+            <input id="newPassword" type="password" minlength="8" autocomplete="new-password" />
+          </label>
+          <div class="full">
+            <button type="submit" class="btn btn-primary">Create user</button>
+          </div>
+        </form>
+        <p class="hint" id="createMsg" aria-live="polite"></p>
+      </section>
+
+      <section class="panel-card" style="margin-top:1.25rem">
+        <h2>Accounts</h2>
+        <div id="usersTableWrap">
+          <p class="hint">Loading…</p>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/users.js"></script>
+</body>
+</html>

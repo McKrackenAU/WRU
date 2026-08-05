@@ -5,13 +5,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin
 from ..database import get_db
 from ..models import LookupItem
 from ..schemas import AppSettingsOut, AppSettingsUpdate, LookupIn, LookupOut
 from ..settings_store import ensure_settings, get_rules, update_settings
 from ..stage_registry import ensure_lookup_seed
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/api/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 @router.get("/settings", response_model=AppSettingsOut)

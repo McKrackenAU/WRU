@@ -8,11 +8,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin
 from ..database import UPLOAD_DIR, get_db
 from ..financial_year import australian_financial_year
 from ..kml_parse import parse_kml_features
 from ..map_config import get_nearmap_api_key, map_config_public, set_nearmap_api_key
-from ..models import MapFeature, MapLayer, Site
+from ..models import MapFeature, MapLayer, Site, User
 from ..schemas import MapFeatureLink, MapFeatureOut, MapLayerOut
 
 router = APIRouter(prefix="/api/map", tags=["map"])
@@ -33,7 +34,7 @@ def map_basemap_config():
 
 
 @router.put("/nearmap-key")
-def put_nearmap_key(payload: NearmapKeyIn):
+def put_nearmap_key(payload: NearmapKeyIn, _: User = Depends(require_admin)):
     """Save or clear the Nearmap API key (Admin → System)."""
     try:
         set_nearmap_api_key(payload.api_key)

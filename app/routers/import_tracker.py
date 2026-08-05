@@ -5,10 +5,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from ..auth import require_admin
 from ..database import get_db
 from ..tracker_import import import_tracker_rows, parse_tracker_workbook
 
-router = APIRouter(prefix="/api/import", tags=["import"])
+router = APIRouter(
+    prefix="/api/import",
+    tags=["import"],
+    dependencies=[Depends(require_admin)],
+)
 
 MAX_BYTES = 40 * 1024 * 1024
 

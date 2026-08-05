@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Sign in · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body class="login-body">
+  <main class="login-shell" id="main-content">
+    <div class="login-brand">
+      <img class="ventia-logo login-logo" src="/static/brand/ventia-logo.png" alt="Ventia" />
+      <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="40" height="40" alt="" />
+      <h1>WRU TGS Tracker</h1>
+      <p>Sign in to continue</p>
+    </div>
+
+    <form class="login-card" id="loginForm" autocomplete="on">
+      <div id="loginError" class="login-error" role="alert" hidden></div>
+      <label>
+        Username
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus />
+      </label>
+      <label>
+        Password
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">Sign in</button>
+    </form>
+
+    <form class="login-card" id="changeForm" autocomplete="on" hidden>
+      <p class="hint" id="changeHint">You must set a new password before using the tracker.</p>
+      <div id="changeError" class="login-error" role="alert" hidden></div>
+      <label>
+        Current password
+        <input id="currentPassword" name="current_password" type="password" autocomplete="current-password" required />
+      </label>
+      <label>
+        New password
+        <input id="newPassword" name="new_password" type="password" autocomplete="new-password" required minlength="8" />
+      </label>
+      <label>
+        Confirm new password
+        <input id="confirmPassword" name="confirm_password" type="password" autocomplete="new-password" required minlength="8" />
+      </label>
+      <button type="submit" class="btn btn-primary btn-block" id="changeBtn">Update password</button>
+    </form>
+  </main>
+  <script type="module" src="/static/js/login.js"></script>
+</body>
+</html>

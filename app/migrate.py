@@ -20,6 +20,7 @@ from .models import (  # noqa: F401 — register metadata
     Site,
     SiteCouncil,
     TrackingEvent,
+    User,
     WorkflowStageDef,
     WorkflowStep,
 )
@@ -127,12 +128,15 @@ def run_migrations() -> None:
     from .settings_store import ensure_settings
     from .stage_registry import ensure_lookup_seed, ensure_program_seed, ensure_stage_seed
 
+    from .auth import ensure_admin_user
+
     db = SessionLocal()
     try:
         ensure_stage_seed(db)
         ensure_program_seed(db)
         ensure_lookup_seed(db)
         ensure_settings(db)
+        ensure_admin_user(db)
     finally:
         db.close()
 

@@ -19,6 +19,26 @@ from sqlalchemy.types import JSON
 
 from .database import Base
 
+
+class User(Base):
+    """Application login account (single-org deployment)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # admin | user
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 # Fallback constants — live config is WorkflowStageDef (seeded from these keys).
 WORKFLOW_STAGES = [
     "tgs_markup_completed",

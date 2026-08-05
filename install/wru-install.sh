@@ -311,6 +311,38 @@ deactivate
 msg_ok "Installed Python packages"
 
 msg_info "Writing environment"
+# Read a quoted KEY=value from /etc/default/wru without sourcing the whole file
+# (sourcing would clobber freshly computed DATABASE_URL for this install).
+read_default_var() {
+  local key="$1" file="/etc/default/wru" line val
+  [[ -f "$file" ]] || return 0
+  line="$(grep -E "^${key}=" "$file" | tail -n1 || true)"
+  [[ -n "$line" ]] || return 0
+  val="${line#*=}"
+  eval "printf '%s' $val"
+}
+EXISTING_SECRET="$(read_default_var WRU_SECRET_KEY || true)"
+EXISTING_ADMIN_USER="$(read_default_var WRU_ADMIN_USER || true)"
+EXISTING_ADMIN_PASSWORD="$(read_default_var WRU_ADMIN_PASSWORD || true)"
+EXISTING_ADMIN_NAME="$(read_default_var WRU_ADMIN_NAME || true)"
+EXISTING_COOKIE_HTTPS="$(read_default_var WRU_COOKIE_HTTPS || true)"
+if [[ -z "${WRU_SECRET_KEY:-}" ]]; then
+  if [[ -n "$EXISTING_SECRET" ]]; then
+    WRU_SECRET_KEY="$EXISTING_SECRET"
+  else
+    WRU_SECRET_KEY="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(48))
+PY
+)"
+  fi
+fi
+# Optional bootstrap (only used when users table is empty)
+if [[ -z "${WRU_ADMIN_USER:-}" ]]; then WRU_ADMIN_USER="${EXISTING_ADMIN_USER:-admin}"; fi
+if [[ -z "${WRU_ADMIN_NAME:-}" ]]; then WRU_ADMIN_NAME="${EXISTING_ADMIN_NAME:-Administrator}"; fi
+if [[ -z "${WRU_ADMIN_PASSWORD:-}" ]]; then WRU_ADMIN_PASSWORD="${EXISTING_ADMIN_PASSWORD:-}"; fi
+if [[ -z "${WRU_COOKIE_HTTPS:-}" ]]; then WRU_COOKIE_HTTPS="${EXISTING_COOKIE_HTTPS:-}"; fi
+
 # Quote every value — DATABASE_URL contains &client_encoding=… which breaks unquoted
 # /etc/default files when sourced (KeyError: DATABASE_URL / truncated URL).
 {
@@ -322,6 +354,15 @@ msg_info "Writing environment"
   echo "POSTGRES_PORT=${PG_PORT@Q}"
   echo "POSTGRES_DB=${PG_DB@Q}"
   echo "DATABASE_URL=${DATABASE_URL@Q}"
+  echo "WRU_SECRET_KEY=${WRU_SECRET_KEY@Q}"
+  echo "WRU_ADMIN_USER=${WRU_ADMIN_USER@Q}"
+  echo "WRU_ADMIN_NAME=${WRU_ADMIN_NAME@Q}"
+  if [[ -n "$WRU_ADMIN_PASSWORD" ]]; then
+    echo "WRU_ADMIN_PASSWORD=${WRU_ADMIN_PASSWORD@Q}"
+  fi
+  if [[ -n "$WRU_COOKIE_HTTPS" ]]; then
+    echo "WRU_COOKIE_HTTPS=${WRU_COOKIE_HTTPS@Q}"
+  fi
 } >/etc/default/wru
 chmod 640 /etc/default/wru
 chown root:"${APP_USER}" /etc/default/wru
@@ -368,6 +409,9 @@ PY
 python3 -c "from app.migrate import run_migrations; run_migrations()"
 if ! python3 scripts/seed.py; then
   msg_warn "Sample seed failed (schema is migrated); continuing"
+fi
+if [[ -f "${DATA_DIR}/bootstrap_admin.txt" ]]; then
+  msg_warn "First admin credentials: ${DATA_DIR}/bootstrap_admin.txt (change password after login)"
 fi
 deactivate
 msg_ok "Database ready"
@@ -462,9 +506,10 @@ if [[ -d /etc/update-motd.d ]]; then
   cat <<EOF >/etc/update-motd.d/99-wru
 #!/bin/sh
 echo ""
-echo "  WRU TGS Tracker   →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}"
+echo "  WRU TGS Tracker   →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}/login"
 echo "  Service          →  systemctl status ${SERVICE_NAME}"
 echo "  Update / rollback →  sudo wru-update   or  /admin/system"
+echo "  First admin      →  ${DATA_DIR}/bootstrap_admin.txt (if present)"
 echo "  Database         →  PostgreSQL (${PG_DB})"
 echo "  Uploads          →  ${DATA_DIR}/uploads"
 echo ""
@@ -478,8 +523,9 @@ cleanup_lxc
 
 IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo -e "\n${INFO:-ℹ} ${APP} installed."
-echo -e "Access URL: http://${IP_ADDR:-<container-ip>}:${APP_PORT}"
+echo -e "Access URL: http://${IP_ADDR:-<container-ip>}:${APP_PORT}/login"
 echo -e "Service:    systemctl status ${SERVICE_NAME}"
 echo -e "Update:     sudo wru-update  (or open /admin/system)"
+echo -e "Users:      Admin → Users  (bootstrap password in ${DATA_DIR}/bootstrap_admin.txt if created)"
 echo -e "Database:   PostgreSQL db=${PG_DB} user=${PG_USER}"
 echo -e "Uploads:    ${DATA_DIR}/uploads\n"

@@ -11,6 +11,33 @@ export function on(id, event, handler) {
   return true;
 }
 
+let _sessionUser = null;
+
+export function setSessionUser(user) {
+  _sessionUser = user || null;
+  try {
+    if (user) {
+      localStorage.setItem("wru_user", user.display_name || user.username || "");
+      localStorage.setItem("wru_role", user.role || "user");
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function currentUser() {
+  return _sessionUser;
+}
+
+export function isAdminUser() {
+  if (_sessionUser) return _sessionUser.role === "admin";
+  try {
+    return localStorage.getItem("wru_role") === "admin";
+  } catch {
+    return false;
+  }
+}
+
 export async function api(path, options = {}) {
   const ctrl = new AbortController();
   const timeoutMs = options.timeoutMs ?? 45000;
@@ -18,9 +45,15 @@ export async function api(path, options = {}) {
   try {
     const res = await fetch(path, {
       cache: "no-store",
+      credentials: "include",
       ...options,
       signal: options.signal || ctrl.signal,
     });
+    if (res.status === 401 && !String(path).startsWith("/api/auth/")) {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.href = `/login?next=${next}`;
+      throw new Error("Not authenticated");
+    }
     if (!res.ok) {
       let detail = res.statusText;
       try {
@@ -60,8 +93,10 @@ export function fmtDate(value) {
   return `${d}/${m}/${y}`;
 }
 
-/** Optional actor name for audit fields (localStorage only — no topbar field). */
+/** Actor name for audit fields — prefers the signed-in session display name. */
 export function userName() {
+  const fromSession = (_sessionUser?.display_name || _sessionUser?.username || "").trim();
+  if (fromSession) return fromSession;
   try {
     return (localStorage.getItem("wru_user") || "").trim() || null;
   } catch {
@@ -70,11 +105,25 @@ export function userName() {
 }
 
 export function saveUserName() {
-  /* kept for callers; name is no longer edited in the chrome */
+  /* session identity is authoritative */
 }
 
 export function loadUserName() {
-  /* kept for callers; name is no longer edited in the chrome */
+  /* session identity is authoritative */
+}
+
+export async function logout() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include", cache: "no-store" });
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem("wru_role");
+  } catch {
+    /* ignore */
+  }
+  location.href = "/login";
 }
 
 function currentTheme() {
@@ -123,6 +172,7 @@ export const OPS_NAV = [
 /** Admin console navigation */
 export const ADMIN_NAV = [
   { href: "/admin", label: "Overview", hint: "Admin home" },
+  { href: "/admin/users", label: "Users", hint: "Logins & roles" },
   { href: "/admin/stages", label: "Stages & programs", hint: "Workflow" },
   { href: "/admin/settings", label: "Rules & import", hint: "SLAs · spreadsheet" },
   { href: "/admin/rates", label: "Rates", hint: "Crew & allowances" },
@@ -337,11 +387,23 @@ function wireNavToggle() {
  * Inject accessible app chrome (sidebar + compact top bar).
  * @param {{ active?: string, mode?: 'ops'|'admin' }} opts
  */
-export function injectChrome({ active, mode } = {}) {
+export async function injectChrome({ active, mode } = {}) {
   const path = active || location.pathname;
   const isAdmin =
     mode === "admin" || path === "/admin" || path.startsWith("/admin/");
 
+  try {
+    const me = await api("/api/auth/me", { timeoutMs: 8000 });
+    setSessionUser(me);
+    if (me?.must_change_password) {
+      location.href = "/login?change=1";
+      return;
+    }
+  } catch {
+    /* 401 redirects inside api() */
+  }
+
+  const canAdmin = isAdminUser();
   document.body.classList.toggle("admin-mode", isAdmin);
   document.body.classList.toggle("ops-mode", !isAdmin);
   ensureShellStructure();
@@ -349,6 +411,9 @@ export function injectChrome({ active, mode } = {}) {
   const links = isAdmin ? ADMIN_NAV : OPS_NAV;
   const sidebar = document.querySelector("[data-app-sidebar]");
   if (sidebar) {
+    const adminLink = canAdmin
+      ? `<a class="btn btn-block btn-admin-link" href="/admin">Admin console</a>`
+      : "";
     sidebar.innerHTML = `
       <div class="sidebar-brand">
         <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="36" height="36" alt="" />
@@ -364,16 +429,14 @@ export function injectChrome({ active, mode } = {}) {
         ${sideNavHtml(links, path)}
       </nav>
       <div class="sidebar-foot">
-        ${
-          isAdmin
-            ? `<a class="btn btn-block" href="/">← Back to tracker</a>`
-            : `<a class="btn btn-block btn-admin-link" href="/admin">Admin console</a>`
-        }
+        ${isAdmin ? `<a class="btn btn-block" href="/">← Back to tracker</a>` : adminLink}
         <button type="button" class="btn btn-block theme-toggle" id="themeToggle" data-theme-toggle>Theme</button>
+        <button type="button" class="btn btn-block" id="logoutBtn">Sign out</button>
       </div>
     `;
   }
 
+  const who = escapeHtml(userName() || "");
   const header = document.querySelector("[data-app-header]");
   if (header) {
     header.classList.toggle("topbar-admin", isAdmin);
@@ -388,6 +451,9 @@ export function injectChrome({ active, mode } = {}) {
             <p class="app-name">${isAdmin ? "Admin console" : "Operations"}</p>
           </div>
         </div>
+      </div>
+      <div class="topbar-end">
+        ${who ? `<span class="session-user" title="Signed in">${who}</span>` : ""}
       </div>
     `;
   }
@@ -407,8 +473,8 @@ export function injectChrome({ active, mode } = {}) {
         ${ver ? `<span class="footer-version" title="Installed app version">${escapeHtml(ver)}</span>` : ""}
       </div>
     `;
-    // Prefer live installed tag from /api/system when available (async, non-blocking)
-    if (ver) {
+    // Prefer live installed tag from /api/system when available (admins only)
+    if (ver && canAdmin) {
       api("/api/system", { timeoutMs: 8000 })
         .then((s) => {
           const live = s?.version_tag || (s?.app_version ? `v${String(s.app_version).replace(/^v/i, "")}` : "");
@@ -421,6 +487,9 @@ export function injectChrome({ active, mode } = {}) {
 
   wireNavToggle();
   initThemeToggle();
+  $("logoutBtn")?.addEventListener("click", () => {
+    logout();
+  });
 }
 
 export function stageLabel(meta, key) {
