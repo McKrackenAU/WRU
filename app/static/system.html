@@ -26,61 +26,74 @@
       <div class="page-head">
         <div>
           <h1>System &amp; updates</h1>
-          <p>Check the installed version, pull a GitHub update, or roll back. Database and uploads are kept.</p>
+          <p>Keep WRU up to date from GitHub. Your database and uploads stay put.</p>
         </div>
       </div>
 
       <div id="sysAlert" class="sys-alert" role="status" aria-live="polite" hidden></div>
 
-      <section class="panel-card" aria-labelledby="verHeading">
-        <h2 id="verHeading">Installed version</h2>
-        <div class="form-grid" id="sysMeta">
-          <p class="hint">Loading version…</p>
-        </div>
-      </section>
+      <section class="panel-card updater-hero" aria-labelledby="updHeading">
+        <h2 id="updHeading">Update WRU</h2>
+        <p class="hint">
+          Grab the latest release, install it, and restart automatically — usually under a couple of minutes.
+        </p>
 
-      <section class="panel-card updater-card" aria-labelledby="updHeading">
-        <h2 id="updHeading">Update from GitHub</h2>
-        <p class="hint">One click pulls the branch or tag below and reinstalls WRU. The app restarts automatically.</p>
-
-        <div class="updater-steps" id="updSteps" aria-label="Update readiness">
-          <div class="upd-step" data-step="helper"><span class="upd-dot"></span><span>Updater helper</span></div>
-          <div class="upd-step" data-step="sudo"><span class="upd-dot"></span><span>Passwordless sudo</span></div>
-          <div class="upd-step" data-step="ready"><span class="upd-dot"></span><span>Ready to update</span></div>
+        <div class="updater-now" id="updaterNow">
+          <div>
+            <span class="updater-now-label">You’re on</span>
+            <div class="updater-now-version" id="nowVersion">…</div>
+          </div>
+          <div class="updater-now-meta" id="nowMeta">Checking install…</div>
         </div>
 
-        <div class="form-grid">
-          <label>Git branch or tag
-            <input id="updBranch" type="text" value="main" placeholder="main or v0.7" autocomplete="off" />
-          </label>
-          <label class="full">Git repository URL
-            <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" autocomplete="off" />
-          </label>
-        </div>
+        <ul class="updater-checks" id="updSteps" aria-label="Update readiness">
+          <li class="upd-check" data-step="helper"><span class="mark" aria-hidden="true">·</span><span>Helper installed</span></li>
+          <li class="upd-check" data-step="sudo"><span class="mark" aria-hidden="true">·</span><span>Permission OK</span></li>
+          <li class="upd-check" data-step="ready"><span class="mark" aria-hidden="true">·</span><span>Ready to go</span></li>
+        </ul>
 
         <p class="hint" id="updHint">Checking updater…</p>
 
-        <div class="toolbar updater-actions">
+        <div class="updater-cta">
           <button type="button" class="btn btn-primary" id="btnUpdate">Pull &amp; install update</button>
-          <button type="button" class="btn" id="btnRefresh">Refresh status</button>
+          <button type="button" class="btn" id="btnRefresh">Refresh</button>
           <span class="hint" id="updStatus" aria-live="polite"></span>
         </div>
 
+        <details class="upd-options">
+          <summary>Branch &amp; repository</summary>
+          <div class="form-grid">
+            <label>Git branch or tag
+              <input id="updBranch" type="text" value="main" placeholder="main or v0.9" autocomplete="off" />
+            </label>
+            <label class="full">Git repository URL
+              <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" autocomplete="off" />
+            </label>
+          </div>
+        </details>
+
         <details class="upd-advanced" id="shellHelp">
-          <summary>Advanced: update from the shell</summary>
-          <p class="hint">Use this once if the green button is disabled, or if you prefer the terminal.</p>
-          <p><strong>Inside the WRU container</strong> (as root):</p>
+          <summary>Need a first-time shell setup?</summary>
+          <p class="hint">Only needed if the green button is disabled. Run once as root, then come back here.</p>
+          <p><strong>Inside the WRU container</strong></p>
           <pre id="shellCt" class="code-block"></pre>
-          <p><strong>From the Proxmox host</strong>:</p>
+          <p><strong>From the Proxmox host</strong></p>
           <pre id="shellPve" class="code-block"></pre>
         </details>
 
         <pre id="updLog" class="code-block upd-log" hidden aria-label="Update log"></pre>
       </section>
 
+      <section class="panel-card" aria-labelledby="verHeading">
+        <h2 id="verHeading">Install details</h2>
+        <div class="version-strip" id="sysMeta">
+          <p class="hint">Loading version…</p>
+        </div>
+      </section>
+
       <section class="panel-card" aria-labelledby="histHeading">
-        <h2 id="histHeading">Version history &amp; rollback</h2>
-        <p class="hint" id="histHint">Up to 5 prior installs can be restored.</p>
+        <h2 id="histHeading">Go back a version</h2>
+        <p class="hint" id="histHint">We keep up to 5 previous installs so you can roll back if something looks off.</p>
         <div class="table-scroll">
           <table class="data-table" id="histTable">
             <thead>
