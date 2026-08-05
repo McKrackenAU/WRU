@@ -1,59 +1,60 @@
 :root {
-  /* Ventia-inspired tokens — same as VenInspect */
+  /* Ventia brand tokens — calm, high-contrast, no neon */
   --ventia-green: #004825;
-  --ventia-green-mid: #00994d;
-  --ventia-green-tint: #f6faef;
+  --ventia-green-mid: #0a7a45;
+  --ventia-green-tint: #f3f6f2;
   --ventia-blue: #0077c8;
-  --ventia-ink: #2a2a2a;
+  --ventia-ink: #1f2933;
   --ventia-muted: #5c6770;
   --ventia-paper: #ffffff;
-  --ventia-border: #d8e0d4;
+  --ventia-border: #d5ddd4;
   --background: var(--ventia-green-tint);
   --foreground: var(--ventia-ink);
   --panel: var(--ventia-paper);
   --accent: var(--ventia-green);
   --touch: 2.75rem;
-  --nav-bg: rgba(255, 255, 255, 0.95);
+  --nav-bg: rgba(255, 255, 255, 0.96);
   --field-bg: #ffffff;
-  --danger-bg: #fff1f2;
+  --danger-bg: #fdecee;
   --danger-fg: #9f1239;
-  --ok: #004825;
-  --ok-bg: #e3f5ea;
-  --warn: #9a3412;
-  --warn-bg: #fde8d8;
-  --stage-on: #00994d;
-  --stage-off: #2a2a2a;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --radius: 0.75rem;
+  --ok: #0a5c32;
+  --ok-bg: #e6f4ec;
+  --warn: #9a6700;
+  --warn-bg: #fff6e0;
+  --stage-on: #0a7a45;
+  --stage-off: #5c6770;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --radius: 0.65rem;
   --font: "Geist", ui-sans-serif, system-ui, sans-serif;
   --mono: "Geist Mono", ui-monospace, monospace;
   color-scheme: light;
 }
 
 html.dark {
-  --ventia-green: #3dd68c;
-  --ventia-green-mid: #2bb673;
-  --ventia-green-tint: #141a17;
-  --ventia-blue: #4da3ff;
-  --ventia-ink: #e8eaed;
-  --ventia-muted: #9aa0a6;
-  --ventia-paper: #1a1d21;
-  --ventia-border: #2d333b;
-  --background: #0d1117;
-  --foreground: #e8eaed;
-  --panel: #1a1d21;
+  /* Soft sage / slate — readable, not neon */
+  --ventia-green: #8fbf9f;
+  --ventia-green-mid: #6fa882;
+  --ventia-green-tint: #171c19;
+  --ventia-blue: #7eb0d6;
+  --ventia-ink: #e6e9ed;
+  --ventia-muted: #9aa3ad;
+  --ventia-paper: #1e242b;
+  --ventia-border: #333b44;
+  --background: #14181d;
+  --foreground: #e6e9ed;
+  --panel: #1e242b;
   --accent: var(--ventia-green);
-  --nav-bg: rgba(13, 17, 23, 0.92);
-  --field-bg: #12151a;
-  --danger-bg: #3f1219;
-  --danger-fg: #fda4af;
-  --ok: #3dd68c;
-  --ok-bg: #143024;
-  --warn: #fda4af;
-  --warn-bg: #3f1219;
-  --stage-on: #3dd68c;
-  --stage-off: #6b7280;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --nav-bg: rgba(20, 24, 29, 0.94);
+  --field-bg: #171c22;
+  --danger-bg: #2c1c20;
+  --danger-fg: #e3a4ab;
+  --ok: #8fbf9f;
+  --ok-bg: #1c2a22;
+  --warn: #d2b06a;
+  --warn-bg: #2a2418;
+  --stage-on: #8fbf9f;
+  --stage-off: #7a8490;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
   color-scheme: dark;
 }
 
@@ -75,16 +76,12 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(900px 420px at 0% 0%, rgba(0, 153, 77, 0.12), transparent),
-    radial-gradient(700px 380px at 100% 0%, rgba(0, 119, 200, 0.1), transparent),
-    var(--background);
+    linear-gradient(180deg, color-mix(in srgb, var(--ventia-green) 4%, var(--background)), var(--background));
 }
 
 html.dark body::before {
   background:
-    radial-gradient(800px 400px at 0% 0%, rgba(61, 214, 140, 0.08), transparent),
-    radial-gradient(700px 380px at 100% 0%, rgba(77, 163, 255, 0.06), transparent),
-    var(--background);
+    linear-gradient(180deg, color-mix(in srgb, var(--ventia-green) 3%, var(--background)), var(--background));
 }
 
 .sr-only {
@@ -383,7 +380,9 @@ html.dark .main-nav a.active {
 .page-head h1 {
   margin: 0;
   font-size: 1.35rem;
-  color: var(--ventia-green);
+  color: var(--ventia-ink);
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .page-head p {
@@ -853,27 +852,26 @@ html.dark .data-table th {
 }
 
 .must-have.received {
-  color: #0b6b3a;
-  font-weight: 700;
+  color: var(--ok);
+  font-weight: 650;
 }
 
 .must-have.warn {
-  color: #9a6b00;
-  font-weight: 700;
+  color: var(--warn);
+  font-weight: 650;
 }
 
 .must-have.soon {
-  background: var(--ok-bg);
   color: var(--ok);
-  padding: 0.1rem 0.35rem;
-  border-radius: 0.375rem;
+  font-weight: 600;
 }
 
 .must-have.late {
-  background: var(--danger-bg);
   color: var(--danger-fg);
+  font-weight: 700;
+  background: var(--danger-bg);
   padding: 0.1rem 0.35rem;
-  border-radius: 0.375rem;
+  border-radius: 0.35rem;
 }
 
 .stage-cell {
@@ -1378,14 +1376,15 @@ body.admin-mode .shell-sidebar {
 
 .register-program-title {
   margin: 0;
-  padding: 0.7rem 1rem;
-  font-size: 0.82rem;
+  padding: 0.65rem 1rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--ventia-green);
-  background: color-mix(in srgb, var(--ventia-green) 8%, var(--panel));
+  color: var(--ventia-ink);
+  background: color-mix(in srgb, var(--ventia-border) 28%, var(--panel));
   border-bottom: 1px solid var(--ventia-border);
+  border-left: 3px solid var(--ventia-green-mid);
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
@@ -1451,7 +1450,48 @@ body.admin-mode .shell-sidebar {
 }
 
 .status-cell {
-  min-width: 9rem;
+  min-width: 11.5rem;
+}
+
+.status-select {
+  display: block;
+  width: 100%;
+  max-width: 14rem;
+  min-height: 2rem;
+  margin: 0 0 0.3rem;
+  padding: 0.28rem 1.6rem 0.28rem 0.5rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.45rem;
+  background: var(--field-bg);
+  color: var(--ventia-ink);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: pointer;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ventia-muted) 50%),
+    linear-gradient(135deg, var(--ventia-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 12px) 55%,
+    calc(100% - 7px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.status-select:hover,
+.status-select:focus {
+  border-color: var(--ventia-green-mid);
+}
+
+.status-select:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.status-select.saving {
+  outline: 2px solid color-mix(in srgb, var(--ventia-green-mid) 55%, transparent);
 }
 
 .status-chip {
@@ -1459,9 +1499,9 @@ body.admin-mode .shell-sidebar {
   font-size: 0.78rem;
   font-weight: 600;
   padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ventia-green) 12%, var(--panel));
-  color: var(--ventia-green);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--ventia-green) 10%, var(--panel));
+  color: var(--ventia-ink);
   max-width: 12rem;
   white-space: nowrap;
   overflow: hidden;
@@ -1493,28 +1533,18 @@ body.admin-mode .shell-sidebar {
 }
 
 .badge-permits {
-  background: #e8f1ff;
-  color: #1d4ed8;
+  background: color-mix(in srgb, var(--ventia-blue) 14%, var(--panel));
+  color: color-mix(in srgb, var(--ventia-blue) 70%, var(--ventia-ink));
 }
 
 .badge-trims {
-  background: #f3e8ff;
-  color: #7e22ce;
+  background: color-mix(in srgb, var(--ventia-green) 14%, var(--panel));
+  color: color-mix(in srgb, var(--ventia-green-mid) 55%, var(--ventia-ink));
 }
 
 .badge-muted {
   background: color-mix(in srgb, var(--ventia-border) 55%, transparent);
   color: var(--ventia-muted);
-}
-
-html.dark .badge-permits {
-  background: #1e293b;
-  color: #93c5fd;
-}
-
-html.dark .badge-trims {
-  background: #2e1065;
-  color: #d8b4fe;
 }
 
 .btn-sm {

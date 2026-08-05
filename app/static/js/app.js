@@ -40,6 +40,82 @@ function currentStageLabel(site) {
   return stageLabel(state.meta, key);
 }
 
+function currentStageKey(site) {
+  return site?.metrics?.current_stage || "";
+}
+
+/** Spreadsheet-style master status: complete all stages up to (and including) target. */
+function workflowAdvanceTo(targetKey) {
+  const stages = state.meta.workflow_stages || [];
+  const linear = stages.filter((s) => s.key !== "revision_needed");
+  const workflow = {};
+  if (targetKey === "revision_needed") {
+    for (const s of stages) {
+      workflow[s.key] = s.key === "revision_needed";
+    }
+    return workflow;
+  }
+  const idx = linear.findIndex((s) => s.key === targetKey);
+  for (const s of stages) {
+    if (s.key === "revision_needed") {
+      workflow[s.key] = false;
+      continue;
+    }
+    const i = linear.findIndex((x) => x.key === s.key);
+    workflow[s.key] = idx >= 0 && i >= 0 && i <= idx;
+  }
+  return workflow;
+}
+
+function statusSelectHtml(site) {
+  const current = currentStageKey(site);
+  const opts = (state.meta.workflow_stages || [])
+    .map(
+      (s) =>
+        `<option value="${escapeHtml(s.key)}" ${s.key === current ? "selected" : ""}>${escapeHtml(
+          s.label
+        )}</option>`
+    )
+    .join("");
+  return `<label class="sr-only" for="status-${site.id}">Status for ${escapeHtml(
+    site.road_name
+  )}</label>
+    <select class="status-select" id="status-${site.id}" data-status-select="${site.id}" aria-label="Set status">
+      ${opts || `<option value="">No stages</option>`}
+    </select>`;
+}
+
+async function quickSetStatus(siteId, stageKey, selectEl) {
+  const site = state.sites.find((s) => s.id === Number(siteId));
+  if (!site || !stageKey) return;
+  const prev = currentStageKey(site);
+  if (prev === stageKey) return;
+  if (selectEl) {
+    selectEl.disabled = true;
+    selectEl.classList.add("saving");
+  }
+  try {
+    const updated = await api(`/api/sites/${siteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workflow: workflowAdvanceTo(stageKey) }),
+    });
+    const idx = state.sites.findIndex((s) => s.id === Number(siteId));
+    if (idx >= 0) state.sites[idx] = updated;
+    else await loadAll();
+    renderRegister();
+    setStatus(`Updated status → ${stageLabel(state.meta, stageKey)}`);
+  } catch (err) {
+    if (selectEl) selectEl.value = prev;
+    alert(err.message || String(err));
+  } finally {
+    if (selectEl) {
+      selectEl.disabled = false;
+      selectEl.classList.remove("saving");
+    }
+  }
+}
+
 function fillFilterOptions() {
   const stageSel = $("stageFilter");
   const councilSel = $("councilFilter");
@@ -102,10 +178,10 @@ function siteRowHtml(site) {
         ${councils ? ` · ${escapeHtml(councils)}${escapeHtml(more)}` : ""}
       </div>
     </td>
-    <td>
+    <td class="status-col" onclick="event.stopPropagation()">
       <div class="status-cell">
-        <span class="status-chip">${escapeHtml(currentStageLabel(site))}</span>
-        <div class="progress-bar thin" title="${pct}%"><span style="width:${pct}%"></span></div>
+        ${statusSelectHtml(site)}
+        <div class="progress-bar thin" title="${pct}% complete" aria-hidden="true"><span style="width:${pct}%"></span></div>
       </div>
     </td>
     <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
@@ -754,11 +830,19 @@ function bindEvents() {
   on("siteForm", "change", scheduleAutosave);
 
   on("registerList", "click", (ev) => {
+    if (ev.target.closest("[data-status-select], .status-col")) return;
     const btn = ev.target.closest("[data-action='open']");
     if (!btn) return;
     const id = Number(btn.dataset.id);
     const site = state.sites.find((s) => s.id === id);
     if (site) openSiteDrawer(site);
+  });
+
+  on("registerList", "change", (ev) => {
+    const sel = ev.target.closest("[data-status-select]");
+    if (!sel) return;
+    const id = sel.getAttribute("data-status-select");
+    quickSetStatus(id, sel.value, sel).catch((e) => alert(e.message));
   });
 
   on("columnList", "click", async (ev) => {
