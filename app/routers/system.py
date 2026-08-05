@@ -341,8 +341,23 @@ def _cmp_versions(a: str, b: str) -> int:
 
 
 def _fetch_remote_version(owner: str, repo: str, ref: str) -> str:
-    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/VERSION"
-    text = _http_get_text(url, timeout=10.0)
+    """Read VERSION for a branch/tag/SHA.
+
+    Prefer the GitHub Contents API (pinned to ``ref``) so we don't get a stale
+    ``raw.githubusercontent.com`` CDN body that disagrees with the tip commit.
+    """
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/VERSION?ref={ref}"
+    try:
+        text = _http_get_text(
+            api_url,
+            timeout=10.0,
+            accept="application/vnd.github.raw",
+        )
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+        text = _http_get_text(
+            f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/VERSION",
+            timeout=10.0,
+        )
     line = text.strip().splitlines()[0].strip() if text.strip() else ""
     if not line:
         raise ValueError("Remote VERSION file is empty")
@@ -350,14 +365,23 @@ def _fetch_remote_version(owner: str, repo: str, ref: str) -> str:
 
 
 def _fetch_remote_commit(owner: str, repo: str, ref: str) -> str | None:
+    """Return the full tip commit SHA for ``ref``, or None."""
     url = f"https://api.github.com/repos/{owner}/{repo}/commits/{ref}"
     try:
         raw = _http_get_text(url, timeout=10.0, accept="application/vnd.github+json")
         data = json.loads(raw)
         sha = data.get("sha")
-        return str(sha)[:7] if sha else None
+        return str(sha) if sha else None
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, ValueError):
         return None
+
+
+def _is_real_commit(value: str | None) -> bool:
+    raw = (value or "").strip().lower()
+    if not raw or raw in {"unknown", "none", "null", "n/a", "-"}:
+        return False
+    # short or full hex sha
+    return bool(re.fullmatch(r"[0-9a-f]{7,40}", raw))
 
 
 def check_for_update(*, branch: str, repo: str, current: SystemStatusOut) -> CheckUpdateOut:
@@ -370,8 +394,13 @@ def check_for_update(*, branch: str, repo: str, current: SystemStatusOut) -> Che
     owner, name = slug
     ref = (branch or DEFAULT_BRANCH).strip() or DEFAULT_BRANCH
 
+    # Resolve tip SHA first, then read VERSION at that SHA (avoids branch CDN skew).
+    remote_sha = _fetch_remote_commit(owner, name, ref)
+    remote_commit = remote_sha[:7] if remote_sha else None
+    version_ref = remote_sha or ref
+
     try:
-        remote_ver = _fetch_remote_version(owner, name, ref)
+        remote_ver = _fetch_remote_version(owner, name, version_ref)
     except urllib.error.HTTPError as exc:
         raise HTTPException(
             status_code=502,
@@ -384,7 +413,6 @@ def check_for_update(*, branch: str, repo: str, current: SystemStatusOut) -> Che
         ) from exc
 
     remote_tag = _normalize_tag(remote_ver)
-    remote_commit = _fetch_remote_commit(owner, name, ref)
     current_ver = _normalize_version(current.app_version) or current.app_version
     current_tag = current.version_tag or _normalize_tag(current_ver)
     cmp = _cmp_versions(current_ver, remote_ver)
@@ -393,20 +421,38 @@ def check_for_update(*, branch: str, repo: str, current: SystemStatusOut) -> Che
     if cmp < 0:
         update_available = True
         detail = f"Update available: {remote_tag} on {ref} (you’re on {current_tag})."
+        if remote_commit:
+            detail += f" Tip {remote_commit}."
     elif cmp > 0:
         detail = f"You’re ahead of {ref}: local {current_tag}, remote {remote_tag}."
     else:
-        # Same VERSION — still flag a newer tip commit when known
+        # Same VERSION number — only compare commits when both look like real SHAs.
+        # Local "unknown" used to false-trigger “newer commit” while CDN still showed
+        # the previous VERSION.
         cur_c = (current.commit or "").strip().lower()
         rem_c = (remote_commit or "").strip().lower()
-        if cur_c and rem_c and not (cur_c.startswith(rem_c) or rem_c.startswith(cur_c)):
+        if (
+            _is_real_commit(cur_c)
+            and _is_real_commit(rem_c)
+            and not (cur_c.startswith(rem_c) or rem_c.startswith(cur_c))
+        ):
             update_available = True
             detail = (
                 f"Same version {remote_tag}, but {ref} has a newer commit "
                 f"({remote_commit} vs local {current.commit})."
             )
+        elif not _is_real_commit(cur_c) and remote_commit:
+            detail = (
+                f"You’re on {current_tag} (matches {ref}). "
+                f"Local commit is unknown — tip is {remote_commit}. "
+                f"Pull & install if you want to refresh install metadata."
+            )
+            # Don't mark update_available solely because commit metadata is missing
+            update_available = False
         else:
             detail = f"You’re up to date — {current_tag} matches {ref}."
+            if remote_commit:
+                detail += f" Tip {remote_commit}."
 
     return CheckUpdateOut(
         ok=True,
