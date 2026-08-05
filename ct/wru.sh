@@ -1208,7 +1208,7 @@ EOF
   echo
   msg_ok "GitHub update complete for CT ${CT_ID}"
   echo -e "${INFO}${YW} Access URL:${CL} ${BGN}http://${ip}:${APP_PORT}${CL}"
-  echo -e "${INFO}${YW} In-app updater:${CL} ${BL}http://${ip}:${APP_PORT}/system${CL}"
+  echo -e "${INFO}${YW} In-app updater:${CL} ${BL}http://${ip}:${APP_PORT}/admin/system${CL}"
   echo -e "${INFO}${YW} CLI updater:${CL} ${BL}pct exec ${CT_ID} -- sudo -u wru sudo /usr/local/sbin/wru-update${CL}"
   echo -e "${INFO} Or inside the CT as root: ${BL}wru-update${CL}\n"
 }
@@ -1485,7 +1485,7 @@ EOF
   local ip
   ip="$(hostname -I | awk '{print $1}')"
   echo -e "${INFO} Access URL: ${BGN}http://${ip}:${APP_PORT}${CL}"
-  echo -e "${INFO} In-app updater: ${BGN}http://${ip}:${APP_PORT}/system${CL}"
+  echo -e "${INFO} In-app updater: ${BGN}http://${ip}:${APP_PORT}/admin/system${CL}"
   echo -e "${INFO} CLI: ${BL}sudo wru-update${CL}\n"
   exit 0
 }

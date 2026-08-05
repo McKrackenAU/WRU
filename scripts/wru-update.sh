@@ -209,6 +209,6 @@ chmod 644 "$VERSION_FILE"
 
 systemctl start wru 2>/dev/null || true
 echo "=== WRU update complete (v${app_ver} / ${commit}) ==="
-echo "In-app updater: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${APP_PORT}/system"
+echo "In-app updater: http://$(hostname -I 2>/dev/null | awk '{print $1}'):${APP_PORT}/admin/system"
 echo "Next shell update: sudo wru-update"
 echo "Rollback (example): WRU_BRANCH=v0.1 sudo wru-update"
