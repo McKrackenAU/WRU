@@ -5,11 +5,13 @@ from pathlib import Path
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..database import UPLOAD_DIR, get_db
 from ..financial_year import australian_financial_year
 from ..kml_parse import parse_kml_features
+from ..map_config import get_nearmap_api_key, map_config_public, set_nearmap_api_key
 from ..models import MapFeature, MapLayer, Site
 from ..schemas import MapFeatureLink, MapFeatureOut, MapLayerOut
 
@@ -18,6 +20,42 @@ router = APIRouter(prefix="/api/map", tags=["map"])
 KML_DIR = UPLOAD_DIR / "kml"
 KML_DIR.mkdir(parents=True, exist_ok=True)
 MAX_KML_BYTES = 50 * 1024 * 1024
+
+
+class NearmapKeyIn(BaseModel):
+    api_key: str | None = Field(default=None, max_length=256)
+
+
+@router.get("/config")
+def map_basemap_config():
+    """Basemap providers + Nearmap key for the works map (VenInspect-style client tiles)."""
+    return map_config_public()
+
+
+@router.put("/nearmap-key")
+def put_nearmap_key(payload: NearmapKeyIn):
+    """Save or clear the Nearmap API key (Admin → System)."""
+    try:
+        set_nearmap_api_key(payload.api_key)
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    cfg = map_config_public()
+    return {
+        "ok": True,
+        "nearmap_configured": cfg["nearmap_configured"],
+        "nearmap_key_source": cfg["nearmap_key_source"],
+        "masked_key": _mask_key(get_nearmap_api_key()),
+    }
+
+
+def _mask_key(key: str | None) -> str | None:
+    if not key:
+        return None
+    if len(key) <= 8:
+        return "••••••••"
+    return f"{key[:4]}…{key[-4:]}"
 
 
 def _feature_out(feat: MapFeature) -> dict:

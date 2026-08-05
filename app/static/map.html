@@ -33,6 +33,13 @@
       </div>
       <div class="map-layout" id="mapLayout">
         <aside class="panel-card map-side">
+          <h2>Basemap</h2>
+          <div class="basemap-switch" role="group" aria-label="Basemap">
+            <button type="button" class="btn basemap-btn active" id="btnBasemapOsm" data-basemap="osm">OpenStreetMap</button>
+            <button type="button" class="btn basemap-btn" id="btnBasemapNearmap" data-basemap="nearmap" disabled title="Add a Nearmap API key in Admin → System">Nearmap</button>
+          </div>
+          <p class="hint" id="basemapHint">Streets from OpenStreetMap. Nearmap needs an API key.</p>
+
           <h2>Add site from map</h2>
           <p class="hint">Draw a point, line, or polygon with the map tools, then save it to the register.</p>
           <div class="filters" style="margin:0 0 0.75rem; flex-direction:column; align-items:stretch">

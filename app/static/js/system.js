@@ -317,6 +317,59 @@ async function runRollback(version) {
   }
 }
 
+async function loadNearmapConfig() {
+  const cfg = await api("/api/map/config", { timeoutMs: 10000 });
+  const hint = $("nearmapHint");
+  const input = $("nearmapKey");
+  if (cfg.nearmap_configured) {
+    const src = cfg.nearmap_key_source === "env" ? "from server environment" : "saved in this install";
+    if (hint) hint.textContent = `Configured ${src}. Nearmap is available on the Works map.`;
+    if (input) {
+      input.placeholder = "••••••••  (enter a new key to replace)";
+      input.value = "";
+      input.disabled = cfg.nearmap_key_source === "env";
+    }
+    if ($("btnSaveNearmap")) $("btnSaveNearmap").disabled = cfg.nearmap_key_source === "env";
+    if ($("btnClearNearmap")) $("btnClearNearmap").disabled = cfg.nearmap_key_source === "env";
+  } else {
+    if (hint) hint.textContent = "Not configured — map will use OpenStreetMap only.";
+    if (input) {
+      input.placeholder = "Paste API key";
+      input.disabled = false;
+    }
+    if ($("btnSaveNearmap")) $("btnSaveNearmap").disabled = false;
+    if ($("btnClearNearmap")) $("btnClearNearmap").disabled = false;
+  }
+  return cfg;
+}
+
+async function saveNearmapKey(clear = false) {
+  const status = $("nearmapStatus");
+  const key = clear ? null : ($("nearmapKey")?.value || "").trim();
+  if (!clear && !key) {
+    if (status) status.textContent = "Paste a key first, or use Clear.";
+    return;
+  }
+  if (status) status.textContent = clear ? "Clearing…" : "Saving…";
+  try {
+    const result = await api("/api/map/nearmap-key", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key }),
+      timeoutMs: 15000,
+    });
+    if (status) {
+      status.textContent = result.nearmap_configured
+        ? `Saved${result.masked_key ? ` (${result.masked_key})` : ""}.`
+        : "Cleared.";
+    }
+    await loadNearmapConfig();
+  } catch (err) {
+    if (status) status.textContent = "";
+    alert(err.message || err);
+  }
+}
+
 async function init() {
   injectChrome({ active: "/admin/system", mode: "admin" });
   on("updBranch", "input", () => {
@@ -329,9 +382,16 @@ async function init() {
     loadVersions()
       .then(() => refreshLog())
       .catch((e) => showPageError("sysMeta", e, "Could not load system status"));
+    loadNearmapConfig().catch(() => {});
   });
   on("btnCheckUpdate", "click", () => checkForUpdate().catch((e) => alert(e.message)));
   on("btnUpdate", "click", () => runUpdate().catch((e) => alert(e.message)));
+  on("btnSaveNearmap", "click", () => saveNearmapKey(false).catch((e) => alert(e.message)));
+  on("btnClearNearmap", "click", () => {
+    if (confirm("Remove the saved Nearmap API key?")) {
+      saveNearmapKey(true).catch((e) => alert(e.message));
+    }
+  });
   try {
     await loadVersions();
   } catch (err) {
@@ -340,6 +400,11 @@ async function init() {
     if ($("nowMeta")) $("nowMeta").textContent = err.message;
     $("histBody").innerHTML = `<tr><td class="empty" colspan="4">${escapeHtml(err.message)}</td></tr>`;
     setAlert("bad", `<strong>Couldn’t load status.</strong> ${escapeHtml(err.message)}`);
+  }
+  try {
+    await loadNearmapConfig();
+  } catch (err) {
+    if ($("nearmapHint")) $("nearmapHint").textContent = err.message || "Could not load Nearmap settings.";
   }
 }
 

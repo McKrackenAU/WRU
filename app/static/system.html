@@ -85,6 +85,25 @@
         <pre id="updLog" class="code-block upd-log" hidden aria-label="Update log"></pre>
       </section>
 
+      <section class="panel-card" aria-labelledby="mapKeyHeading">
+        <h2 id="mapKeyHeading">Map · Nearmap</h2>
+        <p class="hint">
+          Optional aerial basemap on the Works map. Paste a Nearmap Tile API key, then switch between
+          OpenStreetMap and Nearmap on the map page.
+        </p>
+        <div class="form-grid">
+          <label class="full">Nearmap API key
+            <input id="nearmapKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste API key" />
+          </label>
+        </div>
+        <p class="hint" id="nearmapHint">Not configured — map will use OpenStreetMap only.</p>
+        <div class="updater-cta">
+          <button type="button" class="btn btn-primary" id="btnSaveNearmap">Save key</button>
+          <button type="button" class="btn" id="btnClearNearmap">Clear</button>
+          <span class="hint" id="nearmapStatus" aria-live="polite"></span>
+        </div>
+      </section>
+
       <section class="panel-card" aria-labelledby="verHeading">
         <h2 id="verHeading">Install details</h2>
         <div class="version-strip" id="sysMeta">

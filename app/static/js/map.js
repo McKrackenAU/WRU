@@ -1,11 +1,90 @@
 import { $, api, escapeHtml, injectChrome, userName } from "./common.js";
 
+const BASEMAP_KEY = "wru-map-basemap";
+
 let map;
 let geoLayer;
 let drawLayer;
 let drawnGeometry = null;
 let sites = [];
 let baseTiles;
+let osmTiles;
+let nearmapTiles;
+let activeBasemap = "osm";
+let mapConfig = { nearmap_configured: false, nearmap_api_key: null };
+
+function readBasemapPref() {
+  try {
+    const v = localStorage.getItem(BASEMAP_KEY);
+    return v === "nearmap" ? "nearmap" : "osm";
+  } catch {
+    return "osm";
+  }
+}
+
+function writeBasemapPref(provider) {
+  try {
+    localStorage.setItem(BASEMAP_KEY, provider);
+  } catch {
+    /* ignore */
+  }
+}
+
+function syncBasemapButtons() {
+  document.querySelectorAll("[data-basemap]").forEach((btn) => {
+    const id = btn.getAttribute("data-basemap");
+    btn.classList.toggle("active", id === activeBasemap);
+  });
+  const nmBtn = $("btnBasemapNearmap");
+  if (nmBtn) {
+    const ok = Boolean(mapConfig.nearmap_api_key);
+    nmBtn.disabled = !ok;
+    nmBtn.title = ok
+      ? "Nearmap aerial imagery"
+      : "Add a Nearmap API key in Admin → System";
+  }
+  const hint = $("basemapHint");
+  if (hint) {
+    if (activeBasemap === "nearmap") {
+      hint.textContent = "Nearmap aerial imagery.";
+    } else if (mapConfig.nearmap_configured) {
+      hint.textContent = "OpenStreetMap streets. Switch to Nearmap for aerial.";
+    } else {
+      hint.textContent = "OpenStreetMap streets. Add a Nearmap API key under Admin → System to enable aerial.";
+    }
+  }
+}
+
+function setBasemap(provider) {
+  if (!map || !osmTiles) return;
+  const want = provider === "nearmap" && mapConfig.nearmap_api_key ? "nearmap" : "osm";
+
+  if (want === "nearmap" && !nearmapTiles && mapConfig.nearmap_api_key) {
+    nearmapTiles = L.tileLayer(
+      `https://api.nearmap.com/tiles/v3/Vert/{z}/{x}/{y}.jpg?apikey=${encodeURIComponent(mapConfig.nearmap_api_key)}`,
+      {
+        maxZoom: 21,
+        maxNativeZoom: 21,
+        attribution: '&copy; <a href="https://www.nearmap.com/">Nearmap</a>',
+        updateWhenIdle: true,
+        updateWhenZooming: true,
+        keepBuffer: 2,
+      }
+    );
+  }
+
+  const next = want === "nearmap" ? nearmapTiles : osmTiles;
+  if (!next) return;
+
+  if (baseTiles && map.hasLayer(baseTiles) && baseTiles !== next) {
+    map.removeLayer(baseTiles);
+  }
+  if (!map.hasLayer(next)) next.addTo(map);
+  baseTiles = next;
+  activeBasemap = want;
+  writeBasemapPref(want);
+  syncBasemapButtons();
+}
 
 function popupHtml(props) {
   const site = props.site;
@@ -265,13 +344,24 @@ async function init() {
     markerZoomAnimation: true,
   }).setView([-37.8136, 144.9631], 11);
 
-  baseTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  osmTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap",
     updateWhenIdle: true,
     updateWhenZooming: true,
     keepBuffer: 2,
-  }).addTo(map);
+  });
+  baseTiles = osmTiles.addTo(map);
+  activeBasemap = "osm";
+
+  try {
+    mapConfig = await api("/api/map/config", { timeoutMs: 10000 });
+  } catch (_) {
+    mapConfig = { nearmap_configured: false, nearmap_api_key: null };
+  }
+  setBasemap(readBasemapPref());
+  $("btnBasemapOsm")?.addEventListener("click", () => setBasemap("osm"));
+  $("btnBasemapNearmap")?.addEventListener("click", () => setBasemap("nearmap"));
 
   setupDraw();
   bindMapInteractionGuards();

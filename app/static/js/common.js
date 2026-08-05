@@ -60,16 +60,21 @@ export function fmtDate(value) {
   return `${d}/${m}/${y}`;
 }
 
+/** Optional actor name for audit fields (localStorage only — no topbar field). */
 export function userName() {
-  return ($("userName")?.value || "").trim() || null;
+  try {
+    return (localStorage.getItem("wru_user") || "").trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 export function saveUserName() {
-  if ($("userName")) localStorage.setItem("wru_user", $("userName").value || "");
+  /* kept for callers; name is no longer edited in the chrome */
 }
 
 export function loadUserName() {
-  if ($("userName")) $("userName").value = localStorage.getItem("wru_user") || "";
+  /* kept for callers; name is no longer edited in the chrome */
 }
 
 function currentTheme() {
@@ -381,15 +386,8 @@ export function injectChrome({ active, mode } = {}) {
           <img class="ventia-logo" src="/static/brand/ventia-logo.png" alt="Ventia" />
           <div class="brand-text">
             <p class="app-name">${isAdmin ? "Admin console" : "Operations"}</p>
-            <p class="tagline">${isAdmin ? "Stages · rules · rates · updates" : "Sites · lists · tracking · map"}</p>
           </div>
         </div>
-      </div>
-      <div class="toolbar header-tools">
-        <label class="user-field">
-          <span class="sr-only">Your name</span>
-          <input id="userName" type="text" placeholder="Your name" maxlength="64" autocomplete="name" />
-        </label>
       </div>
     `;
   }
@@ -422,9 +420,6 @@ export function injectChrome({ active, mode } = {}) {
   }
 
   wireNavToggle();
-
-  loadUserName();
-  $("userName")?.addEventListener("change", saveUserName);
   initThemeToggle();
 }
 
