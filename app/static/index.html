@@ -26,11 +26,11 @@
 <body>
   <div class="app-shell">
     <header class="topbar" data-app-header></header>
-    <main class="main sites-main">
+    <main id="main-content" class="main sites-main" tabindex="-1">
       <div class="page-head sites-head">
         <div>
           <h1>Sites register</h1>
-          <p id="statusLine">Loading active TGS / MoA jobs…</p>
+          <p id="statusLine" aria-live="polite">Loading active TGS / MoA jobs…</p>
         </div>
         <div class="toolbar">
           <a class="btn" href="/lists">Client lists</a>

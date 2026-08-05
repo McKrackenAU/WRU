@@ -6,6 +6,7 @@ import {
   injectChrome,
   mustBandClass,
   on,
+  showPageError,
   stageLabel,
   userName,
 } from "./common.js";
@@ -790,10 +791,7 @@ function bindEvents() {
 function showLoadError(err) {
   const msg = err?.message || String(err);
   setStatus(`Failed to load: ${msg}`);
-  const root = $("registerList");
-  if (root) {
-    root.innerHTML = `<div class="register-empty">Could not load sites.<br/><span class="hint">${escapeHtml(msg)}</span></div>`;
-  }
+  showPageError("registerList", err, "Could not load sites");
 }
 
 async function init() {
@@ -809,4 +807,7 @@ async function init() {
   }
 }
 
-init();
+init().catch((err) => {
+  showLoadError(err);
+  console.error(err);
+});

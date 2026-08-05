@@ -186,47 +186,72 @@ def _read_history() -> list[VersionEntry]:
 
 
 def _probe_can_update() -> tuple[bool, str | None]:
-    """Return (can_update, detail). Never runs the real updater."""
+    """Return (can_update, detail). Fast + never hangs the API.
+
+    Prefer reading sudoers / file presence. Optional short sudo --check with a
+    hard 2s timeout — on timeout we still allow the button (actual update reports errors).
+    """
     if not UPDATE_BIN.is_file():
         return False, (
-            "In-app updater helper not installed yet. Run the shell command below "
-            "once as root inside this CT (or use Proxmox host → Update existing CT). "
-            "That installs /usr/local/sbin/wru-update for future UI updates."
+            "Updater not installed yet. Use “Update from the shell” once as root — "
+            "that installs the helper so this button works next time."
         )
+
+    sudoers = Path("/etc/sudoers.d/wru-update")
+    sudoers_ok = False
+    if sudoers.is_file():
+        try:
+            text = sudoers.read_text(encoding="utf-8", errors="ignore")
+            sudoers_ok = "wru-update" in text or "wru-online-update" in text
+        except OSError:
+            sudoers_ok = False
 
     check_bin = ONLINE_UPDATE if ONLINE_UPDATE.is_file() else None
     if check_bin:
+        try:
+            probe = subprocess.run(
+                ["sudo", "-n", str(check_bin), "--check"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if probe.returncode == 0:
+                return True, None
+            err = ((probe.stderr or "") + (probe.stdout or "")).strip().lower()
+            if "password" in err:
+                return False, (
+                    "Passwordless sudo is missing. Run the shell updater once as root "
+                    "to refresh /etc/sudoers.d/wru-update."
+                )
+        except subprocess.TimeoutExpired:
+            # Don't block the System page — let the user try; start-job will surface errors.
+            return True, "Sudo check timed out; you can still try an update."
+        except OSError:
+            pass
+
+    if sudoers_ok:
+        return True, None
+
+    # Last resort: quick sudo -l (2s). Never call wru-update itself here.
+    try:
         probe = subprocess.run(
-            ["sudo", "-n", str(check_bin), "--check"],
+            ["sudo", "-n", "-l"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=2,
             check=False,
         )
-        if probe.returncode == 0:
+        listing = (probe.stdout or "") + (probe.stderr or "")
+        if probe.returncode == 0 and "wru-update" in listing:
             return True, None
-        err = ((probe.stderr or "") + (probe.stdout or "")).strip()
-        if "password" in err.lower() or probe.returncode == 1:
-            return False, (
-                "Passwordless sudo for wru-online-update is not configured. "
-                "Re-run the shell updater once as root to install /etc/sudoers.d/wru-update."
-            )
-        return False, f"Update helper check failed: {err[-400:] or f'exit {probe.returncode}'}"
+    except (subprocess.TimeoutExpired, OSError):
+        if UPDATE_BIN.is_file():
+            return True, "Could not verify sudo quickly; try an update or use the shell command."
 
-    # Older installs: only wru-update present — verify sudo listing, never invoke updater.
-    probe = subprocess.run(
-        ["sudo", "-n", "-l"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
-    listing = (probe.stdout or "") + (probe.stderr or "")
-    if probe.returncode == 0 and "wru-update" in listing:
-        return True, None
     return False, (
-        "sudo is not configured for the wru user. Re-run the shell updater once as root "
-        "to install /etc/sudoers.d/wru-update."
+        "In-app updates need passwordless sudo for the wru user. "
+        "Run the shell updater once as root, then refresh this page."
     )
 
 

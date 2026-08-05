@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct
 from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .database import get_db
 from .financial_year import fy_choices
@@ -34,7 +36,7 @@ from .version import version_string
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _ASSET_BUST_RE = re.compile(
-    r'((?:href|src)=")(/static/(?:css|js)/[^"?#]+\.(?:css|js))(")',
+    r'((?:href|src)=")(/static/(?:css|js|brand)/[^"?#]+)(")',
     re.IGNORECASE,
 )
 
@@ -58,6 +60,21 @@ app.include_router(stages.router)
 app.include_router(settings_admin.router)
 app.include_router(import_tracker.router)
 app.include_router(system.router)
+
+
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    """Prevent stale JS/CSS after deploys (ES module imports ignore HTML ?v= busting)."""
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/static/js/") or path.startswith("/static/css/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
+
+app.add_middleware(NoCacheStaticMiddleware)
 
 
 @app.get("/api/meta", response_model=MetaOut)
@@ -108,8 +125,18 @@ def meta(db: Session = Depends(get_db)):
     }
 
 
+def _import_map(ver: str) -> str:
+    imports: dict[str, str] = {}
+    js_dir = STATIC_DIR / "js"
+    if js_dir.is_dir():
+        for path in sorted(js_dir.glob("*.js")):
+            url = f"/static/js/{path.name}"
+            imports[url] = f"{url}?v={ver}"
+    return json.dumps({"imports": imports}, separators=(",", ":"))
+
+
 def _page(name: str) -> HTMLResponse:
-    """Serve HTML with cache-busted static asset URLs (?v=VERSION)."""
+    """Serve HTML with cache-busted assets + import map for ES module graph."""
     path = STATIC_DIR / name
     if not path.exists():
         path = STATIC_DIR / "index.html"
@@ -117,9 +144,35 @@ def _page(name: str) -> HTMLResponse:
     ver = version_string()
 
     def _bust(match: re.Match[str]) -> str:
-        return f"{match.group(1)}{match.group(2)}?v={ver}{match.group(3)}"
+        url = match.group(2)
+        if "?" in url:
+            return match.group(0)
+        return f"{match.group(1)}{url}?v={ver}{match.group(3)}"
 
     html = _ASSET_BUST_RE.sub(_bust, html)
+
+    boot = f"""<script type="importmap">{_import_map(ver)}</script>
+<meta name="wru-asset-version" content="{ver}" />
+<script>
+window.__WRU_ASSET_V={json.dumps(ver)};
+window.addEventListener("error",function(e){{
+  var m=String(e&&e.message||"");
+  if(m.indexOf("export")===-1&&m.indexOf("Failed to fetch")===-1&&m.indexOf("import")===-1)return;
+  if(document.getElementById("wru-boot-error"))return;
+  var d=document.createElement("div");
+  d.id="wru-boot-error";
+  d.setAttribute("role","alert");
+  d.className="boot-error";
+  d.innerHTML="<strong>App scripts failed to load.</strong> Hard-refresh with <kbd>Ctrl+Shift+R</kbd> (or clear cache), then try again. If this persists, run the shell updater once as root.";
+  document.body.prepend(d);
+}});
+</script>
+"""
+    if "</head>" in html:
+        html = html.replace("</head>", boot + "</head>", 1)
+    else:
+        html = boot + html
+
     return HTMLResponse(
         content=html,
         headers={

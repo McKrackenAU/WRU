@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>System · WRU TGS Tracker</title>
+  <title>System &amp; updates · WRU Admin</title>
   <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
   <link rel="stylesheet" href="/static/css/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
@@ -22,64 +22,73 @@
 <body>
   <div class="app-shell">
     <header class="topbar" data-app-header></header>
-    <main class="main">
+    <main id="main-content" tabindex="-1" class="main">
       <div class="page-head">
         <div>
           <h1>System &amp; updates</h1>
-          <p>Pull the latest WRU release from GitHub, or roll back to one of the last 5 installs. Database and uploads are kept.</p>
+          <p>Check the installed version, pull a GitHub update, or roll back. Database and uploads are kept.</p>
         </div>
       </div>
 
-      <section class="panel-card">
-        <h2>Installed version</h2>
+      <div id="sysAlert" class="sys-alert" role="status" aria-live="polite" hidden></div>
+
+      <section class="panel-card" aria-labelledby="verHeading">
+        <h2 id="verHeading">Installed version</h2>
         <div class="form-grid" id="sysMeta">
-          <p class="hint">Loading…</p>
+          <p class="hint">Loading version…</p>
         </div>
       </section>
 
-      <section class="panel-card" id="shellHelp">
-        <h2>Update from the shell</h2>
-        <p class="hint">Use these if the in-app button is disabled (helper not installed yet) or you prefer the terminal.</p>
-        <p><strong>Inside the WRU container</strong> (as root):</p>
-        <pre id="shellCt" class="hint" style="white-space:pre-wrap;user:0.35rem 0 1rem"></pre>
-        <p><strong>From the Proxmox host</strong>:</p>
-        <pre id="shellPve" class="hint" style="white-space:pre-wrap;margin:0.35rem 0 0"></pre>
-        <p class="hint" style="margin-top:0.75rem">After one successful shell update, <code>sudo wru-update</code> and the button below will work.</p>
-      </section>
+      <section class="panel-card updater-card" aria-labelledby="updHeading">
+        <h2 id="updHeading">Update from GitHub</h2>
+        <p class="hint">One click pulls the branch or tag below and reinstalls WRU. The app restarts automatically.</p>
 
-      <section class="panel-card">
-        <h2>Update from GitHub (in-app)</h2>
+        <div class="updater-steps" id="updSteps" aria-label="Update readiness">
+          <div class="upd-step" data-step="helper"><span class="upd-dot"></span><span>Updater helper</span></div>
+          <div class="upd-step" data-step="sudo"><span class="upd-dot"></span><span>Passwordless sudo</span></div>
+          <div class="upd-step" data-step="ready"><span class="upd-dot"></span><span>Ready to update</span></div>
+        </div>
+
         <div class="form-grid">
           <label>Git branch or tag
-            <input id="updBranch" type="text" value="main" placeholder="main or v0.1" />
+            <input id="updBranch" type="text" value="main" placeholder="main or v0.7" autocomplete="off" />
           </label>
           <label class="full">Git repository URL
-            <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" />
+            <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" autocomplete="off" />
           </label>
         </div>
-        <p class="hint" id="updHint">
-          Starts a detached oneshot via <code>systemd-run --no-block</code> so the service can restart itself.
-          Each update records the previous version (max 5) for rollback below.
-        </p>
-        <div class="toolbar" style="margin-top:0.85rem">
+
+        <p class="hint" id="updHint">Checking updater…</p>
+
+        <div class="toolbar updater-actions">
           <button type="button" class="btn btn-primary" id="btnUpdate">Pull &amp; install update</button>
           <button type="button" class="btn" id="btnRefresh">Refresh status</button>
-          <span class="hint" id="updStatus"></span>
+          <span class="hint" id="updStatus" aria-live="polite"></span>
         </div>
-        <pre id="updLog" class="hint" style="margin-top:1rem;white-space:pre-wrap;max-height:280px;overflow:auto;background:var(--field-bg);padding:0.75rem;border-radius:0.5rem;border:1px solid var(--ventia-border)" hidden></pre>
+
+        <details class="upd-advanced" id="shellHelp">
+          <summary>Advanced: update from the shell</summary>
+          <p class="hint">Use this once if the green button is disabled, or if you prefer the terminal.</p>
+          <p><strong>Inside the WRU container</strong> (as root):</p>
+          <pre id="shellCt" class="code-block"></pre>
+          <p><strong>From the Proxmox host</strong>:</p>
+          <pre id="shellPve" class="code-block"></pre>
+        </details>
+
+        <pre id="updLog" class="code-block upd-log" hidden aria-label="Update log"></pre>
       </section>
 
-      <section class="panel-card">
-        <h2>Version history &amp; rollback</h2>
-        <p class="hint" id="histHint">Up to 5 prior installs can be restored. Empty until the first update after this release.</p>
+      <section class="panel-card" aria-labelledby="histHeading">
+        <h2 id="histHeading">Version history &amp; rollback</h2>
+        <p class="hint" id="histHint">Up to 5 prior installs can be restored.</p>
         <div class="table-scroll">
           <table class="data-table" id="histTable">
             <thead>
               <tr>
-                <th>Version</th>
-                <th>Commit</th>
-                <th>Recorded</th>
-                <th></th>
+                <th scope="col">Version</th>
+                <th scope="col">Commit</th>
+                <th scope="col">Recorded</th>
+                <th scope="col"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody id="histBody">
@@ -89,6 +98,7 @@
         </div>
       </section>
     </main>
+    <footer class="app-footer" data-app-footer></footer>
   </div>
   <script type="module" src="/static/js/system.js"></script>
 </body>

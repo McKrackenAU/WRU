@@ -98,10 +98,157 @@ html.dark body::before {
   border: 0;
 }
 
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  z-index: 1000;
+  padding: 0.55rem 0.85rem;
+  background: var(--ventia-green);
+  color: #fff;
+  border-radius: 0.45rem;
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.skip-link:focus {
+  top: 0.75rem;
+  outline: 3px solid var(--ventia-blue);
+  outline-offset: 2px;
+}
+
+.boot-error,
+.page-error {
+  margin: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--danger-fg) 35%, var(--ventia-border));
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.page-error strong,
+.boot-error strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ventia-blue);
+  outline-offset: 2px;
+}
+
+/* Unified accessible shell (ops + admin) */
+.shell,
 .app-shell {
   min-height: 100vh;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.shell-sidebar {
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 0.85rem 1.15rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--ventia-green) 12%, var(--panel)), var(--panel));
+  border-right: 1px solid var(--ventia-border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.25rem 0.4rem 0.85rem;
+  border-bottom: 1px solid var(--ventia-border);
+}
+
+.sidebar-brand .app-name {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ventia-green);
+  letter-spacing: -0.015em;
+}
+
+.sidebar-brand .tagline {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  color: var(--ventia-muted);
+}
+
+.sidebar-toggle {
+  display: none;
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.side-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.55rem;
+  text-decoration: none;
+  color: var(--ventia-ink);
+  border: 1px solid transparent;
+}
+
+.side-link:hover {
+  background: color-mix(in srgb, var(--ventia-green) 8%, transparent);
+}
+
+.side-link.active,
+.side-link[aria-current="page"] {
+  background: color-mix(in srgb, var(--ventia-green) 14%, var(--panel));
+  border-color: color-mix(in srgb, var(--ventia-green) 28%, var(--ventia-border));
+  color: var(--ventia-green);
+}
+
+.side-link-label {
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.side-link-hint {
+  font-size: 0.72rem;
+  color: var(--ventia-muted);
+  font-weight: 500;
+}
+
+.sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ventia-border);
+}
+
+.btn-block {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
+.shell-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 .topbar {
@@ -117,6 +264,33 @@ html.dark body::before {
   position: sticky;
   top: 0;
   z-index: 20;
+}
+
+@media (max-width: 960px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .shell-sidebar {
+    position: relative;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--ventia-border);
+  }
+
+  .sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .side-nav,
+  .sidebar-foot {
+    display: none;
+  }
+
+  body.nav-open .side-nav,
+  body.nav-open .sidebar-foot {
+    display: flex;
+  }
 }
 
 .brand-block {
@@ -996,7 +1170,7 @@ dialog::backdrop {
   padding: 0;
 }
 
-/* —— Admin console —— */
+/* —— Admin console accents —— */
 .topbar-admin {
   border-bottom-color: color-mix(in srgb, var(--ventia-blue) 35%, var(--ventia-border));
 }
@@ -1006,137 +1180,95 @@ dialog::backdrop {
   color: var(--ventia-blue);
 }
 
-/* VenInspect-style admin sidebar shell */
-.admin-shell {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  min-height: 100vh;
-  align-items: stretch;
-}
-
-.admin-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1.1rem 0.9rem 1.25rem;
+body.admin-mode .shell-sidebar {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--ventia-green) 10%, var(--panel)), var(--panel));
-  border-right: 1px solid var(--ventia-border);
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow: auto;
+    linear-gradient(180deg, color-mix(in srgb, var(--ventia-blue) 10%, var(--panel)), var(--panel));
 }
 
-.admin-brand {
+.sys-alert {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--ventia-border);
+  background: var(--panel);
+}
+
+.sys-alert-ok {
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--ventia-border));
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.sys-alert-warn,
+.sys-alert-pending {
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--ventia-border));
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.sys-alert-bad {
+  border-color: color-mix(in srgb, var(--danger-fg) 35%, var(--ventia-border));
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.updater-steps {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.upd-step {
+  display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.35rem 0.45rem 0.75rem;
-  border-bottom: 1px solid var(--ventia-border);
-}
-
-.admin-brand .app-name {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.admin-brand .tagline {
-  margin: 0.1rem 0 0;
-  font-size: 0.72rem;
+  gap: 0.4rem;
+  font-size: 0.85rem;
   color: var(--ventia-muted);
 }
 
-.admin-side-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  flex: 1;
+.upd-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--ventia-border);
 }
 
-.admin-nav-link {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: 0.55rem;
-  color: var(--ventia-ink);
-  text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 500;
-  border: 1px solid transparent;
-  transition: background 0.12s ease, border-color 0.12s ease;
+.upd-step.ok { color: var(--ok); }
+.upd-step.ok .upd-dot { background: var(--ok); }
+.upd-step.bad { color: var(--danger-fg); }
+.upd-step.bad .upd-dot { background: var(--danger-fg); }
+.upd-step.pending .upd-dot { background: var(--warn); }
+
+.updater-actions {
+  margin-top: 0.85rem;
 }
 
-.admin-nav-link:hover {
-  background: color-mix(in srgb, var(--ventia-green) 8%, transparent);
-}
-
-.admin-nav-link.active {
-  background: color-mix(in srgb, var(--ventia-green) 14%, var(--panel));
-  border-color: color-mix(in srgb, var(--ventia-green) 30%, var(--ventia-border));
-  color: var(--ventia-green);
-  font-weight: 650;
-}
-
-.admin-nav-ico {
-  width: 1.25rem;
-  text-align: center;
-  opacity: 0.75;
-  font-size: 0.85rem;
-}
-
-.admin-side-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
+.upd-advanced {
+  margin-top: 1rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--ventia-border);
 }
 
-.admin-main-col {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+.upd-advanced summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--ventia-muted);
 }
 
-.admin-app-shell {
-  min-height: 100vh;
-}
-
-body.admin-mode .admin-app-shell > .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-}
-
-body.admin-mode .admin-top-brand .app-name {
-  font-size: 1.05rem;
-}
-
-@media (max-width: 900px) {
-  .admin-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-sidebar {
-    position: relative;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--ventia-border);
-  }
-
-  .admin-side-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .admin-side-foot {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
+.code-block,
+.upd-log {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0.35rem 0 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ventia-border);
+  background: var(--field-bg);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  max-height: 280px;
+  overflow: auto;
 }
 
 .admin-grid {
