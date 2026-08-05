@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..financial_year import australian_financial_year
@@ -24,7 +24,16 @@ router = APIRouter(prefix="/api/sites", tags=["sites"])
 
 
 def _base_query(db: Session, *, archived: bool | None):
-    query = db.query(Site)
+    query = (
+        db.query(Site)
+        .options(
+            selectinload(Site.councils),
+            selectinload(Site.workflow_steps),
+            selectinload(Site.documents),
+            selectinload(Site.tracking_events),
+            selectinload(Site.cost_estimates),
+        )
+    )
     if archived is None:
         return query
     return query.filter(Site.archived.is_(archived))

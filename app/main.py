@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct
 from sqlalchemy.orm import Session
@@ -32,6 +33,10 @@ from .stage_registry import active_programs, ensure_lookup_seed, stage_meta
 from .version import version_string
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+_ASSET_BUST_RE = re.compile(
+    r'((?:href|src)=")(/static/(?:css|js)/[^"?#]+\.(?:css|js))(")',
+    re.IGNORECASE,
+)
 
 app = FastAPI(
     title="WRU TGS Tracker",
@@ -99,14 +104,29 @@ def meta(db: Session = Depends(get_db)):
         "councils": councils,
         "roads": roads,
         "rules": rules.as_dict(),
+        "asset_version": version_string(),
     }
 
 
-def _page(name: str) -> FileResponse:
+def _page(name: str) -> HTMLResponse:
+    """Serve HTML with cache-busted static asset URLs (?v=VERSION)."""
     path = STATIC_DIR / name
     if not path.exists():
         path = STATIC_DIR / "index.html"
-    return FileResponse(path)
+    html = path.read_text(encoding="utf-8")
+    ver = version_string()
+
+    def _bust(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{match.group(2)}?v={ver}{match.group(3)}"
+
+    html = _ASSET_BUST_RE.sub(_bust, html)
+    return HTMLResponse(
+        content=html,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.get("/")

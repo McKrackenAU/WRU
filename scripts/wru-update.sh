@@ -153,13 +153,22 @@ export WRU_REPO="$APP_GIT" WRU_BRANCH="$APP_BRANCH" WRU_PORT="$APP_PORT"
 bash "$tmp"
 rm -f "$tmp"
 
-# Always (re)install the in-app / CLI updater helper
+# Always (re)install the in-app / CLI updater helpers
+ONLINE_BIN="/usr/local/sbin/wru-online-update"
 if [[ -f "${APP_DIR}/scripts/wru-update.sh" ]]; then
   install -m 755 "${APP_DIR}/scripts/wru-update.sh" "$HELPER_BIN"
 else
   curl -fsSL "${RAW_BASE}/scripts/wru-update.sh" -o "$HELPER_BIN" \
     || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh" -o "$HELPER_BIN"
   chmod 755 "$HELPER_BIN"
+fi
+if [[ -f "${APP_DIR}/scripts/wru-online-update.sh" ]]; then
+  install -m 755 "${APP_DIR}/scripts/wru-online-update.sh" "$ONLINE_BIN"
+else
+  curl -fsSL "${RAW_BASE}/scripts/wru-online-update.sh" -o "$ONLINE_BIN" \
+    || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-online-update.sh" -o "$ONLINE_BIN" \
+    || true
+  [[ -f "$ONLINE_BIN" ]] && chmod 755 "$ONLINE_BIN"
 fi
 # Minimal LXCs may lack sudo /etc/sudoers.d
 apt-get install -y sudo >/dev/null 2>&1 || true
@@ -169,16 +178,18 @@ if [[ -f /etc/sudoers ]] && ! grep -qE '^[@#]includedir[[:space:]]+/etc/sudoers\
 fi
 cat >/etc/sudoers.d/wru-update <<'EOF'
 # Allow WRU service user to pull/install updates from GitHub without a password
+wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-online-update
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
-wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update.service
+wru ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed wru-online-update*
+wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update*
 EOF
 chmod 440 /etc/sudoers.d/wru-update
 if command -v visudo >/dev/null 2>&1 && ! visudo -cf /etc/sudoers.d/wru-update >/dev/null 2>&1; then
   echo "Warning: sudoers file invalid — removed" >&2
   rm -f /etc/sudoers.d/wru-update
 else
-  echo "Installed CLI updater: ${HELPER_BIN} (and sudo for user wru)"
+  echo "Installed CLI updater: ${HELPER_BIN} (+ ${ONLINE_BIN}, sudo for user wru)"
 fi
 
 commit="unknown"

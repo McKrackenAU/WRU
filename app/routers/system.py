@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -17,7 +18,9 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 
 VERSION_FILE = Path("/opt/wru_version.txt")
 HISTORY_FILE = Path("/opt/wru_version_history.json")
+UPDATE_LOG = Path("/var/log/wru-update.log")
 UPDATE_BIN = Path("/usr/local/sbin/wru-update")
+ONLINE_UPDATE = Path("/usr/local/sbin/wru-online-update")
 APP_MAIN = Path(__file__).resolve().parent.parent / "main.py"
 VERSION_TXT = Path(__file__).resolve().parent.parent.parent / "VERSION"
 DEFAULT_REPO = os.environ.get("WRU_REPO", "https://github.com/McKrackenAU/WRU.git")
@@ -38,6 +41,7 @@ class SystemStatusOut(BaseModel):
     detail: str | None = None
     shell_ct: str | None = None
     shell_proxmox: str | None = None
+    last_log_tail: str | None = None
 
 
 class VersionEntry(BaseModel):
@@ -66,6 +70,7 @@ class SystemUpdateOut(BaseModel):
     message: str
     log_tail: str | None = None
     status: SystemStatusOut | None = None
+    unit: str | None = None
 
 
 class RollbackRequest(BaseModel):
@@ -93,27 +98,25 @@ def _normalize_version(value: str) -> str:
 
 
 def _parse_version_file() -> dict[str, str]:
-    data: dict[str, str] = {}
     if not VERSION_FILE.is_file():
-        return data
-    for line in VERSION_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
-        if "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        data[k.strip()] = v.strip()
-    return data
+        return {}
+    out: dict[str, str] = {}
+    try:
+        for line in VERSION_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip()
+    except OSError:
+        return {}
+    return out
 
 
 def _app_version_from_code() -> str:
-    try:
-        if VERSION_TXT.is_file():
+    if VERSION_TXT.is_file():
+        try:
             return VERSION_TXT.read_text(encoding="utf-8").strip().splitlines()[0].strip().lstrip("vV")
-    except (OSError, IndexError):
-        pass
-    try:
-        return version_string()
-    except Exception:
-        pass
+        except OSError:
+            pass
     try:
         text = APP_MAIN.read_text(encoding="utf-8")
         m = re.search(r'version\s*=\s*"([^"]+)"', text)
@@ -121,22 +124,33 @@ def _app_version_from_code() -> str:
             return m.group(1).lstrip("vV")
     except OSError:
         pass
-    return "unknown"
+    return version_string()
 
 
 def _local_git_commit() -> str | None:
-    app_dir = Path("/opt/wru")
-    if not (app_dir / ".git").is_dir():
+    app_dir = Path(__file__).resolve().parent.parent.parent
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(app_dir), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return (proc.stdout or "").strip() or None
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+    return None
+
+
+def _read_log_tail(n: int = 40) -> str | None:
+    if not UPDATE_LOG.is_file():
         return None
     try:
-        out = subprocess.check_output(
-            ["git", "-C", str(app_dir), "rev-parse", "--short", "HEAD"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        )
-        return out.strip() or None
-    except (OSError, subprocess.SubprocessError):
+        lines = UPDATE_LOG.read_text(encoding="utf-8", errors="ignore").splitlines()
+        return "\n".join(lines[-n:]) if lines else None
+    except OSError:
         return None
 
 
@@ -145,43 +159,81 @@ def _read_history() -> list[VersionEntry]:
         return []
     try:
         raw = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    items = raw.get("versions") if isinstance(raw, dict) else raw
-    if not isinstance(items, list):
-        return []
-    out: list[VersionEntry] = []
-    for item in items[:MAX_HISTORY]:
-        if not isinstance(item, dict):
-            continue
-        ver = _normalize_version(str(item.get("version") or item.get("tag") or ""))
-        if not ver:
-            continue
-        tag = _normalize_tag(str(item.get("tag") or ver))
-        out.append(
-            VersionEntry(
-                version=ver,
-                tag=tag,
-                commit=item.get("commit"),
-                branch=item.get("branch"),
-                repo=item.get("repo"),
-                recorded_at=item.get("recorded_at") or item.get("updated_at"),
+        items = raw.get("versions") if isinstance(raw, dict) else raw
+        if not isinstance(items, list):
+            return []
+        out: list[VersionEntry] = []
+        for item in items[:MAX_HISTORY]:
+            if not isinstance(item, dict):
+                continue
+            ver = _normalize_version(str(item.get("version") or ""))
+            if not ver:
+                continue
+            tag = str(item.get("tag") or _normalize_tag(ver))
+            out.append(
+                VersionEntry(
+                    version=ver,
+                    tag=tag,
+                    commit=item.get("commit"),
+                    branch=item.get("branch"),
+                    repo=item.get("repo"),
+                    recorded_at=item.get("recorded_at"),
+                )
             )
-        )
-    return out[:MAX_HISTORY]
+        return out
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return []
 
 
-def build_status() -> SystemStatusOut:
-    meta = _parse_version_file()
-    can = UPDATE_BIN.is_file() and os.access(UPDATE_BIN, os.X_OK)
-    history = _read_history()
-    detail = None
-    if not can:
-        detail = (
+def _probe_can_update() -> tuple[bool, str | None]:
+    """Return (can_update, detail). Never runs the real updater."""
+    if not UPDATE_BIN.is_file():
+        return False, (
             "In-app updater helper not installed yet. Run the shell command below "
             "once as root inside this CT (or use Proxmox host → Update existing CT). "
             "That installs /usr/local/sbin/wru-update for future UI updates."
         )
+
+    check_bin = ONLINE_UPDATE if ONLINE_UPDATE.is_file() else None
+    if check_bin:
+        probe = subprocess.run(
+            ["sudo", "-n", str(check_bin), "--check"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if probe.returncode == 0:
+            return True, None
+        err = ((probe.stderr or "") + (probe.stdout or "")).strip()
+        if "password" in err.lower() or probe.returncode == 1:
+            return False, (
+                "Passwordless sudo for wru-online-update is not configured. "
+                "Re-run the shell updater once as root to install /etc/sudoers.d/wru-update."
+            )
+        return False, f"Update helper check failed: {err[-400:] or f'exit {probe.returncode}'}"
+
+    # Older installs: only wru-update present — verify sudo listing, never invoke updater.
+    probe = subprocess.run(
+        ["sudo", "-n", "-l"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    listing = (probe.stdout or "") + (probe.stderr or "")
+    if probe.returncode == 0 and "wru-update" in listing:
+        return True, None
+    return False, (
+        "sudo is not configured for the wru user. Re-run the shell updater once as root "
+        "to install /etc/sudoers.d/wru-update."
+    )
+
+
+def build_status() -> SystemStatusOut:
+    meta = _parse_version_file()
+    history = _read_history()
+    can, detail = _probe_can_update()
     app_ver = meta.get("app_version") or _app_version_from_code()
     app_ver = _normalize_version(app_ver) or app_ver
     return SystemStatusOut(
@@ -197,57 +249,79 @@ def build_status() -> SystemStatusOut:
         detail=detail,
         shell_ct=SHELL_CT,
         shell_proxmox=SHELL_PROXMOX,
+        last_log_tail=_read_log_tail(15),
     )
 
 
-def _start_update_job(*, ref: str, repo: str) -> None:
-    """Detach an update/rollback job that survives stopping wru.service."""
-    cmd = [
-        "sudo",
-        "-n",
-        "systemd-run",
-        "--unit=wru-online-update",
-        "--collect",
-        "--property=Type=oneshot",
-        f"--setenv=WRU_BRANCH={ref}",
-        f"--setenv=WRU_REPO={repo}",
-        str(UPDATE_BIN),
-    ]
+def _start_update_job(*, ref: str, repo: str) -> str:
+    """Detach an update/rollback job that survives stopping wru.service.
+
+    Critical: systemd-run must use --no-block. Without it, the API waits for the
+    oneshot; the oneshot stops wru.service and kills the waiter mid-request.
+    """
+    if not UPDATE_BIN.is_file():
+        raise HTTPException(status_code=503, detail="Update helper missing at /usr/local/sbin/wru-update")
+
+    unit = f"wru-online-update-{int(time.time())}"
+    runner = ONLINE_UPDATE if ONLINE_UPDATE.is_file() else UPDATE_BIN
+
+    if runner == ONLINE_UPDATE:
+        cmd = [
+            "sudo",
+            "-n",
+            "systemd-run",
+            "--no-block",
+            f"--unit={unit}",
+            "--collect",
+            "--property=Type=oneshot",
+            str(ONLINE_UPDATE),
+            ref,
+            repo,
+        ]
+    else:
+        cmd = [
+            "sudo",
+            "-n",
+            "systemd-run",
+            "--no-block",
+            f"--unit={unit}",
+            "--collect",
+            "--property=Type=oneshot",
+            f"--setenv=WRU_BRANCH={ref}",
+            f"--setenv=WRU_REPO={repo}",
+            str(UPDATE_BIN),
+        ]
+
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
-    except FileNotFoundError:
-        try:
-            subprocess.Popen(
-                [
-                    "sudo",
-                    "-n",
-                    "/bin/bash",
-                    "-c",
-                    f"sleep 2; WRU_BRANCH={ref!r} WRU_REPO={repo!r} exec {UPDATE_BIN}",
-                ],
-                start_new_session=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            return
-        except OSError as exc:
-            raise HTTPException(status_code=503, detail=f"Could not start update: {exc}") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail="systemd-run not available on this host") from exc
 
     if proc.returncode == 0:
-        return
+        return unit
 
-    subprocess.run(
-        ["sudo", "-n", "systemctl", "reset-failed", "wru-online-update.service"],
-        capture_output=True,
-        check=False,
-    )
-    proc2 = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
-    if proc2.returncode != 0:
-        detail = ((proc.stderr or "") + (proc2.stderr or "") + (proc.stdout or ""))[-800:]
-        raise HTTPException(
-            status_code=500,
-            detail=f"Could not start update job. {detail or 'Check sudoers for wru → wru-update / systemd-run.'}",
+    # Clear stuck fixed-name unit from older releases and retry once
+    for name in ("wru-online-update.service", f"{unit}.service"):
+        subprocess.run(
+            ["sudo", "-n", "systemctl", "reset-failed", name],
+            capture_output=True,
+            check=False,
         )
+
+    unit2 = "wru-online-update"
+    cmd[4] = f"--unit={unit2}"
+    proc2 = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
+    if proc2.returncode == 0:
+        return unit2
+
+    detail = ((proc.stderr or "") + (proc2.stderr or "") + (proc.stdout or "") + (proc2.stdout or ""))[-900:]
+    raise HTTPException(
+        status_code=500,
+        detail=(
+            "Could not start update job. "
+            f"{detail or 'Check sudoers: wru may run systemd-run and /usr/local/sbin/wru-online-update.'}"
+        ),
+    )
 
 
 @router.get("", response_model=SystemStatusOut)
@@ -259,6 +333,12 @@ def system_status():
 def system_versions():
     """Current install plus up to 5 prior versions available for rollback."""
     return VersionHistoryOut(current=build_status(), history=_read_history(), max_history=MAX_HISTORY)
+
+
+@router.get("/update-log")
+def update_log():
+    tail = _read_log_tail(80)
+    return {"log": tail or "(no /var/log/wru-update.log yet)", "path": str(UPDATE_LOG)}
 
 
 @router.post("/update", response_model=SystemUpdateOut)
@@ -275,53 +355,45 @@ def system_update(payload: SystemUpdateRequest | None = None):
         ref = (payload.branch or status.branch or DEFAULT_BRANCH).strip() or DEFAULT_BRANCH
     repo = (payload.repo or status.repo or DEFAULT_REPO).strip() or DEFAULT_REPO
 
-    _start_update_job(ref=ref, repo=repo)
+    unit = _start_update_job(ref=ref, repo=repo)
 
     return SystemUpdateOut(
         ok=True,
         message=(
-            f"Update started from {repo} @ {ref}. "
+            f"Update started from {repo} @ {ref} (unit {unit}). "
             "The service will restart shortly — refresh this page in 1–2 minutes."
         ),
-        log_tail="Follow progress: journalctl -u wru-online-update -f  (or /var/log/wru-update.log)",
+        log_tail=_read_log_tail(20)
+        or f"Follow progress: journalctl -u {unit} -f  (or /var/log/wru-update.log)",
         status=status,
+        unit=unit,
     )
 
 
 @router.post("/rollback", response_model=SystemUpdateOut)
 def system_rollback(payload: RollbackRequest):
-    """Roll back to a prior release tag (max 5 kept in history)."""
     status = build_status()
     if not status.can_update:
         raise HTTPException(status_code=503, detail=status.detail or "Update helper unavailable")
 
-    wanted = _normalize_tag(payload.version)
-    wanted_ver = _normalize_version(payload.version)
+    wanted = _normalize_version(payload.version) or payload.version.strip()
     history = _read_history()
     match = next(
-        (
-            e
-            for e in history
-            if e.tag == wanted or e.version == wanted_ver or _normalize_tag(e.version) == wanted
-        ),
+        (h for h in history if _normalize_version(h.version) == wanted or h.tag.lstrip("vV") == wanted.lstrip("vV")),
         None,
     )
-    if match is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Version {wanted} is not in the last {MAX_HISTORY} recorded installs.",
-        )
+    if not match:
+        raise HTTPException(status_code=404, detail=f"Version {payload.version} not in rollback history")
 
     ref = match.tag or wanted
     repo = (match.repo or status.repo or DEFAULT_REPO).strip() or DEFAULT_REPO
-    _start_update_job(ref=ref, repo=repo)
+    unit = _start_update_job(ref=ref, repo=repo)
 
     return SystemUpdateOut(
         ok=True,
-        message=(
-            f"Rollback to {ref} started. "
-            "The service will restart shortly — refresh this page in 1–2 minutes."
-        ),
-        log_tail="Follow progress: journalctl -u wru-online-update -f  (or /var/log/wru-update.log)",
+        message=f"Rollback to {ref} started (unit {unit}). Refresh in 1–2 minutes.",
+        log_tail=_read_log_tail(20)
+        or f"Follow progress: journalctl -u {unit} -f  (or /var/log/wru-update.log)",
         status=status,
+        unit=unit,
     )

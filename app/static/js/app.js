@@ -5,6 +5,7 @@ import {
   fmtDate,
   injectChrome,
   mustBandClass,
+  on,
   stageLabel,
   userName,
 } from "./common.js";
@@ -23,7 +24,8 @@ const state = {
 };
 
 function setStatus(msg) {
-  $("statusLine").textContent = msg;
+  const el = $("statusLine");
+  if (el) el.textContent = msg;
 }
 
 function workflowMap(site) {
@@ -79,81 +81,105 @@ function listBadge(list) {
   return `<span class="badge badge-muted">—</span>`;
 }
 
+function siteRowHtml(site) {
+  const m = site.metrics || {};
+  const must = m.must_have_status || {};
+  const mustDate = must.date || site.moa_must_have_received_date;
+  const mustDisplay =
+    must.band === "received"
+      ? "Received"
+      : `${fmtDate(mustDate)}${must.label && must.label !== "—" ? ` · ${escapeHtml(must.label)}` : ""}`;
+  const pct = m.workflow_progress_pct ?? 0;
+  const highlight = state.highlightId === site.id ? "row-highlight" : "";
+  const councils = (site.councils || []).slice(0, 2).join(", ");
+  const more = (site.councils || []).length > 2 ? ` +${site.councils.length - 2}` : "";
+  return `<tr class="register-row ${highlight}" data-site-id="${site.id}" data-action="open" data-id="${site.id}">
+    <td>
+      <div class="site-title">${escapeHtml(site.road_name)}</div>
+      <div class="site-meta">
+        <span class="mono">${escapeHtml(site.site_number)}</span>
+        ${councils ? ` · ${escapeHtml(councils)}${escapeHtml(more)}` : ""}
+      </div>
+    </td>
+    <td>
+      <div class="status-cell">
+        <span class="status-chip">${escapeHtml(currentStageLabel(site))}</span>
+        <div class="progress-bar thin" title="${pct}%"><span style="width:${pct}%"></span></div>
+      </div>
+    </td>
+    <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
+    <td class="mono">${fmtDate(site.indicative_site_start_date) || "—"}</td>
+    <td class="mono"><span class="${mustBandClass(must.band)}">${mustDisplay || "—"}</span></td>
+    <td>${listBadge(m.client_list)}</td>
+    <td class="mono">${escapeHtml(site.moa_number || "—")}</td>
+    <td class="row-actions" onclick="event.stopPropagation()">
+      <button type="button" class="btn btn-primary btn-sm" data-action="open" data-id="${site.id}">Open</button>
+      <a class="btn btn-sm" href="/costs?site_id=${site.id}">Cost</a>
+    </td>
+  </tr>`;
+}
+
 function renderRegister() {
   const root = $("registerList");
+  if (!root) return;
   if (!state.sites.length) {
     root.innerHTML = `<div class="register-empty">No active sites match these filters.</div>`;
     return;
   }
-  root.innerHTML = `
-    <div class="register-table-wrap">
-      <table class="register-table">
-        <thead>
-          <tr>
-            <th>Site</th>
-            <th>Status</th>
-            <th>Pri</th>
-            <th>Start</th>
-            <th>Must-have</th>
-            <th>List</th>
-            <th>MoA</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${state.sites
-            .map((site) => {
-              const m = site.metrics || {};
-              const must = m.must_have_status || {};
-              const mustDate = must.date || site.moa_must_have_received_date;
-              const mustDisplay =
-                must.band === "received"
-                  ? "Received"
-                  : `${fmtDate(mustDate)}${must.label && must.label !== "—" ? ` · ${escapeHtml(must.label)}` : ""}`;
-              const pct = m.workflow_progress_pct ?? 0;
-              const highlight = state.highlightId === site.id ? "row-highlight" : "";
-              const councils = (site.councils || []).slice(0, 2).join(", ");
-              const more = (site.councils || []).length > 2 ? ` +${site.councils.length - 2}` : "";
-              return `<tr class="register-row ${highlight}" data-site-id="${site.id}" data-action="open" data-id="${site.id}">
-                <td>
-                  <div class="site-title">${escapeHtml(site.road_name)}</div>
-                  <div class="site-meta">
-                    <span class="mono">${escapeHtml(site.site_number)}</span>
-                    ${site.program ? ` · ${escapeHtml(site.program)}` : ""}
-                    ${councils ? ` · ${escapeHtml(councils)}${escapeHtml(more)}` : ""}
-                  </div>
-                </td>
-                <td>
-                  <div class="status-cell">
-                    <span class="status-chip">${escapeHtml(currentStageLabel(site))}</span>
-                    <div class="progress-bar thin" title="${pct}%"><span style="width:${pct}%"></span></div>
-                  </div>
-                </td>
-                <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
-                <td class="mono">${fmtDate(site.indicative_site_start_date) || "—"}</td>
-                <td class="mono"><span class="${mustBandClass(must.band)}">${mustDisplay || "—"}</span></td>
-                <td>${listBadge(m.client_list)}</td>
-                <td class="mono">${escapeHtml(site.moa_number || "—")}</td>
-                <td class="row-actions" onclick="event.stopPropagation()">
-                  <button type="button" class="btn btn-primary btn-sm" data-action="open" data-id="${site.id}">Open</button>
-                  <a class="btn btn-sm" href="/costs?site_id=${site.id}">Cost</a>
-                </td>
-              </tr>`;
-            })
-            .join("")}
-        </tbody>
-      </table>
-    </div>`;
+
+  // Spreadsheet-style: group by program section
+  const groups = new Map();
+  for (const site of state.sites) {
+    const key = (site.program || "").trim() || "Unassigned";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(site);
+  }
+  const order = [];
+  for (const p of state.meta.programs || []) {
+    if (groups.has(p)) order.push(p);
+  }
+  for (const k of groups.keys()) {
+    if (!order.includes(k)) order.push(k);
+  }
+
+  const head = `
+    <thead>
+      <tr>
+        <th>Site</th>
+        <th>Status</th>
+        <th>Pri</th>
+        <th>Start</th>
+        <th>Must-have</th>
+        <th>List</th>
+        <th>MoA</th>
+        <th></th>
+      </tr>
+    </thead>`;
+
+  root.innerHTML = order
+    .map((program) => {
+      const rows = groups.get(program) || [];
+      return `<section class="register-program">
+        <h2 class="register-program-title">${escapeHtml(program)} <span class="hint">${rows.length}</span></h2>
+        <div class="register-table-wrap">
+          <table class="register-table">
+            ${head}
+            <tbody>${rows.map(siteRowHtml).join("")}</tbody>
+          </table>
+        </div>
+      </section>`;
+    })
+    .join("");
 }
 
 async function loadAll() {
   const params = new URLSearchParams({ archived: "false" });
-  const q = $("search").value.trim();
-  const priority = $("priorityFilter").value;
-  const stage = $("stageFilter")?.value;
-  const council = $("councilFilter")?.value;
-  const program = $("programFilter")?.value;
-  const list = $("listFilter")?.value;
+  const q = $("search")?.value?.trim() || "";
+  const priority = $("priorityFilter")?.value || "";
+  const stage = $("stageFilter")?.value || "";
+  const council = $("councilFilter")?.value || "";
+  const program = $("programFilter")?.value || "";
+  const list = $("listFilter")?.value || "";
   if (q) params.set("q", q);
   if (priority) params.set("priority", priority);
   if (stage) params.set("stage", stage);
@@ -161,16 +187,17 @@ async function loadAll() {
   if (program) params.set("program", program);
   if (list) params.set("client_list", list);
 
+  setStatus("Loading active TGS / MoA jobs…");
   const [meta, columns, sites, generics] = await Promise.all([
     api("/api/meta"),
     api("/api/columns"),
     api(`/api/sites?${params}`),
-    api("/api/sites/generic-moas"),
+    api("/api/sites/generic-moas").catch(() => []),
   ]);
   state.meta = meta;
   state.columns = columns;
-  state.sites = sites;
-  state.genericMoas = generics;
+  state.sites = Array.isArray(sites) ? sites : [];
+  state.genericMoas = Array.isArray(generics) ? generics : [];
   fillFilterOptions();
   fillProgramSelect();
   fillGenericSelect();
@@ -180,9 +207,9 @@ async function loadAll() {
   if (priOpt) priOpt.textContent = `Priority 1 (≤ ${days}d)`;
   renderRegister();
   maybeScrollHighlight();
-  const pri = sites.filter((s) => s.metrics?.on_permits_priority_list).length;
-  const trims = sites.filter((s) => s.metrics?.on_trims_priority_list).length;
-  setStatus(`${sites.length} active · ${pri} Permits · ${trims} TRIMS`);
+  const pri = state.sites.filter((s) => s.metrics?.on_permits_priority_list).length;
+  const trims = state.sites.filter((s) => s.metrics?.on_trims_priority_list).length;
+  setStatus(`${state.sites.length} active · ${pri} Permits · ${trims} TRIMS`);
 }
 
 function fillRoadList() {
@@ -683,19 +710,19 @@ function debounce(fn, ms) {
 }
 
 function bindEvents() {
-  $("btnAddSite").addEventListener("click", () => openSiteDrawer());
-  $("btnColumns").addEventListener("click", openColumns);
-  $("btnAddColumn").addEventListener("click", addColumn);
-  $("btnArchiveSite").addEventListener("click", archiveSite);
-  $("btnAddTrack").addEventListener("click", addTracking);
-  $("btnUploadDoc").addEventListener("click", uploadDoc);
-  $("siteForm").addEventListener("submit", saveSite);
-  $("colType").addEventListener("change", () => {
-    $("colOptionsWrap").hidden = $("colType").value !== "select";
+  on("btnAddSite", "click", () => openSiteDrawer());
+  on("btnColumns", "click", openColumns);
+  on("btnAddColumn", "click", () => addColumn().catch((e) => alert(e.message)));
+  on("btnArchiveSite", "click", () => archiveSite().catch((e) => alert(e.message)));
+  on("btnAddTrack", "click", () => addTracking().catch((e) => alert(e.message)));
+  on("btnUploadDoc", "click", () => uploadDoc().catch((e) => alert(e.message)));
+  on("siteForm", "submit", (ev) => saveSite(ev).catch((e) => alert(e.message)));
+  on("colType", "change", () => {
+    if ($("colOptionsWrap")) $("colOptionsWrap").hidden = $("colType").value !== "select";
   });
-  $("search").addEventListener("input", debounce(loadAll, 250));
+  on("search", "input", debounce(() => loadAll().catch(showLoadError), 250));
   ["priorityFilter", "stageFilter", "councilFilter", "programFilter", "listFilter"].forEach((id) => {
-    $(id)?.addEventListener("change", loadAll);
+    on(id, "change", () => loadAll().catch(showLoadError));
   });
 
   document.addEventListener("click", (ev) => {
@@ -707,25 +734,25 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && !$("siteDrawer").hidden) closeDrawer();
+    if (ev.key === "Escape" && $("siteDrawer") && !$("siteDrawer").hidden) closeDrawer();
   });
 
-  $("btnAddCouncil")?.addEventListener("click", () => {
+  on("btnAddCouncil", "click", () => {
     const current = collectCouncilRows();
     current.push({ council_name: "", submitted_to_council_date: null, no_objection_date: null });
     renderCouncilRows(current);
   });
-  $("councilRows")?.addEventListener("click", (ev) => {
+  on("councilRows", "click", (ev) => {
     const btn = ev.target.closest("[data-rm-council]");
     if (!btn) return;
     btn.closest(".council-row")?.remove();
-    if (!$("councilRows").querySelector(".council-row")) renderCouncilRows([]);
+    if (!$("councilRows")?.querySelector(".council-row")) renderCouncilRows([]);
     scheduleAutosave();
   });
-  $("siteForm")?.addEventListener("input", scheduleAutosave);
-  $("siteForm")?.addEventListener("change", scheduleAutosave);
+  on("siteForm", "input", scheduleAutosave);
+  on("siteForm", "change", scheduleAutosave);
 
-  $("registerList").addEventListener("click", (ev) => {
+  on("registerList", "click", (ev) => {
     const btn = ev.target.closest("[data-action='open']");
     if (!btn) return;
     const id = Number(btn.dataset.id);
@@ -733,7 +760,7 @@ function bindEvents() {
     if (site) openSiteDrawer(site);
   });
 
-  $("columnList").addEventListener("click", async (ev) => {
+  on("columnList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-col]");
     if (!btn) return;
     if (!confirm("Remove this column and clear its values from all sites?")) return;
@@ -742,7 +769,7 @@ function bindEvents() {
     renderColumnList();
   });
 
-  $("trackList").addEventListener("click", async (ev) => {
+  on("trackList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-track]");
     if (!btn) return;
     await api(`/api/sites/${state.detailSiteId}/tracking/${btn.dataset.delTrack}`, {
@@ -751,7 +778,7 @@ function bindEvents() {
     await refreshTracking();
   });
 
-  $("docList").addEventListener("click", async (ev) => {
+  on("docList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-doc]");
     if (!btn) return;
     if (!confirm("Delete this document?")) return;
@@ -760,16 +787,25 @@ function bindEvents() {
   });
 }
 
+function showLoadError(err) {
+  const msg = err?.message || String(err);
+  setStatus(`Failed to load: ${msg}`);
+  const root = $("registerList");
+  if (root) {
+    root.innerHTML = `<div class="register-empty">Could not load sites.<br/><span class="hint">${escapeHtml(msg)}</span></div>`;
+  }
+}
+
 async function init() {
-  injectChrome({ active: "/", mode: "ops" });
-  const params = new URLSearchParams(location.search);
-  const hl = params.get("highlight");
-  if (hl && Number(hl)) state.highlightId = Number(hl);
-  bindEvents();
   try {
+    injectChrome({ active: "/", mode: "ops" });
+    const params = new URLSearchParams(location.search);
+    const hl = params.get("highlight");
+    if (hl && Number(hl)) state.highlightId = Number(hl);
+    bindEvents();
     await loadAll();
   } catch (err) {
-    setStatus(`Failed to load: ${err.message}`);
+    showLoadError(err);
   }
 }
 

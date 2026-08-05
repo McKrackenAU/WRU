@@ -1,4 +1,6 @@
-import { $, api, escapeHtml, injectChrome } from "./common.js";
+import { $, api, escapeHtml, injectChrome, on } from "./common.js";
+
+let logPollTimer = null;
 
 function renderStatus(s) {
   const tag = s.version_tag || (s.app_version ? `v${String(s.app_version).replace(/^v/i, "")}` : "—");
@@ -10,8 +12,12 @@ function renderStatus(s) {
     <label class="full">Repository<input readonly value="${escapeHtml(s.repo)}" /></label>
     <label class="full">Updater<input readonly value="${escapeHtml(s.can_update ? s.update_available_via : "Not installed yet — use shell command below")}" /></label>
   `;
-  $("updBranch").value = s.branch || "main";
-  $("updRepo").value = s.repo || "https://github.com/McKrackenAU/WRU.git";
+  if ($("updBranch") && !$("updBranch").dataset.touched) {
+    $("updBranch").value = s.branch || "main";
+  }
+  if ($("updRepo") && !$("updRepo").dataset.touched) {
+    $("updRepo").value = s.repo || "https://github.com/McKrackenAU/WRU.git";
+  }
   $("btnUpdate").disabled = !s.can_update;
   $("shellCt").textContent = s.shell_ct || "";
   $("shellPve").textContent = s.shell_proxmox || "";
@@ -19,8 +25,11 @@ function renderStatus(s) {
     $("updHint").textContent = s.detail;
   } else {
     $("updHint").innerHTML =
-      "Runs <code>sudo /usr/local/sbin/wru-update</code> on this host. The service restarts when finished. " +
-      "Each update records the previous version (max 5) for rollback below.";
+      "Runs <code>sudo systemd-run --no-block … /usr/local/sbin/wru-online-update</code> on this host. " +
+      "The service restarts when finished. Each update records the previous version (max 5) for rollback below.";
+  }
+  if (s.last_log_tail && $("updLog") && $("updLog").hidden) {
+    /* keep quiet until user starts an update */
   }
 }
 
@@ -64,12 +73,6 @@ function renderHistory(payload) {
   });
 }
 
-async function loadStatus() {
-  const s = await api("/api/system");
-  renderStatus(s);
-  return s;
-}
-
 async function loadVersions() {
   const payload = await api("/api/system/versions");
   renderStatus(payload.current);
@@ -77,21 +80,53 @@ async function loadVersions() {
   return payload;
 }
 
+async function refreshLog() {
+  try {
+    const payload = await api("/api/system/update-log");
+    if (payload.log) {
+      $("updLog").hidden = false;
+      $("updLog").textContent = payload.log;
+      $("updLog").scrollTop = $("updLog").scrollHeight;
+    }
+  } catch (_) {
+    /* ignore while service restarts */
+  }
+}
+
+function startLogPoll() {
+  stopLogPoll();
+  logPollTimer = setInterval(() => {
+    refreshLog().catch(() => {});
+  }, 2500);
+}
+
+function stopLogPoll() {
+  if (logPollTimer) {
+    clearInterval(logPollTimer);
+    logPollTimer = null;
+  }
+}
+
 async function waitForChange(beforeUpdatedAt, successLabel) {
-  for (let i = 0; i < 60; i++) {
+  startLogPoll();
+  for (let i = 0; i < 80; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     try {
       const payload = await loadVersions();
       const s = payload.current;
       if (s.updated_at && s.updated_at !== beforeUpdatedAt) {
         $("updStatus").textContent = `${successLabel} · ${s.version_tag || s.app_version} (${s.commit || s.branch})`;
+        await refreshLog();
+        stopLogPoll();
         return;
       }
     } catch (_) {
       /* service restarting */
     }
   }
-  $("updStatus").textContent = "Job may still be running — refresh in a minute.";
+  stopLogPoll();
+  $("updStatus").textContent = "Job may still be running — refresh in a minute, or check the log below.";
+  await refreshLog();
 }
 
 async function runUpdate() {
@@ -104,7 +139,9 @@ async function runUpdate() {
   }
   $("btnUpdate").disabled = true;
   $("updStatus").textContent = "Starting update…";
-  $("updLog").hidden = true;
+  $("updLog").hidden = false;
+  $("updLog").textContent = "Starting…";
+  startLogPoll();
   try {
     const result = await api("/api/system/update", {
       method: "POST",
@@ -116,13 +153,13 @@ async function runUpdate() {
     });
     $("updStatus").textContent = result.message || "Update started.";
     if (result.log_tail) {
-      $("updLog").hidden = false;
       $("updLog").textContent = result.log_tail;
     }
     const before = result.status?.updated_at || "";
     $("updStatus").textContent = "Update running — waiting for service to come back…";
     await waitForChange(before, "Update complete");
   } catch (err) {
+    stopLogPoll();
     $("updStatus").textContent = "";
     $("updLog").hidden = false;
     $("updLog").textContent = String(err.message || err);
@@ -142,7 +179,9 @@ async function runRollback(version) {
   }
   $("btnUpdate").disabled = true;
   $("updStatus").textContent = `Starting rollback to ${version}…`;
-  $("updLog").hidden = true;
+  $("updLog").hidden = false;
+  $("updLog").textContent = "Starting…";
+  startLogPoll();
   try {
     const result = await api("/api/system/rollback", {
       method: "POST",
@@ -151,13 +190,13 @@ async function runRollback(version) {
     });
     $("updStatus").textContent = result.message || "Rollback started.";
     if (result.log_tail) {
-      $("updLog").hidden = false;
       $("updLog").textContent = result.log_tail;
     }
     const before = result.status?.updated_at || "";
     $("updStatus").textContent = "Rollback running — waiting for service to come back…";
     await waitForChange(before, `Rolled back to ${version}`);
   } catch (err) {
+    stopLogPoll();
     $("updStatus").textContent = "";
     $("updLog").hidden = false;
     $("updLog").textContent = String(err.message || err);
@@ -169,12 +208,18 @@ async function runRollback(version) {
 
 async function init() {
   injectChrome({ active: "/admin/system", mode: "admin" });
-  $("btnRefresh").addEventListener("click", () =>
-    loadVersions().catch((e) => alert(e.message))
-  );
-  $("btnUpdate").addEventListener("click", () =>
-    runUpdate().catch((e) => alert(e.message))
-  );
+  on("updBranch", "input", () => {
+    if ($("updBranch")) $("updBranch").dataset.touched = "1";
+  });
+  on("updRepo", "input", () => {
+    if ($("updRepo")) $("updRepo").dataset.touched = "1";
+  });
+  on("btnRefresh", "click", () => {
+    loadVersions()
+      .then(() => refreshLog())
+      .catch((e) => alert(e.message));
+  });
+  on("btnUpdate", "click", () => runUpdate().catch((e) => alert(e.message)));
   await loadVersions();
 }
 

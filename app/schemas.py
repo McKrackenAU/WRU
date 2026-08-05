@@ -218,6 +218,7 @@ class MetaOut(BaseModel):
     councils: list[str] = Field(default_factory=list)
     roads: list[str] = Field(default_factory=list)
     rules: dict[str, Any] = Field(default_factory=dict)
+    asset_version: str = "0"
 
 
 class AppSettingsOut(BaseModel):
