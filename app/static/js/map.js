@@ -61,27 +61,44 @@ function clearDrawing() {
   setDrawnGeometry(null);
 }
 
-function fixMapSize() {
+let lastMapSize = { w: 0, h: 0 };
+let sizeFixTimer = null;
+let mapInteracting = false;
+
+function fixMapSize(force = false) {
   if (!map) return;
+  const el = map.getContainer();
+  if (!el) return;
+  const w = el.clientWidth;
+  const h = el.clientHeight;
+  if (!force && w === lastMapSize.w && h === lastMapSize.h) return;
+  if (w < 2 || h < 2) return;
+  lastMapSize = { w, h };
   try {
+    // Size-only refresh — never redraw tiles here (that causes pan/zoom flashing)
     map.invalidateSize({ animate: false, pan: false });
-    if (baseTiles && typeof baseTiles.redraw === "function") {
-      baseTiles.redraw();
-    }
   } catch (_) {
     /* ignore */
   }
 }
 
-function scheduleMapFix() {
-  fixMapSize();
-  requestAnimationFrame(() => {
-    fixMapSize();
-    setTimeout(fixMapSize, 50);
-    setTimeout(fixMapSize, 200);
-    setTimeout(fixMapSize, 600);
-    setTimeout(fixMapSize, 1200);
-  });
+function scheduleMapFix(force = false) {
+  if (mapInteracting && !force) return;
+  clearTimeout(sizeFixTimer);
+  sizeFixTimer = setTimeout(() => fixMapSize(force), 80);
+}
+
+function bindMapInteractionGuards() {
+  const start = () => {
+    mapInteracting = true;
+  };
+  const end = () => {
+    mapInteracting = false;
+    // One calm size check after the gesture — only if the container changed
+    scheduleMapFix(false);
+  };
+  map.on("zoomstart movestart dragstart", start);
+  map.on("zoomend moveend dragend", end);
 }
 
 async function refreshLayers() {
