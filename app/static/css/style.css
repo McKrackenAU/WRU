@@ -173,7 +173,7 @@ html.dark body::before {
   margin: 0;
   font-size: 1.02rem;
   font-weight: 700;
-  color: var(--ventia-green);
+  color: var(--ventia-ink);
   letter-spacing: -0.015em;
 }
 
