@@ -36,7 +36,7 @@ from .version import version_string
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _ASSET_BUST_RE = re.compile(
-    r'((?:href|src)=")(/static/(?:css|js|brand)/[^"?#]+)(")',
+    r'((?:href|src)=")(/static/(?:css|js|brand|vendor)/[^"?#]+)(")',
     re.IGNORECASE,
 )
 
@@ -68,7 +68,11 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
         path = request.url.path
-        if path.startswith("/static/js/") or path.startswith("/static/css/"):
+        if (
+            path.startswith("/static/js/")
+            or path.startswith("/static/css/")
+            or path.startswith("/static/vendor/")
+        ):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
         return response

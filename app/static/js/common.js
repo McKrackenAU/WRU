@@ -275,6 +275,8 @@ export function injectChrome({ active, mode } = {}) {
 
   const footer = document.querySelector("[data-app-footer]");
   if (footer) {
+    const rawVer = window.__WRU_ASSET_V || document.querySelector('meta[name="wru-asset-version"]')?.content || "";
+    const ver = rawVer ? `v${String(rawVer).replace(/^v/i, "")}` : "";
     footer.innerHTML = `
       <div class="inner">
         <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="18" height="18" alt="" />
@@ -283,6 +285,7 @@ export function injectChrome({ active, mode } = {}) {
             ? "WRU Admin · configuration stays out of day-to-day tracking"
             : "WRU TGS Tracker · traffic guidance schedules"
         }</span>
+        ${ver ? `<span class="footer-version" title="Installed app version">${escapeHtml(ver)}</span>` : ""}
       </div>
     `;
   }

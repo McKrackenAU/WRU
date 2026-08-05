@@ -7,7 +7,8 @@
   <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
   <link rel="stylesheet" href="/static/css/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHryRHqDt5lh8RSePm0QnQxmwuY=" crossorigin="" />
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/static/vendor/leaflet-draw/leaflet.draw.css" />
   <script>
     (function () {
       try {
@@ -20,7 +21,7 @@
     })();
   </script>
 </head>
-<body>
+<body class="map-page">
   <div class="app-shell">
     <header class="topbar" data-app-header></header>
     <main id="main-content" tabindex="-1" class="main">
@@ -30,7 +31,7 @@
           <p>Import KML, draw a site markup, and click through to that year’s TGS / MoA</p>
         </div>
       </div>
-      <div class="map-layout">
+      <div class="map-layout" id="mapLayout">
         <aside class="panel-card map-side">
           <h2>Add site from map</h2>
           <p class="hint">Draw a point, line, or polygon with the map tools, then save it to the register.</p>
@@ -51,14 +52,15 @@
           <ul class="event-list" id="layerList"></ul>
           <p class="hint">Features auto-link when MoA # or site number appears in the KML name/properties. You can also link manually from the popup.</p>
         </aside>
-        <div id="mapCanvas"></div>
+        <div class="map-frame">
+          <div id="mapCanvas" role="region" aria-label="Works map"></div>
+        </div>
       </div>
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script src="/static/vendor/leaflet-draw/leaflet.draw.js"></script>
   <script type="module" src="/static/js/map.js"></script>
 </body>
 </html>

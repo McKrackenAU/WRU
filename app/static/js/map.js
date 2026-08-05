@@ -5,6 +5,7 @@ let geoLayer;
 let drawLayer;
 let drawnGeometry = null;
 let sites = [];
+let baseTiles;
 
 function popupHtml(props) {
   const site = props.site;
@@ -12,7 +13,7 @@ function popupHtml(props) {
   let body = `<strong>${escapeHtml(props.name || "Feature")}</strong><br/>
     <span class="mono">FY ${escapeHtml(props.financial_year || "")}</span>`;
   if (site) {
-    body += `<hr style="border:none;border-top:1px solid #d8e0d4;margin:0.5rem 0"/>
+    body += `<hr style="border:none;border-top:1px solid var(--ventia-border);margin:0.5rem 0"/>
       <div><strong>${escapeHtml(site.road_name)}</strong></div>
       <div class="mono">${escapeHtml(site.site_number)} · MoA ${escapeHtml(site.moa_number || "—")}</div>
       <div class="mono">TGS ${escapeHtml(site.tgs_reference || "—")}</div>
@@ -32,7 +33,7 @@ function popupHtml(props) {
         </select>
       </label>`;
   } else {
-    body += `<hr style="border:none;border-top:1px solid #d8e0d4;margin:0.5rem 0"/>
+    body += `<hr style="border:none;border-top:1px solid var(--ventia-border);margin:0.5rem 0"/>
       <div class="hint">Not linked to a site yet.</div>
       <label style="display:block;margin-top:0.4rem;font-size:0.8rem">Link to site
         <select data-link-feature="${featureId}" style="width:100%;margin-top:0.25rem">
@@ -62,10 +63,25 @@ function clearDrawing() {
 
 function fixMapSize() {
   if (!map) return;
-  map.invalidateSize(true);
-  // Retry — layout / fonts can settle after first paint
-  setTimeout(() => map.invalidateSize(true), 250);
-  setTimeout(() => map.invalidateSize(true), 800);
+  try {
+    map.invalidateSize({ animate: false, pan: false });
+    if (baseTiles && typeof baseTiles.redraw === "function") {
+      baseTiles.redraw();
+    }
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function scheduleMapFix() {
+  fixMapSize();
+  requestAnimationFrame(() => {
+    fixMapSize();
+    setTimeout(fixMapSize, 50);
+    setTimeout(fixMapSize, 200);
+    setTimeout(fixMapSize, 600);
+    setTimeout(fixMapSize, 1200);
+  });
 }
 
 async function refreshLayers() {
@@ -96,16 +112,16 @@ async function refreshMap() {
   }
   geoLayer = L.geoJSON(geojson, {
     style: {
-      color: "#004825",
+      color: "#0a7a45",
       weight: 2,
-      fillColor: "#00994d",
-      fillOpacity: 0.25,
+      fillColor: "#6fa882",
+      fillOpacity: 0.28,
     },
     pointToLayer: (feature, latlng) =>
       L.circleMarker(latlng, {
         radius: 6,
-        color: "#004825",
-        fillColor: "#00994d",
+        color: "#0a7a45",
+        fillColor: "#6fa882",
         fillOpacity: 0.85,
       }),
     onEachFeature: (feature, layer) => {
@@ -119,7 +135,7 @@ async function refreshMap() {
   } catch (_) {
     /* empty layer */
   }
-  fixMapSize();
+  scheduleMapFix();
 }
 
 async function uploadKml() {
@@ -205,19 +221,52 @@ function setupDraw() {
   });
 }
 
+function waitForLayout() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
 async function init() {
+  if (typeof L === "undefined") {
+    throw new Error("Map library failed to load. Hard-refresh the page and try again.");
+  }
+
   injectChrome({ active: "/map" });
+  await waitForLayout();
+
   const canvas = $("mapCanvas");
-  map = L.map(canvas, { preferCanvas: true }).setView([-37.8136, 144.9631], 11);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  const layout = $("mapLayout");
+  if (!canvas) throw new Error("Map container missing");
+
+  map = L.map(canvas, {
+    preferCanvas: true,
+    zoomControl: true,
+  }).setView([-37.8136, 144.9631], 11);
+
+  baseTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap",
+    updateWhenIdle: false,
+    updateWhenZooming: false,
   }).addTo(map);
+
   setupDraw();
-  window.addEventListener("resize", fixMapSize);
-  // Fix grey tiles when map is in a CSS grid that sizes after mount
+  map.whenReady(scheduleMapFix);
+  map.on("zoomend moveend", () => fixMapSize());
+
+  window.addEventListener("resize", scheduleMapFix);
+  document.getElementById("navToggle")?.addEventListener("click", () => {
+    setTimeout(scheduleMapFix, 50);
+    setTimeout(scheduleMapFix, 320);
+  });
+
   if (window.ResizeObserver) {
-    new ResizeObserver(() => fixMapSize()).observe(canvas);
+    const ro = new ResizeObserver(() => scheduleMapFix());
+    ro.observe(canvas);
+    if (layout) ro.observe(layout);
+    const shellMain = document.querySelector(".shell-main");
+    if (shellMain) ro.observe(shellMain);
   }
 
   const meta = await api("/api/meta");
@@ -267,7 +316,17 @@ async function init() {
 
   await refreshLayers();
   await refreshMap();
-  fixMapSize();
+  scheduleMapFix();
 }
 
-init().catch((err) => alert(err.message));
+init().catch((err) => {
+  console.error(err);
+  const canvas = document.getElementById("mapCanvas");
+  if (canvas) {
+    canvas.innerHTML = `<div class="page-error" role="alert"><strong>Map failed to load</strong><p>${escapeHtml(
+      err.message || String(err)
+    )}</p></div>`;
+  } else {
+    alert(err.message);
+  }
+});
