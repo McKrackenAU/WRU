@@ -31,30 +31,30 @@
 }
 
 html.dark {
-  /* Rich Ventia green on deep charcoal — vivid, not sage/blue-grey */
-  --ventia-green: #3dd68c;
-  --ventia-green-mid: #2bb673;
-  --ventia-green-tint: #121a15;
-  --ventia-blue: #4da3ff;
-  --ventia-ink: #eef1f4;
-  --ventia-muted: #a0a8b0;
-  --ventia-paper: #1a1f1c;
-  --ventia-border: #2c3530;
-  --background: #0f1411;
-  --foreground: #eef1f4;
-  --panel: #1a1f1c;
+  /* Neutral charcoal UI; Ventia green used as accent only */
+  --ventia-green: #2fbf78;
+  --ventia-green-mid: #249a62;
+  --ventia-green-tint: #14181c;
+  --ventia-blue: #5aa0d6;
+  --ventia-ink: #e8eaed;
+  --ventia-muted: #9aa3ad;
+  --ventia-paper: #1c2128;
+  --ventia-border: #30363d;
+  --background: #111418;
+  --foreground: #e8eaed;
+  --panel: #1c2128;
   --accent: var(--ventia-green);
-  --nav-bg: rgba(15, 20, 17, 0.94);
-  --field-bg: #121714;
+  --nav-bg: rgba(17, 20, 24, 0.94);
+  --field-bg: #151a20;
   --danger-bg: #2c1c20;
-  --danger-fg: #f0a8b0;
-  --ok: #3dd68c;
-  --ok-bg: #143024;
-  --warn: #e0b35a;
+  --danger-fg: #e8a4ac;
+  --ok: #2fbf78;
+  --ok-bg: #17241d;
+  --warn: #d4a85c;
   --warn-bg: #2a2418;
-  --stage-on: #3dd68c;
+  --stage-on: #2fbf78;
   --stage-off: #6b7280;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   color-scheme: dark;
 }
 
@@ -76,15 +76,13 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(900px 420px at 0% 0%, color-mix(in srgb, var(--ventia-green) 14%, transparent), transparent),
-    radial-gradient(700px 380px at 100% 0%, color-mix(in srgb, var(--ventia-blue) 8%, transparent), transparent),
+    radial-gradient(900px 420px at 0% 0%, color-mix(in srgb, var(--ventia-green) 7%, transparent), transparent),
     var(--background);
 }
 
 html.dark body::before {
   background:
-    radial-gradient(900px 420px at 0% 0%, rgba(61, 214, 140, 0.12), transparent),
-    radial-gradient(700px 380px at 100% 0%, rgba(77, 163, 255, 0.05), transparent),
+    radial-gradient(800px 360px at 0% 0%, rgba(47, 191, 120, 0.06), transparent),
     var(--background);
 }
 
@@ -156,8 +154,7 @@ html.dark body::before {
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem 0.85rem 1.15rem;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--ventia-green) 12%, var(--panel)), var(--panel));
+  background: var(--panel);
   border-right: 1px solid var(--ventia-border);
   position: sticky;
   top: 0;
@@ -210,14 +207,15 @@ html.dark body::before {
 }
 
 .side-link:hover {
-  background: color-mix(in srgb, var(--ventia-green) 8%, transparent);
+  background: color-mix(in srgb, var(--ventia-border) 35%, transparent);
 }
 
 .side-link.active,
 .side-link[aria-current="page"] {
-  background: color-mix(in srgb, var(--ventia-green) 14%, var(--panel));
-  border-color: color-mix(in srgb, var(--ventia-green) 28%, var(--ventia-border));
-  color: var(--ventia-green);
+  background: color-mix(in srgb, var(--ventia-border) 40%, var(--panel));
+  border-color: var(--ventia-border);
+  box-shadow: inset 3px 0 0 var(--ventia-green);
+  color: var(--ventia-ink);
 }
 
 .side-link-label {
@@ -384,7 +382,7 @@ html.dark .main-nav a.active {
 .page-head h1 {
   margin: 0;
   font-size: 1.35rem;
-  color: var(--ventia-green);
+  color: var(--ventia-ink);
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -1236,8 +1234,7 @@ dialog::backdrop {
 }
 
 body.admin-mode .shell-sidebar {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--ventia-green) 12%, var(--panel)), var(--panel));
+  background: var(--panel);
 }
 
 /* —— Friendly System updater —— */
@@ -1247,11 +1244,16 @@ body.admin-mode .shell-sidebar {
   border-radius: 0.75rem;
   border: 1px solid var(--ventia-border);
   background: var(--panel);
+  color: var(--ventia-ink);
 }
 
 .sys-alert-ok {
-  border-color: color-mix(in srgb, var(--ok) 40%, var(--ventia-border));
-  background: var(--ok-bg);
+  border-color: color-mix(in srgb, var(--ok) 28%, var(--ventia-border));
+  background: color-mix(in srgb, var(--ok-bg) 70%, var(--panel));
+  color: var(--ventia-ink);
+}
+
+.sys-alert-ok strong {
   color: var(--ok);
 }
 
@@ -1271,10 +1273,8 @@ body.admin-mode .shell-sidebar {
 .updater-hero {
   position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ventia-green) 28%, var(--ventia-border));
-  background:
-    radial-gradient(700px 220px at 100% 0%, color-mix(in srgb, var(--ventia-green) 16%, transparent), transparent),
-    var(--panel);
+  border: 1px solid var(--ventia-border);
+  background: var(--panel);
 }
 
 .updater-hero h2 {
@@ -1295,8 +1295,8 @@ body.admin-mode .shell-sidebar {
   margin: 0 0 1.15rem;
   padding: 0.85rem 1rem;
   border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--ventia-green) 8%, var(--field-bg));
-  border: 1px solid color-mix(in srgb, var(--ventia-green) 22%, var(--ventia-border));
+  background: var(--field-bg);
+  border: 1px solid var(--ventia-border);
 }
 
 .updater-now-label {
@@ -1356,9 +1356,9 @@ body.admin-mode .shell-sidebar {
 }
 
 .upd-check.ok {
-  border-color: color-mix(in srgb, var(--ok) 40%, var(--ventia-border));
-  background: var(--ok-bg);
-  color: var(--ok);
+  border-color: var(--ventia-border);
+  background: var(--field-bg);
+  color: var(--ventia-ink);
 }
 .upd-check.ok .mark { background: var(--ok); color: #0d1117; }
 
@@ -1418,7 +1418,7 @@ body.admin-mode .shell-sidebar {
 .upd-options summary::before,
 .upd-advanced summary::before {
   content: "▸ ";
-  color: var(--ventia-green);
+  color: var(--ventia-muted);
 }
 
 .upd-options[open] summary::before,

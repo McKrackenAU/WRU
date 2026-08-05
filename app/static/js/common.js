@@ -288,6 +288,16 @@ export function injectChrome({ active, mode } = {}) {
         ${ver ? `<span class="footer-version" title="Installed app version">${escapeHtml(ver)}</span>` : ""}
       </div>
     `;
+    // Prefer live installed tag from /api/system when available (async, non-blocking)
+    if (ver) {
+      api("/api/system", { timeoutMs: 8000 })
+        .then((s) => {
+          const live = s?.version_tag || (s?.app_version ? `v${String(s.app_version).replace(/^v/i, "")}` : "");
+          const el = footer.querySelector(".footer-version");
+          if (el && live) el.textContent = live;
+        })
+        .catch(() => {});
+    }
   }
 
   const nav = $("sideNav");
