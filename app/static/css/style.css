@@ -1646,17 +1646,41 @@ body.admin-mode .shell-sidebar {
   cursor: not-allowed;
 }
 
-/* Leaflet layer control (if used) — match dark chrome */
-html.dark .leaflet-control-layers,
-html.dark .leaflet-bar a {
-  background: var(--panel);
-  color: var(--ventia-ink);
-  border-color: var(--ventia-border);
+/*
+ * Keep Leaflet / Leaflet.draw toolbars light even in dark UI.
+ * Draw sprites are dark glyphs — a near-black button background blacks them out.
+ */
+.leaflet-bar a,
+.leaflet-draw-toolbar a,
+.leaflet-touch .leaflet-bar a,
+.leaflet-touch .leaflet-draw-toolbar a {
+  background-color: #fff !important;
+  color: #1a1a1a !important;
+  border-color: #ccc !important;
 }
 
+.leaflet-bar a:hover,
+.leaflet-draw-toolbar a:hover {
+  background-color: #f4f4f4 !important;
+}
+
+.leaflet-bar a.leaflet-disabled,
+.leaflet-draw-toolbar a.leaflet-disabled {
+  background-color: #f4f4f4 !important;
+  opacity: 0.55;
+}
+
+html.dark .leaflet-control-layers,
 html.dark .leaflet-control-layers-expanded {
-  background: var(--panel);
-  color: var(--ventia-ink);
+  background: #fff;
+  color: #1a1a1a;
+  border-color: #ccc;
+}
+
+html.dark .leaflet-control-attribution,
+html.dark .leaflet-control-scale-line {
+  background: rgba(255, 255, 255, 0.85);
+  color: #222;
 }
 
 .upd-options {
