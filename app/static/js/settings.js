@@ -90,7 +90,7 @@ async function runImport(dryRun) {
 }
 
 async function init() {
-  injectChrome({ active: "/settings" });
+  injectChrome({ active: "/admin/settings", mode: "admin" });
   $("rulesForm").addEventListener("submit", (e) => saveRules(e).catch((err) => alert(err.message)));
   $("lookupKind").addEventListener("change", () => loadLookups().catch((e) => alert(e.message)));
   $("btnAddLookup").addEventListener("click", () => addLookup().catch((e) => alert(e.message)));

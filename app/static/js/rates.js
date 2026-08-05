@@ -103,7 +103,7 @@ function syncNewKind() {
 }
 
 async function init() {
-  injectChrome({ active: "/rates" });
+  injectChrome({ active: "/admin/rates", mode: "admin" });
   await loadSettings();
   await loadRates();
 

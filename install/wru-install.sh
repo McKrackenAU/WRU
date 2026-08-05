@@ -311,16 +311,18 @@ deactivate
 msg_ok "Installed Python packages"
 
 msg_info "Writing environment"
-cat <<EOF >/etc/default/wru
-WRU_DATA_DIR=${DATA_DIR}
-WRU_PORT=${APP_PORT}
-POSTGRES_USER=${PG_USER}
-POSTGRES_PASSWORD=${PG_PASS}
-POSTGRES_HOST=${PG_HOST}
-POSTGRES_PORT=${PG_PORT}
-POSTGRES_DB=${PG_DB}
-DATABASE_URL=${DATABASE_URL}
-EOF
+# Quote every value — DATABASE_URL contains &client_encoding=… which breaks unquoted
+# /etc/default files when sourced (KeyError: DATABASE_URL / truncated URL).
+{
+  echo "WRU_DATA_DIR=${DATA_DIR@Q}"
+  echo "WRU_PORT=${APP_PORT@Q}"
+  echo "POSTGRES_USER=${PG_USER@Q}"
+  echo "POSTGRES_PASSWORD=${PG_PASS@Q}"
+  echo "POSTGRES_HOST=${PG_HOST@Q}"
+  echo "POSTGRES_PORT=${PG_PORT@Q}"
+  echo "POSTGRES_DB=${PG_DB@Q}"
+  echo "DATABASE_URL=${DATABASE_URL@Q}"
+} >/etc/default/wru
 chmod 640 /etc/default/wru
 chown root:"${APP_USER}" /etc/default/wru
 msg_ok "Wrote /etc/default/wru"
@@ -337,13 +339,22 @@ set -a
 # shellcheck disable=SC1091
 source /etc/default/wru
 set +a
+# Belt-and-suspenders: ensure DATABASE_URL is exported even if source was odd
+export DATABASE_URL="${DATABASE_URL:-}"
+if [[ -z "$DATABASE_URL" ]]; then
+  msg_error "DATABASE_URL missing after writing /etc/default/wru"
+  exit 1
+fi
 cd "$APP_DIR"
 
 # Prove DB login works before migrations (shows real errors)
 python3 - <<'PY'
 import os, sys
 from sqlalchemy import create_engine, text
-url = os.environ["DATABASE_URL"]
+url = os.environ.get("DATABASE_URL")
+if not url:
+    print("DATABASE_URL is not set in the environment", file=sys.stderr)
+    sys.exit(1)
 try:
     eng = create_engine(url, pool_pre_ping=True)
     with eng.connect() as conn:
@@ -447,7 +458,7 @@ if [[ -d /etc/update-motd.d ]]; then
 echo ""
 echo "  WRU TGS Tracker   →  http://\$(hostname -I | awk '{print \$1}'):${APP_PORT}"
 echo "  Service          →  systemctl status ${SERVICE_NAME}"
-echo "  Update / rollback →  sudo wru-update   or  /system in the UI"
+echo "  Update / rollback →  sudo wru-update   or  /admin/system"
 echo "  Database         →  PostgreSQL (${PG_DB})"
 echo "  Uploads          →  ${DATA_DIR}/uploads"
 echo ""

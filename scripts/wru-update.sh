@@ -13,7 +13,7 @@
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
 #   → choose "Update existing CT from GitHub"
 #
-# The web UI (/system) calls this via sudo once the helper is installed.
+# The web UI (/admin/system) calls this via sudo once the helper is installed.
 # Before each install, the current version is saved to /opt/wru_version_history.json
 # (max 5 prior entries) so the app can roll back.
 

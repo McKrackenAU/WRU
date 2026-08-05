@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Admin · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Admin console</h1>
+          <p>Configure workflow rules, lookups, rates, and system updates — separate from day-to-day tracking.</p>
+        </div>
+      </div>
+      <div class="admin-grid" id="adminCards">
+        <a class="admin-card" href="/admin/stages">
+          <h2>Stages &amp; programs</h2>
+          <p>Reorder workflow stages, client-list roles, and program categories.</p>
+        </a>
+        <a class="admin-card" href="/admin/settings">
+          <h2>Rules &amp; import</h2>
+          <p>SLA thresholds, council/road lists, and spreadsheet import.</p>
+        </a>
+        <a class="admin-card" href="/admin/rates">
+          <h2>Rates</h2>
+          <p>Crew packs, TMA, spotter, travel/meal allowances, day/night window.</p>
+        </a>
+        <a class="admin-card" href="/admin/system">
+          <h2>System</h2>
+          <p>Version, GitHub updates, and rollback history.</p>
+        </a>
+      </div>
+      <section class="panel-card" style="margin-top:1.25rem">
+        <h2>Live snapshot</h2>
+        <div class="stat-strip" id="adminStats">
+          <p class="hint">Loading…</p>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/admin.js"></script>
+</body>
+</html>

@@ -45,7 +45,7 @@ async function loadPrograms() {
 }
 
 async function init() {
-  injectChrome({ active: "/stages" });
+  injectChrome({ active: "/admin/stages", mode: "admin" });
   await Promise.all([loadStages(), loadPrograms()]);
 
   $("btnAddStage").addEventListener("click", async () => {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct
 from sqlalchemy.orm import Session
@@ -129,16 +129,6 @@ def lists_page():
     return _page("lists.html")
 
 
-@app.get("/stages")
-def stages_page():
-    return _page("stages.html")
-
-
-@app.get("/settings")
-def settings_page():
-    return _page("settings.html")
-
-
 @app.get("/archive")
 def archive_page():
     return _page("archive.html")
@@ -159,14 +149,51 @@ def costs_page():
     return _page("costs.html")
 
 
-@app.get("/rates")
-def rates_page():
+# —— Admin console (separate shell from day-to-day tracker) ——
+@app.get("/admin")
+def admin_home():
+    return _page("admin.html")
+
+
+@app.get("/admin/stages")
+def admin_stages_page():
+    return _page("stages.html")
+
+
+@app.get("/admin/settings")
+def admin_settings_page():
+    return _page("settings.html")
+
+
+@app.get("/admin/rates")
+def admin_rates_page():
     return _page("rates.html")
 
 
-@app.get("/system")
-def system_page():
+@app.get("/admin/system")
+def admin_system_page():
     return _page("system.html")
+
+
+# Legacy bookmarks → admin
+@app.get("/stages")
+def stages_redirect():
+    return RedirectResponse("/admin/stages", status_code=302)
+
+
+@app.get("/settings")
+def settings_redirect():
+    return RedirectResponse("/admin/settings", status_code=302)
+
+
+@app.get("/rates")
+def rates_redirect():
+    return RedirectResponse("/admin/rates", status_code=302)
+
+
+@app.get("/system")
+def system_redirect():
+    return RedirectResponse("/admin/system", status_code=302)
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

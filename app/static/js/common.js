@@ -77,7 +77,8 @@ export function initThemeToggle() {
   });
 }
 
-const NAV_LINKS = [
+/** Day-to-day tracker navigation */
+export const OPS_NAV = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/", label: "Sites" },
   { href: "/lists", label: "Client lists" },
@@ -86,35 +87,61 @@ const NAV_LINKS = [
   { href: "/documents", label: "Documents" },
   { href: "/map", label: "Map" },
   { href: "/archive", label: "Archive" },
-  { href: "/stages", label: "Stages" },
-  { href: "/settings", label: "Settings" },
-  { href: "/rates", label: "Rates" },
-  { href: "/system", label: "System" },
 ];
 
-export function injectChrome({ active } = {}) {
+/** Admin console navigation (VenInspect-style separate shell) */
+export const ADMIN_NAV = [
+  { href: "/admin", label: "Overview" },
+  { href: "/admin/stages", label: "Stages & programs" },
+  { href: "/admin/settings", label: "Rules & import" },
+  { href: "/admin/rates", label: "Rates" },
+  { href: "/admin/system", label: "System" },
+];
+
+function navHtml(links, path) {
+  return links
+    .map((l) => {
+      const isActive =
+        l.href === "/"
+          ? path === "/"
+          : l.href === "/admin"
+            ? path === "/admin"
+            : path === l.href || path.startsWith(`${l.href}/`);
+      return `<a href="${l.href}" class="${isActive ? "active" : ""}">${escapeHtml(l.label)}</a>`;
+    })
+    .join("");
+}
+
+/**
+ * Inject top chrome.
+ * @param {{ active?: string, mode?: 'ops'|'admin' }} opts
+ */
+export function injectChrome({ active, mode } = {}) {
   const path = active || location.pathname;
+  const isAdmin =
+    mode === "admin" || path === "/admin" || path.startsWith("/admin/");
+  const links = isAdmin ? ADMIN_NAV : OPS_NAV;
   const header = document.querySelector("[data-app-header]");
   if (header) {
+    header.classList.toggle("topbar-admin", isAdmin);
     header.innerHTML = `
       <div class="brand-block">
         <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="36" height="36" alt="" />
         <div class="brand-text">
-          <p class="app-name">WRU TGS Tracker</p>
-          <p class="tagline">Traffic guidance · MoA workflow</p>
+          <p class="app-name">${isAdmin ? "WRU Admin" : "WRU TGS Tracker"}</p>
+          <p class="tagline">${isAdmin ? "Configuration · imports · system" : "Traffic guidance · MoA workflow"}</p>
         </div>
         <img class="ventia-logo" src="/static/brand/ventia-logo.png" alt="Ventia" />
       </div>
-      <nav class="main-nav" aria-label="Primary">
-        ${NAV_LINKS.map((l) => {
-          const isActive =
-            l.href === "/"
-              ? path === "/"
-              : path === l.href || path.startsWith(`${l.href}/`);
-          return `<a href="${l.href}" class="${isActive ? "active" : ""}">${escapeHtml(l.label)}</a>`;
-        }).join("")}
+      <nav class="main-nav" aria-label="${isAdmin ? "Admin" : "Primary"}">
+        ${navHtml(links, path)}
       </nav>
       <div class="toolbar header-tools">
+        ${
+          isAdmin
+            ? `<a class="btn" href="/">← Back to tracker</a>`
+            : `<a class="btn btn-admin-link" href="/admin">Admin</a>`
+        }
         <input id="userName" type="text" placeholder="Your name" maxlength="64" aria-label="Your name" />
         <button type="button" class="btn theme-toggle" id="themeToggle">Theme</button>
       </div>
@@ -125,10 +152,11 @@ export function injectChrome({ active } = {}) {
     footer.innerHTML = `
       <div class="inner">
         <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="18" height="18" alt="" />
-        <span>WRU TGS Tracker · Traffic guidance schedules</span>
+        <span>${isAdmin ? "WRU Admin console" : "WRU TGS Tracker · Traffic guidance schedules"}</span>
       </div>
     `;
   }
+  document.body.classList.toggle("admin-mode", isAdmin);
   loadUserName();
   $("userName")?.addEventListener("change", saveUserName);
   initThemeToggle();

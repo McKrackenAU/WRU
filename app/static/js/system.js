@@ -168,7 +168,7 @@ async function runRollback(version) {
 }
 
 async function init() {
-  injectChrome({ active: "/system" });
+  injectChrome({ active: "/admin/system", mode: "admin" });
   $("btnRefresh").addEventListener("click", () =>
     loadVersions().catch((e) => alert(e.message))
   );

@@ -26,123 +26,181 @@
 <body>
   <div class="app-shell">
     <header class="topbar" data-app-header></header>
-    <main class="main">
-      <div class="page-head">
+    <main class="main sites-main">
+      <div class="page-head sites-head">
         <div>
-          <h1>Active sites</h1>
-          <p>Current financial-year TGS / MoA register</p>
+          <h1>Sites register</h1>
+          <p id="statusLine">Loading active TGS / MoA jobs…</p>
         </div>
         <div class="toolbar">
           <a class="btn" href="/lists">Client lists</a>
-          <a class="btn" href="/settings">Import / settings</a>
           <a class="btn" href="/api/export/permits-list.xlsx">Permits Excel</a>
           <a class="btn" href="/api/export/trims-list.xlsx">TRIMS Excel</a>
           <button type="button" class="btn" id="btnColumns">Columns</button>
           <button type="button" class="btn btn-primary" id="btnAddSite">Add site</button>
         </div>
       </div>
-      <div class="filters">
+
+      <div class="filter-bar">
         <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
-        <select id="priorityFilter" aria-label="Priority filter">
+        <select id="priorityFilter" aria-label="Priority">
           <option value="">All priorities</option>
-          <option value="1">Priority 1 (must-have soon)</option>
+          <option value="1">Priority 1</option>
           <option value="2">Priority 2</option>
         </select>
-        <select id="programFilter" aria-label="Program filter"><option value="">All programs</option></select>
-        <select id="stageFilter" aria-label="Stage filter"><option value="">All stages</option></select>
-        <select id="councilFilter" aria-label="Council filter"><option value="">All councils</option></select>
-        <select id="listFilter" aria-label="Client list filter">
-          <option value="">All client lists</option>
-          <option value="permits">On Permits list</option>
-          <option value="trims">On TRIMS list</option>
-          <option value="none">Not on client lists</option>
+        <select id="programFilter" aria-label="Program"><option value="">All programs</option></select>
+        <select id="stageFilter" aria-label="Stage"><option value="">All stages</option></select>
+        <select id="councilFilter" aria-label="Council"><option value="">All councils</option></select>
+        <select id="listFilter" aria-label="Client list">
+          <option value="">All lists</option>
+          <option value="permits">Permits</option>
+          <option value="trims">TRIMS</option>
+          <option value="none">Not on lists</option>
         </select>
       </div>
-      <div class="table-card">
-        <div class="table-scroll" id="tableScroll">
-          <table class="data-table" id="sitesTable">
-            <thead id="tableHead"></thead>
-            <tbody id="tableBody">
-              <tr><td class="empty" colspan="20">Loading…</td></tr>
-            </tbody>
-          </table>
+
+      <div class="register-layout">
+        <div class="register-list panel-card" id="registerList">
+          <p class="hint" style="padding:1rem">Loading…</p>
         </div>
       </div>
-      <p class="foot-note" id="statusLine">Ready</p>
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>
 
-  <dialog id="siteDialog" class="panel panel-wide">
-    <form id="siteForm">
-      <header class="panel-head">
-        <h2 id="siteDialogTitle">Add site</h2>
-        <button type="button" class="icon-btn" data-close-dialog="siteDialog" aria-label="Close">×</button>
+  <!-- Site drawer -->
+  <aside class="drawer" id="siteDrawer" hidden aria-hidden="true">
+    <div class="drawer-backdrop" data-close-drawer></div>
+    <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="siteDialogTitle">
+      <header class="drawer-head">
+        <div>
+          <p class="drawer-kicker" id="drawerKicker">Site</p>
+          <h2 id="siteDialogTitle">Add site</h2>
+        </div>
+        <button type="button" class="icon-btn" data-close-drawer aria-label="Close">×</button>
       </header>
-      <div class="panel-body form-grid">
+      <div class="drawer-tabs" role="tablist">
+        <button type="button" class="drawer-tab active" data-tab="overview">Overview</button>
+        <button type="button" class="drawer-tab" data-tab="moa">MoA &amp; dates</button>
+        <button type="button" class="drawer-tab" data-tab="councils">Councils</button>
+        <button type="button" class="drawer-tab" data-tab="workflow">Workflow</button>
+        <button type="button" class="drawer-tab" data-tab="activity">Activity</button>
+      </div>
+      <form id="siteForm" class="drawer-body">
         <input type="hidden" id="siteId" />
-        <label>Road name<input id="fRoad" list="roadList" required maxlength="255" /></label>
         <datalist id="roadList"></datalist>
-        <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
-        <label>Program category
-          <select id="fProgram"><option value="">Select…</option></select>
-        </label>
-        <label>TGS reference<input id="fTgs" maxlength="128" /></label>
-        <label>Indicative start<input id="fStart" type="date" /></label>
-        <label>MoA must-have received
-          <input id="fMustHave" type="date" />
-        </label>
-        <label class="full"><span><input id="fMustManual" type="checkbox" /> Lock must-have (do not auto-calc from start)</span></label>
-        <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
-        <label>MoA submission date<input id="fMoaSub" type="date" /></label>
-        <label>MoA received date<input id="fMoaRec" type="date" /></label>
-        <label>MoA start / validity<input id="fMoaStart" type="date" /></label>
-        <label>MoA expiry<input id="fMoaExp" type="date" /></label>
-        <label>Extension / change
-          <select id="fExtFlag">
-            <option value="No">No</option>
-            <option value="Yes">Yes</option>
-            <option value="N/A">N/A</option>
-          </select>
-        </label>
-        <label>Extension submitted<input id="fExtSub" type="date" /></label>
-        <label>Extension received<input id="fExtRec" type="date" /></label>
-        <label>Extension start<input id="fExtStart" type="date" /></label>
-        <label>Extension expiry<input id="fExtExp" type="date" /></label>
-        <label>Job completed date<input id="fJobDone" type="date" /></label>
-        <label class="full"><span><input id="fInclude" type="checkbox" checked /> Include in dashboard totals</span></label>
-        <label class="full"><span><input id="fGenericMoa" type="checkbox" /> This record is a generic MoA / TGS</span></label>
-        <label class="full">Link generic MoA (moves site to ready for works)
-          <select id="fLinkedGeneric"><option value="">None</option></select>
-        </label>
-        <label class="full">Markup KML (optional)<input id="fKml" type="file" accept=".kml,.xml" /></label>
-        <div class="full">
-          <div class="page-head" style="margin-bottom:0.35rem">
+
+        <section class="tab-panel active" data-panel="overview">
+          <div class="form-grid">
+            <label>Road name<input id="fRoad" list="roadList" required maxlength="255" /></label>
+            <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
+            <label>Program
+              <select id="fProgram"><option value="">Select…</option></select>
+            </label>
+            <label>TGS reference<input id="fTgs" maxlength="128" /></label>
+            <label>Indicative start<input id="fStart" type="date" /></label>
+            <label>MoA must-have
+              <input id="fMustHave" type="date" />
+            </label>
+            <label class="full"><span><input id="fMustManual" type="checkbox" /> Lock must-have (don’t auto-calc)</span></label>
+            <label class="full">Comments<textarea id="fComments" rows="3" placeholder="Ops notes / correspondence summary"></textarea></label>
+            <label class="full"><span><input id="fInclude" type="checkbox" checked /> Include in dashboard totals</span></label>
+            <label class="full"><span><input id="fGenericMoa" type="checkbox" /> Generic MoA / TGS</span></label>
+            <label class="full">Link generic MoA
+              <select id="fLinkedGeneric"><option value="">None</option></select>
+            </label>
+            <label class="full">Markup KML<input id="fKml" type="file" accept=".kml,.xml" /></label>
+            <fieldset class="full" id="customFieldsEdit">
+              <legend>Custom fields</legend>
+              <div id="customFieldsGrid" class="form-grid"></div>
+            </fieldset>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="moa">
+          <div class="form-grid">
+            <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
+            <label>Submitted<input id="fMoaSub" type="date" /></label>
+            <label>Received<input id="fMoaRec" type="date" /></label>
+            <label>Valid from<input id="fMoaStart" type="date" /></label>
+            <label>Expiry<input id="fMoaExp" type="date" /></label>
+            <label>Extension / change
+              <select id="fExtFlag">
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+                <option value="N/A">N/A</option>
+              </select>
+            </label>
+            <label>Ext. submitted<input id="fExtSub" type="date" /></label>
+            <label>Ext. received<input id="fExtRec" type="date" /></label>
+            <label>Ext. start<input id="fExtStart" type="date" /></label>
+            <label>Ext. expiry<input id="fExtExp" type="date" /></label>
+            <label>Job completed<input id="fJobDone" type="date" /></label>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="councils">
+          <div class="page-head" style="margin-bottom:0.5rem">
             <strong>Councils</strong>
             <button type="button" class="btn" id="btnAddCouncil">Add council</button>
           </div>
           <div id="councilRows"></div>
-          <p class="hint" id="councilHint">Track submit + no-objection dates. Assumed no-objection uses the admin setting (spreadsheet default 10 business days).</p>
-        </div>
-        <label class="full">Comments<textarea id="fComments" rows="3"></textarea></label>
-        <p class="hint full" id="autosaveStatus" hidden></p>
-        <fieldset class="full workflow-edit">
-          <legend>Workflow progress</legend>
+          <p class="hint" id="councilHint">Assumed no-objection uses the admin SLA setting.</p>
+        </section>
+
+        <section class="tab-panel" data-panel="workflow">
+          <p class="hint">Tick stages as work progresses. Permits / TRIMS lists update automatically.</p>
           <div id="workflowChecks" class="workflow-checks"></div>
-        </fieldset>
-        <fieldset class="full" id="customFieldsEdit">
-          <legend>Custom fields</legend>
-          <div id="customFieldsGrid" class="form-grid"></div>
-        </fieldset>
-      </div>
-      <footer class="panel-foot">
-        <button type="button" class="btn btn-danger" id="btnArchiveSite" hidden>Archive to FY</button>
+        </section>
+
+        <section class="tab-panel" data-panel="activity">
+          <p class="hint" id="activityHint">Save the site first to add tracking and documents.</p>
+          <div id="activityBody" hidden>
+            <h3>Tracking</h3>
+            <div class="track-compose">
+              <select id="trackType">
+                <option value="note">Note</option>
+                <option value="status">Status</option>
+                <option value="chase">Chase</option>
+                <option value="issue">Issue</option>
+              </select>
+              <textarea id="trackMessage" rows="2" placeholder="Add a tracking update…"></textarea>
+              <button type="button" class="btn btn-primary" id="btnAddTrack">Add</button>
+            </div>
+            <ul id="trackList" class="event-list"></ul>
+            <h3 style="margin-top:1.25rem">Documents</h3>
+            <div class="upload-row" style="flex-wrap:wrap">
+              <select id="docCategory">
+                <option value="email">Email</option>
+                <option value="tgs">TGS</option>
+                <option value="plan">Plan</option>
+                <option value="moa">MoA</option>
+                <option value="correspondence">Correspondence</option>
+                <option value="photo">Photo</option>
+                <option value="other">Other</option>
+              </select>
+              <input type="text" id="docDesc" placeholder="Description" />
+              <input type="file" id="docFile" />
+              <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
+            </div>
+            <ul id="docList" class="event-list"></ul>
+            <div class="toolbar" style="margin-top:1rem">
+              <a class="btn" id="btnOpenCosts" href="/costs">Cost calculator</a>
+            </div>
+            <ul id="costList" class="event-list"></ul>
+          </div>
+        </section>
+
+        <p class="hint" id="autosaveStatus" hidden></p>
+      </form>
+      <footer class="drawer-foot">
+        <button type="button" class="btn btn-danger" id="btnArchiveSite" hidden>Archive</button>
         <div class="spacer"></div>
-        <button type="button" class="btn" data-close-dialog="siteDialog">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn" data-close-drawer>Close</button>
+        <button type="submit" form="siteForm" class="btn btn-primary" id="btnSaveSite">Save</button>
       </footer>
-    </form>
-  </dialog>
+    </div>
+  </aside>
 
   <dialog id="columnsDialog" class="panel">
     <form id="columnsForm" onsubmit="return false;">
@@ -151,7 +209,7 @@
         <button type="button" class="icon-btn" data-close-dialog="columnsDialog" aria-label="Close">×</button>
       </header>
       <div class="panel-body">
-        <p class="hint">Any user can add or remove columns. Values are stored per site.</p>
+        <p class="hint">Extra fields shown in the site drawer.</p>
         <ul id="columnList" class="column-list"></ul>
         <div class="add-column form-grid">
           <label>Name<input id="colName" maxlength="128" /></label>
@@ -173,68 +231,6 @@
         <button type="button" class="btn btn-primary" id="btnAddColumn">Add column</button>
         <div class="spacer"></div>
         <button type="button" class="btn" data-close-dialog="columnsDialog">Close</button>
-      </footer>
-    </form>
-  </dialog>
-
-  <dialog id="detailDialog" class="panel panel-wide">
-    <form id="detailForm" onsubmit="return false;">
-      <header class="panel-head">
-        <div>
-          <h2 id="detailTitle">Site</h2>
-          <p class="tagline" id="detailSub"></p>
-        </div>
-        <button type="button" class="icon-btn" data-close-dialog="detailDialog" aria-label="Close">×</button>
-      </header>
-      <div class="panel-body detail-split">
-        <section>
-          <h3>Tracking</h3>
-          <div class="track-compose">
-            <select id="trackType">
-              <option value="note">Note</option>
-              <option value="status">Status</option>
-              <option value="chase">Chase</option>
-              <option value="issue">Issue</option>
-            </select>
-            <textarea id="trackMessage" rows="2" placeholder="Add a tracking update…"></textarea>
-            <button type="button" class="btn btn-primary" id="btnAddTrack">Add</button>
-          </div>
-          <ul id="trackList" class="event-list"></ul>
-        </section>
-        <section>
-          <h3>MoA documents</h3>
-          <div class="upload-row" style="flex-wrap:wrap">
-            <select id="docCategory">
-              <option value="email">Email</option>
-              <option value="tgs">TGS</option>
-              <option value="plan">Plan</option>
-              <option value="moa">MoA</option>
-              <option value="correspondence">Correspondence</option>
-              <option value="photo">Photo</option>
-              <option value="other">Other</option>
-            </select>
-            <input type="text" id="docDesc" placeholder="Description" />
-            <input type="file" id="docFile" />
-            <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
-          </div>
-          <p class="hint">Attach emails (.eml/.msg), plans, TGS, MoA PDFs — all kept against this MoA/site.</p>
-          <ul id="docList" class="event-list"></ul>
-        </section>
-      </div>
-      <div class="panel-body" style="padding-top:0">
-        <section>
-          <div class="page-head" style="margin-bottom:0.5rem">
-            <div>
-              <h3 style="margin:0">Traffic cost history</h3>
-              <p class="hint" style="margin:0.25rem 0 0">Saved calculator runs and quote attachments for this MoA.</p>
-            </div>
-            <a class="btn btn-primary" id="btnOpenCosts" href="/costs">New cost estimate</a>
-          </div>
-          <ul id="costList" class="event-list"></ul>
-        </section>
-      </div>
-      <footer class="panel-foot">
-        <button type="button" class="btn" data-close-dialog="detailDialog">Close</button>
       </footer>
     </form>
   </dialog>
