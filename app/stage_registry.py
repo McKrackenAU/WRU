@@ -7,20 +7,23 @@ from sqlalchemy.orm import Session
 from .models import ProgramCategory, WorkflowStageDef
 
 # Seeded defaults — keys stay stable so existing WorkflowStep rows keep working.
+# Labels / roles match WRU Traffic TGS-MOA Tracker V6 spreadsheet statuses.
 DEFAULT_STAGES: list[dict] = [
     {
         "key": "tgs_markup_completed",
-        "label": "TGS Markup completed",
+        "label": "TGS Markup Complete",
         "position": 10,
         "list_role": "none",
         "counts_toward_progress": True,
+        "active": True,
     },
     {
         "key": "submitted_to_tmd",
-        "label": "Submitted to traffic management (waiting for plans)",
+        "label": "Submitted to TMD",
         "position": 20,
         "list_role": "none",
         "counts_toward_progress": True,
+        "active": True,
     },
     {
         "key": "ventia_review",
@@ -28,63 +31,86 @@ DEFAULT_STAGES: list[dict] = [
         "position": 30,
         "list_role": "none",
         "counts_toward_progress": True,
+        "active": False,  # not in spreadsheet V6 — available if admins enable
     },
     {
         "key": "plan_received",
-        "label": "Plan received",
+        "label": "Plan Received",
         "position": 40,
         "list_role": "none",
         "counts_toward_progress": True,
+        "active": True,
     },
     {
         "key": "ready_to_submit_moa",
-        "label": "Waiting to submit to DTP",
+        "label": "Ready to Submit MoA",
         "position": 50,
         "list_role": "none",
         "counts_toward_progress": True,
+        "active": True,
     },
     {
         "key": "moa_submitted",
-        "label": "MoA submitted (Permits team)",
+        "label": "MoA Submitted",
         "position": 60,
         "list_role": "permits",
         "counts_toward_progress": True,
+        "active": True,
     },
     {
         "key": "moa_with_trims",
-        "label": "MoA with TRIMS team",
+        "label": "MoA With TRIMS",
         "position": 70,
         "list_role": "trims",
         "counts_toward_progress": True,
+        "active": True,
     },
     {
         "key": "revision_needed",
-        "label": "Revision needed",
+        "label": "Revision Needed",
         "position": 80,
         "list_role": "permits",
         "counts_toward_progress": False,
+        "active": True,
     },
     {
         "key": "moa_received",
-        "label": "MoA received / approved",
+        "label": "MoA Received",
         "position": 90,
         "list_role": "complete",
         "counts_toward_progress": True,
+        "active": True,
     },
     {
         "key": "ready_for_works",
-        "label": "Ready for works",
+        "label": "Ready for Works",
         "position": 100,
         "list_role": "complete",
         "counts_toward_progress": True,
+        "active": True,
     },
 ]
 
 DEFAULT_PROGRAMS = [
-    ("Lifecycle pavements", 10),
-    ("Lifecycle structures", 20),
-    ("Assets", 30),
-    ("Routine maintenance", 40),
+    ("LCP-FMRP", 10),
+    ("FMRP Non-Commit", 20),
+    ("LCP Maintenance Misc", 30),
+    ("Structures", 40),
+    ("Generics MTMP/ITMP", 50),
+    ("Routine Maintenance", 60),
+    ("Lifecycle pavements", 70),
+    ("Lifecycle structures", 80),
+    ("Assets", 90),
+]
+
+DEFAULT_COUNCILS = [
+    "Hobsons Bay",
+    "Maribyrnong",
+    "Melbourne",
+    "Moonee Valley",
+    "Brimbank",
+    "Wyndham",
+    "Other",
 ]
 
 
@@ -101,7 +127,7 @@ def ensure_stage_seed(db: Session) -> None:
                 position=row["position"],
                 list_role=row["list_role"],
                 counts_toward_progress=row["counts_toward_progress"],
-                active=True,
+                active=bool(row.get("active", True)),
             )
         )
         changed = True
@@ -116,6 +142,23 @@ def ensure_program_seed(db: Session) -> None:
         if name.lower() in existing:
             continue
         db.add(ProgramCategory(name=name, position=pos, active=True))
+        changed = True
+    if changed:
+        db.commit()
+
+
+def ensure_lookup_seed(db: Session) -> None:
+    from .models import LookupItem
+
+    existing = {
+        (r.kind, r.value.lower())
+        for r in db.query(LookupItem).filter(LookupItem.kind == "council").all()
+    }
+    changed = False
+    for i, name in enumerate(DEFAULT_COUNCILS):
+        if ("council", name.lower()) in existing:
+            continue
+        db.add(LookupItem(kind="council", value=name, position=(i + 1) * 10, active=True))
         changed = True
     if changed:
         db.commit()

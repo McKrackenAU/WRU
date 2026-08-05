@@ -87,6 +87,7 @@ const NAV_LINKS = [
   { href: "/map", label: "Map" },
   { href: "/archive", label: "Archive" },
   { href: "/stages", label: "Stages" },
+  { href: "/settings", label: "Settings" },
   { href: "/rates", label: "Rates" },
   { href: "/system", label: "System" },
 ];
@@ -138,7 +139,9 @@ export function stageLabel(meta, key) {
 }
 
 export function mustBandClass(band) {
+  if (band === "received") return "must-have received";
   if (band === "ok") return "must-have soon";
+  if (band === "warn") return "must-have warn";
   if (band === "late" || band === "overdue") return "must-have late";
   return "";
 }

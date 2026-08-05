@@ -34,16 +34,16 @@ WORKFLOW_STAGES = [
 ]
 
 WORKFLOW_LABELS = {
-    "tgs_markup_completed": "TGS Markup completed",
-    "submitted_to_tmd": "Submitted to traffic management (waiting for plans)",
+    "tgs_markup_completed": "TGS Markup Complete",
+    "submitted_to_tmd": "Submitted to TMD",
     "ventia_review": "Ventia review",
-    "plan_received": "Plan received",
-    "ready_to_submit_moa": "Waiting to submit to DTP",
-    "moa_submitted": "MoA submitted (Permits team)",
-    "moa_with_trims": "MoA with TRIMS team",
-    "revision_needed": "Revision needed",
-    "moa_received": "MoA received / approved",
-    "ready_for_works": "Ready for works",
+    "plan_received": "Plan Received",
+    "ready_to_submit_moa": "Ready to Submit MoA",
+    "moa_submitted": "MoA Submitted",
+    "moa_with_trims": "MoA With TRIMS",
+    "revision_needed": "Revision Needed",
+    "moa_received": "MoA Received",
+    "ready_for_works": "Ready for Works",
 }
 
 DOC_CATEGORIES = [
@@ -83,6 +83,43 @@ class ProgramCategory(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class AppSettings(Base):
+    """Singleton (id=1) tracker SLA / rule settings — admin configurable."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    must_have_offset_business_days: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    priority_must_have_days: Mapped[int] = mapped_column(Integer, nullable=False, default=14)
+    must_have_warn_days: Mapped[int] = mapped_column(Integer, nullable=False, default=14)
+    must_have_critical_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    council_no_objection_business_days: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    moa_wait_sla_business_days: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    permit_validity_warn_days: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    permit_validity_critical_days: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    auto_compute_must_have: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    auto_archive_on_job_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class LookupItem(Base):
+    """Admin-managed dropdown lists (roads, councils, etc.)."""
+
+    __tablename__ = "lookup_items"
+    __table_args__ = (UniqueConstraint("kind", "value", name="uq_lookup_kind_value"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)  # road | council
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
 class Site(Base):
     __tablename__ = "sites"
 
@@ -93,9 +130,21 @@ class Site(Base):
     tgs_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     indicative_site_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     moa_must_have_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    must_have_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
     moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     moa_submission_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    moa_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    moa_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    moa_expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Extension / change track (spreadsheet AB–AG)
+    extension_flag: Mapped[str | None] = mapped_column(String(16), nullable=True)  # Yes|No|N/A
+    extension_submission_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    extension_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    extension_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    extension_expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    job_completed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    include_in_totals: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_generic_moa: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     linked_generic_moa_id: Mapped[int | None] = mapped_column(
         ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True

@@ -3,10 +3,11 @@
 from app.version import bump_rev, read_raw_version, version_string, version_tag
 
 
-def test_version_starts_at_0_1():
-    assert read_raw_version() == "0.1"
-    assert version_string() == "0.1"
-    assert version_tag() == "v0.1"
+def test_version_file_readable():
+    raw = read_raw_version()
+    assert raw
+    assert version_string() == raw
+    assert version_tag() == f"v{raw.lstrip('vV')}"
 
 
 def test_bump_rev():

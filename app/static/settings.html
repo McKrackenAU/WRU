@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Settings · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <h1>Tracker settings</h1>
+          <p>Admin-configurable SLA rules and dropdown lists — aligned to the TGS-MOA spreadsheet.</p>
+        </div>
+      </div>
+
+      <section class="panel-card">
+        <h2>Business rules</h2>
+        <p class="hint">Defaults match WRU Traffic TGS-MOA Tracker V6 (must-have −20 bus. days, priority on must-have ≤14d, council assume +10 bus. days, MoA wait SLA 20).</p>
+        <form id="rulesForm" class="form-grid">
+          <label>Must-have offset (business days before start)
+            <input id="rMustOffset" type="number" min="0" max="365" />
+          </label>
+          <label>Priority 1 when must-have within (calendar days)
+            <input id="rPriority" type="number" min="0" max="365" />
+          </label>
+          <label>Must-have warn band (days overdue ≤)
+            <input id="rMustWarn" type="number" min="0" max="365" />
+          </label>
+          <label>Must-have critical (days overdue &gt;)
+            <input id="rMustCrit" type="number" min="0" max="365" />
+          </label>
+          <label>Council assumed no-objection (business days)
+            <input id="rCouncil" type="number" min="0" max="365" />
+          </label>
+          <label>MoA / extension wait SLA (business days)
+            <input id="rMoaSla" type="number" min="0" max="365" />
+          </label>
+          <label>Permit validity warn (calendar days)
+            <input id="rValWarn" type="number" min="0" max="365" />
+          </label>
+          <label>Permit validity critical (calendar days)
+            <input id="rValCrit" type="number" min="0" max="365" />
+          </label>
+          <label class="full"><span><input id="rAutoMust" type="checkbox" /> Auto-compute must-have from site start</span></label>
+          <label class="full"><span><input id="rAutoArchive" type="checkbox" /> Auto-archive when job completed date is set</span></label>
+          <div class="full toolbar">
+            <button type="submit" class="btn btn-primary">Save rules</button>
+            <span class="hint" id="rulesStatus"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel-card">
+        <h2>Lookup lists</h2>
+        <div class="filters" style="margin-bottom:0.75rem">
+          <select id="lookupKind">
+            <option value="council">Councils</option>
+            <option value="road">Roads</option>
+          </select>
+          <input id="lookupValue" type="text" placeholder="Add value…" />
+          <button type="button" class="btn btn-primary" id="btnAddLookup">Add</button>
+        </div>
+        <ul class="event-list" id="lookupList"></ul>
+      </section>
+
+      <section class="panel-card">
+        <h2>Import spreadsheet</h2>
+        <p class="hint">Upload the WRU Traffic TGS-MOA Tracker <code>.xlsm</code> / <code>.xlsx</code>. Rows are matched on road + site number; existing sites update.</p>
+        <div class="filters" style="flex-direction:column;align-items:stretch">
+          <input id="importFile" type="file" accept=".xlsx,.xlsm,.xls" />
+          <label><span><input id="importUpdate" type="checkbox" checked /> Update existing sites</span></label>
+          <div class="toolbar">
+            <button type="button" class="btn" id="btnDryRun">Preview</button>
+            <button type="button" class="btn btn-primary" id="btnImport">Import</button>
+            <span class="hint" id="importStatus"></span>
+          </div>
+          <pre id="importLog" class="hint" style="white-space:pre-wrap;max-height:240px;overflow:auto" hidden></pre>
+        </div>
+      </section>
+
+      <p class="hint">Workflow stages &amp; program categories are managed on the <a href="/stages">Stages</a> page.</p>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/settings.js"></script>
+</body>
+</html>

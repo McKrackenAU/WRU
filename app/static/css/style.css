@@ -344,17 +344,20 @@ html.dark .bar-fill {
 }
 
 #mapCanvas {
+  min-height: 420px;
   height: min(70vh, 720px);
   width: 100%;
   border-radius: 1rem;
   border: 1px solid var(--ventia-border);
   z-index: 1;
+  background: #e8efe8;
 }
 
 .map-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: 1rem;
+  align-items: stretch;
 }
 
 .map-side {
@@ -668,6 +671,21 @@ html.dark .data-table th {
 .priority.p2 {
   background: color-mix(in srgb, var(--ventia-border) 55%, transparent);
   color: var(--ventia-muted);
+}
+
+.row-highlight td {
+  background: color-mix(in srgb, var(--ventia-green) 14%, transparent) !important;
+  outline: 2px solid color-mix(in srgb, var(--ventia-green) 55%, transparent);
+}
+
+.must-have.received {
+  color: #0b6b3a;
+  font-weight: 700;
+}
+
+.must-have.warn {
+  color: #9a6b00;
+  font-weight: 700;
 }
 
 .must-have.soon {

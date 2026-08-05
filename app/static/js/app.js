@@ -12,11 +12,12 @@ import {
 const state = {
   sites: [],
   columns: [],
-  meta: { workflow_stages: [], priority_threshold_days: 21, councils: [], programs: [] },
+  meta: { workflow_stages: [], priority_threshold_days: 14, councils: [], programs: [], roads: [] },
   detailSiteId: null,
   genericMoas: [],
   autosaveTimer: null,
   suppressAutosave: false,
+  highlightId: null,
 };
 
 function progressBarHtml(pct) {
@@ -87,7 +88,9 @@ function renderHead() {
       <th>Pri</th>
       <th>Progress</th>
       <th>List</th>
+      <th>MoA wait</th>
       <th>Council wait</th>
+      <th>Ext</th>
       ${stages.map((s) => `<th class="stage" title="${escapeHtml(s.label)}">${escapeHtml(s.label)}</th>`).join("")}
       <th>Comments</th>
       <th>MoA #</th>
@@ -129,22 +132,35 @@ function renderBody() {
       const councils = (site.councils || [])
         .map((c) => `<span class="chip">${escapeHtml(c)}</span>`)
         .join(" ");
+      const moaWait = m.moa_wait || {};
+      const moaWaitLabel =
+        moaWait.business_days_waiting != null
+          ? `${moaWait.business_days_waiting}d${moaWait.over_sla ? "!" : ""}`
+          : "—";
+      const highlight = state.highlightId === site.id ? "row-highlight" : "";
+      const mustDate = must.date || site.moa_must_have_received_date;
+      const mustDisplay =
+        must.band === "received"
+          ? "Received"
+          : `${fmtDate(mustDate)}${must.label && must.label !== "—" ? ` (${escapeHtml(must.label)})` : ""}`;
       return `
-        <tr>
+        <tr class="${highlight}" data-site-id="${site.id}">
           <td><strong>${escapeHtml(site.road_name)}</strong></td>
           <td class="mono">${escapeHtml(site.site_number)}</td>
           <td>${escapeHtml(site.program || "")}</td>
           <td>${councils || "—"}</td>
           <td class="mono">${fmtDate(site.indicative_site_start_date)}</td>
-          <td class="mono"><span class="${mustBandClass(must.band)}">${fmtDate(site.moa_must_have_received_date)} ${must.label && must.label !== "—" ? `(${escapeHtml(must.label)})` : ""}</span></td>
+          <td class="mono"><span class="${mustBandClass(must.band)}">${mustDisplay}</span></td>
           <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
           <td>${progressBarHtml(m.workflow_progress_pct)}${m.workflow_progress_pct ?? 0}%</td>
           <td class="mono">${escapeHtml(m.client_list || "none")}</td>
+          <td class="mono ${moaWait.over_sla ? "must-have late" : ""}">${moaWaitLabel}</td>
           <td class="mono">${
             m.max_council_business_days_waiting != null
               ? `${m.max_council_business_days_waiting}d`
               : "—"
           }</td>
+          <td class="mono">${escapeHtml(site.extension_flag || "No")}</td>
           ${stageCells}
           <td class="comments">${escapeHtml(site.comments || "")}</td>
           <td class="mono">${escapeHtml(site.moa_number || "")}</td>
@@ -198,13 +214,36 @@ async function loadAll() {
   fillFilterOptions();
   fillProgramSelect();
   fillGenericSelect();
+  fillRoadList();
+  const days = meta.priority_must_have_days ?? meta.priority_threshold_days ?? 14;
+  const priOpt = $("priorityFilter")?.querySelector('option[value="1"]');
+  if (priOpt) priOpt.textContent = `Priority 1 (must-have ≤ ${days}d)`;
   renderHead();
   renderBody();
+  maybeScrollHighlight();
   const pri = sites.filter((s) => s.metrics?.on_permits_priority_list).length;
   const trims = sites.filter((s) => s.metrics?.on_trims_priority_list).length;
   setStatus(
     `${sites.length} active · ${pri} Permits list · ${trims} TRIMS list`
   );
+}
+
+function fillRoadList() {
+  const list = $("roadList");
+  if (!list) return;
+  list.innerHTML = (state.meta.roads || [])
+    .map((r) => `<option value="${escapeHtml(r)}"></option>`)
+    .join("");
+}
+
+function maybeScrollHighlight() {
+  if (!state.highlightId || state.highlightHandled) return;
+  const row = document.querySelector(`tr[data-site-id="${state.highlightId}"]`);
+  if (!row) return;
+  state.highlightHandled = true;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  const site = state.sites.find((s) => s.id === state.highlightId);
+  if (site) setTimeout(() => openSiteDialog(site), 350);
 }
 
 function fillProgramSelect(selected = "") {
@@ -301,13 +340,29 @@ function openSiteDialog(site = null) {
   $("fTgs").value = site?.tgs_reference || "";
   $("fStart").value = site?.indicative_site_start_date || "";
   $("fMustHave").value = site?.moa_must_have_received_date || "";
+  $("fMustManual").checked = !!site?.must_have_manual;
   $("fMoaNo").value = site?.moa_number || "";
   $("fMoaSub").value = site?.moa_submission_date || "";
+  $("fMoaRec").value = site?.moa_received_date || "";
+  $("fMoaStart").value = site?.moa_start_date || "";
+  $("fMoaExp").value = site?.moa_expiry_date || "";
+  $("fExtFlag").value = site?.extension_flag || "No";
+  $("fExtSub").value = site?.extension_submission_date || "";
+  $("fExtRec").value = site?.extension_received_date || "";
+  $("fExtStart").value = site?.extension_start_date || "";
+  $("fExtExp").value = site?.extension_expiry_date || "";
+  $("fJobDone").value = site?.job_completed_date || "";
+  $("fInclude").checked = site ? site.include_in_totals !== false : true;
   $("fGenericMoa").checked = !!site?.is_generic_moa;
   fillGenericSelect(site?.linked_generic_moa_id || "");
   renderCouncilRows(site?.council_details || site?.metrics?.councils || []);
   $("fComments").value = site?.comments || "";
   $("fKml").value = "";
+  const days = state.meta.council_no_objection_business_days ?? 10;
+  if ($("councilHint")) {
+    $("councilHint").textContent =
+      `Track submit + no-objection dates. After ${days} business days without a response we assume no objection (configurable in Settings).`;
+  }
   buildWorkflowChecks(site ? workflowMap(site) : {});
   buildCustomFields(site?.custom_fields || {});
   $("btnArchiveSite").hidden = !site;
@@ -352,8 +407,19 @@ function collectSitePayload() {
     tgs_reference: $("fTgs").value.trim() || null,
     indicative_site_start_date: $("fStart").value || null,
     moa_must_have_received_date: $("fMustHave").value || null,
+    must_have_manual: $("fMustManual").checked,
     moa_number: $("fMoaNo").value.trim() || null,
     moa_submission_date: $("fMoaSub").value || null,
+    moa_received_date: $("fMoaRec").value || null,
+    moa_start_date: $("fMoaStart").value || null,
+    moa_expiry_date: $("fMoaExp").value || null,
+    extension_flag: $("fExtFlag").value || "No",
+    extension_submission_date: $("fExtSub").value || null,
+    extension_received_date: $("fExtRec").value || null,
+    extension_start_date: $("fExtStart").value || null,
+    extension_expiry_date: $("fExtExp").value || null,
+    job_completed_date: $("fJobDone").value || null,
+    include_in_totals: $("fInclude").checked,
     is_generic_moa: $("fGenericMoa").checked,
     linked_generic_moa_id: linked ? Number(linked) : null,
     comments: $("fComments").value.trim() || null,
@@ -421,6 +487,9 @@ function scheduleAutosave() {
   state.autosaveTimer = setTimeout(async () => {
     try {
       const payload = collectSitePayload();
+      // Never wipe required fields mid-edit (empty inputs while typing)
+      if (!payload.road_name) delete payload.road_name;
+      if (!payload.site_number) delete payload.site_number;
       await api(`/api/sites/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -740,6 +809,9 @@ function bindEvents() {
 
 async function init() {
   injectChrome({ active: "/" });
+  const params = new URLSearchParams(location.search);
+  const hl = params.get("highlight");
+  if (hl && Number(hl)) state.highlightId = Number(hl);
   bindEvents();
   try {
     await loadAll();

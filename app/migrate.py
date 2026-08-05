@@ -6,12 +6,14 @@ from sqlalchemy import inspect, text
 
 from .database import Base, engine
 from .models import (  # noqa: F401 — register metadata
+    AppSettings,
     CostEstimate,
     CostEstimateAttachment,
     CostSettings,
     CustomColumn,
     Document,
     LabourRate,
+    LookupItem,
     MapFeature,
     MapLayer,
     ProgramCategory,
@@ -47,6 +49,17 @@ def run_migrations() -> None:
     ensure_column("sites", "archived", "archived BOOLEAN NOT NULL DEFAULT FALSE")
     ensure_column("sites", "archived_at", "archived_at TIMESTAMPTZ")
     ensure_column("sites", "archived_fy", "archived_fy VARCHAR(16)")
+    ensure_column("sites", "must_have_manual", "must_have_manual BOOLEAN NOT NULL DEFAULT FALSE")
+    ensure_column("sites", "moa_received_date", "moa_received_date DATE")
+    ensure_column("sites", "moa_start_date", "moa_start_date DATE")
+    ensure_column("sites", "moa_expiry_date", "moa_expiry_date DATE")
+    ensure_column("sites", "extension_flag", "extension_flag VARCHAR(16)")
+    ensure_column("sites", "extension_submission_date", "extension_submission_date DATE")
+    ensure_column("sites", "extension_received_date", "extension_received_date DATE")
+    ensure_column("sites", "extension_start_date", "extension_start_date DATE")
+    ensure_column("sites", "extension_expiry_date", "extension_expiry_date DATE")
+    ensure_column("sites", "job_completed_date", "job_completed_date DATE")
+    ensure_column("sites", "include_in_totals", "include_in_totals BOOLEAN NOT NULL DEFAULT TRUE")
 
     # documents expansions
     ensure_column("documents", "moa_number", "moa_number VARCHAR(64)")
@@ -93,15 +106,19 @@ def run_migrations() -> None:
             text("CREATE INDEX IF NOT EXISTS ix_cost_estimates_moa_number ON cost_estimates (moa_number)")
         )
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_is_generic_moa ON sites (is_generic_moa)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lookup_items_kind ON lookup_items (kind)"))
 
-    # Seed configurable stages / program categories
+    # Seed configurable stages / program categories / settings / lookups
     from .database import SessionLocal
-    from .stage_registry import ensure_program_seed, ensure_stage_seed
+    from .settings_store import ensure_settings
+    from .stage_registry import ensure_lookup_seed, ensure_program_seed, ensure_stage_seed
 
     db = SessionLocal()
     try:
         ensure_stage_seed(db)
         ensure_program_seed(db)
+        ensure_lookup_seed(db)
+        ensure_settings(db)
     finally:
         db.close()
 

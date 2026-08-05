@@ -113,10 +113,16 @@ async def upload_kml(
     db.add(layer)
     db.flush()
 
-    # Auto-link by MoA / site number / road name hints in KML props/name
-    sites = db.query(Site).all()
-    by_moa = { (s.moa_number or "").strip(): s for s in sites if s.moa_number }
-    by_site_no = { (s.site_number or "").strip().upper(): s for s in sites }
+    # Auto-link by exact MoA / site-number tokens (avoid short substring false positives)
+    sites = db.query(Site).filter(Site.archived.is_(False)).all()
+    by_moa = {(s.moa_number or "").strip().upper(): s for s in sites if (s.moa_number or "").strip()}
+    by_site_no = {
+        (s.site_number or "").strip().upper(): s
+        for s in sites
+        if (s.site_number or "").strip() and len((s.site_number or "").strip()) >= 2
+    }
+
+    import re
 
     for feat in features:
         props = feat.get("properties") or {}
@@ -127,14 +133,15 @@ async def upload_kml(
                 " ".join(str(v) for v in props.values()),
             ]
         ).upper()
+        tokens = set(re.findall(r"[A-Z0-9][A-Z0-9._/-]{1,}", hay))
         linked = None
         for moa, site in by_moa.items():
-            if moa and moa.upper() in hay:
+            if moa and (moa in tokens or re.search(rf"(?<![A-Z0-9]){re.escape(moa)}(?![A-Z0-9])", hay)):
                 linked = site
                 break
         if linked is None:
             for sno, site in by_site_no.items():
-                if sno and sno in hay:
+                if sno and (sno in tokens or re.search(rf"(?<![A-Z0-9]){re.escape(sno)}(?![A-Z0-9])", hay)):
                     linked = site
                     break
         db.add(
@@ -188,14 +195,15 @@ def geojson(
                 "id": f["id"],
                 "geometry": f["geometry"],
                 "properties": {
+                    # KML props first; WRU link fields always win (never clobber site/feature_id)
+                    **(f.get("properties") or {}),
                     "feature_id": f["id"],
                     "layer_id": f["layer_id"],
-                    "name": f["name"],
+                    "name": f["name"] or (f.get("properties") or {}).get("name"),
                     "description": f["description"],
                     "financial_year": f["financial_year"],
                     "site_id": f["site_id"],
                     "site": f["site"],
-                    **(f.get("properties") or {}),
                 },
             }
             for f in feats

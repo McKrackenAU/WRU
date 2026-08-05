@@ -72,9 +72,20 @@ class SiteBase(BaseModel):
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
+    must_have_manual: bool = False
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None
+    moa_received_date: date | None = None
+    moa_start_date: date | None = None
+    moa_expiry_date: date | None = None
+    extension_flag: str | None = None
+    extension_submission_date: date | None = None
+    extension_received_date: date | None = None
+    extension_start_date: date | None = None
+    extension_expiry_date: date | None = None
+    job_completed_date: date | None = None
+    include_in_totals: bool = True
     is_generic_moa: bool = False
     linked_generic_moa_id: int | None = None
     financial_year: str | None = None
@@ -90,17 +101,26 @@ class SiteCreate(BaseModel):
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
+    must_have_manual: bool = False
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None
+    moa_received_date: date | None = None
+    moa_start_date: date | None = None
+    moa_expiry_date: date | None = None
+    extension_flag: str | None = None
+    extension_submission_date: date | None = None
+    extension_received_date: date | None = None
+    extension_start_date: date | None = None
+    extension_expiry_date: date | None = None
+    job_completed_date: date | None = None
+    include_in_totals: bool = True
     is_generic_moa: bool = False
     linked_generic_moa_id: int | None = None
     financial_year: str | None = None
-    # Accept names or detailed council rows
     councils: list[str | CouncilIn] = Field(default_factory=list)
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     workflow: dict[str, bool] | None = None
-    # Optional GeoJSON geometry to place the site on the map
     geometry: dict[str, Any] | None = None
     geometry_name: str | None = None
 
@@ -112,9 +132,20 @@ class SiteUpdate(BaseModel):
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
+    must_have_manual: bool | None = None
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None
+    moa_received_date: date | None = None
+    moa_start_date: date | None = None
+    moa_expiry_date: date | None = None
+    extension_flag: str | None = None
+    extension_submission_date: date | None = None
+    extension_received_date: date | None = None
+    extension_start_date: date | None = None
+    extension_expiry_date: date | None = None
+    job_completed_date: date | None = None
+    include_in_totals: bool | None = None
     is_generic_moa: bool | None = None
     linked_generic_moa_id: int | None = None
     financial_year: str | None = None
@@ -177,11 +208,59 @@ class CustomColumnOut(BaseModel):
 class MetaOut(BaseModel):
     workflow_stages: list[dict[str, Any]]
     doc_categories: list[str]
-    priority_threshold_days: int = 21
-    council_no_objection_business_days: int = 21
+    priority_threshold_days: int = 14
+    priority_must_have_days: int = 14
+    must_have_offset_business_days: int = 20
+    council_no_objection_business_days: int = 10
+    moa_wait_sla_business_days: int = 20
     financial_years: list[str]
     programs: list[str] = Field(default_factory=list)
     councils: list[str] = Field(default_factory=list)
+    roads: list[str] = Field(default_factory=list)
+    rules: dict[str, Any] = Field(default_factory=dict)
+
+
+class AppSettingsOut(BaseModel):
+    must_have_offset_business_days: int
+    priority_must_have_days: int
+    must_have_warn_days: int
+    must_have_critical_days: int
+    council_no_objection_business_days: int
+    moa_wait_sla_business_days: int
+    permit_validity_warn_days: int
+    permit_validity_critical_days: int
+    auto_compute_must_have: bool
+    auto_archive_on_job_complete: bool
+
+
+class AppSettingsUpdate(BaseModel):
+    must_have_offset_business_days: int | None = Field(default=None, ge=0, le=365)
+    priority_must_have_days: int | None = Field(default=None, ge=0, le=365)
+    must_have_warn_days: int | None = Field(default=None, ge=0, le=365)
+    must_have_critical_days: int | None = Field(default=None, ge=0, le=365)
+    council_no_objection_business_days: int | None = Field(default=None, ge=0, le=365)
+    moa_wait_sla_business_days: int | None = Field(default=None, ge=0, le=365)
+    permit_validity_warn_days: int | None = Field(default=None, ge=0, le=365)
+    permit_validity_critical_days: int | None = Field(default=None, ge=0, le=365)
+    auto_compute_must_have: bool | None = None
+    auto_archive_on_job_complete: bool | None = None
+
+
+class LookupIn(BaseModel):
+    kind: str = Field(pattern="^(road|council)$")
+    value: str = Field(min_length=1, max_length=255)
+    position: int | None = None
+    active: bool = True
+
+
+class LookupOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    value: str
+    position: int
+    active: bool
 
 
 class MapLayerOut(BaseModel):

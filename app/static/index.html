@@ -34,6 +34,7 @@
         </div>
         <div class="toolbar">
           <a class="btn" href="/lists">Client lists</a>
+          <a class="btn" href="/settings">Import / settings</a>
           <a class="btn" href="/api/export/permits-list.xlsx">Permits Excel</a>
           <a class="btn" href="/api/export/trims-list.xlsx">TRIMS Excel</a>
           <button type="button" class="btn" id="btnColumns">Columns</button>
@@ -44,7 +45,7 @@
         <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
         <select id="priorityFilter" aria-label="Priority filter">
           <option value="">All priorities</option>
-          <option value="1">Priority 1 (&lt; 21 days)</option>
+          <option value="1">Priority 1 (must-have soon)</option>
           <option value="2">Priority 2</option>
         </select>
         <select id="programFilter" aria-label="Program filter"><option value="">All programs</option></select>
@@ -72,7 +73,7 @@
     <footer class="app-footer" data-app-footer></footer>
   </div>
 
-  <dialog id="siteDialog" class="panel">
+  <dialog id="siteDialog" class="panel panel-wide">
     <form id="siteForm">
       <header class="panel-head">
         <h2 id="siteDialogTitle">Add site</h2>
@@ -80,16 +81,36 @@
       </header>
       <div class="panel-body form-grid">
         <input type="hidden" id="siteId" />
-        <label>Road name<input id="fRoad" required maxlength="255" /></label>
+        <label>Road name<input id="fRoad" list="roadList" required maxlength="255" /></label>
+        <datalist id="roadList"></datalist>
         <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
         <label>Program category
           <select id="fProgram"><option value="">Select…</option></select>
         </label>
         <label>TGS reference<input id="fTgs" maxlength="128" /></label>
         <label>Indicative start<input id="fStart" type="date" /></label>
-        <label>MoA must-have received<input id="fMustHave" type="date" /></label>
+        <label>MoA must-have received
+          <input id="fMustHave" type="date" />
+        </label>
+        <label class="full"><span><input id="fMustManual" type="checkbox" /> Lock must-have (do not auto-calc from start)</span></label>
         <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
         <label>MoA submission date<input id="fMoaSub" type="date" /></label>
+        <label>MoA received date<input id="fMoaRec" type="date" /></label>
+        <label>MoA start / validity<input id="fMoaStart" type="date" /></label>
+        <label>MoA expiry<input id="fMoaExp" type="date" /></label>
+        <label>Extension / change
+          <select id="fExtFlag">
+            <option value="No">No</option>
+            <option value="Yes">Yes</option>
+            <option value="N/A">N/A</option>
+          </select>
+        </label>
+        <label>Extension submitted<input id="fExtSub" type="date" /></label>
+        <label>Extension received<input id="fExtRec" type="date" /></label>
+        <label>Extension start<input id="fExtStart" type="date" /></label>
+        <label>Extension expiry<input id="fExtExp" type="date" /></label>
+        <label>Job completed date<input id="fJobDone" type="date" /></label>
+        <label class="full"><span><input id="fInclude" type="checkbox" checked /> Include in dashboard totals</span></label>
         <label class="full"><span><input id="fGenericMoa" type="checkbox" /> This record is a generic MoA / TGS</span></label>
         <label class="full">Link generic MoA (moves site to ready for works)
           <select id="fLinkedGeneric"><option value="">None</option></select>
@@ -101,7 +122,7 @@
             <button type="button" class="btn" id="btnAddCouncil">Add council</button>
           </div>
           <div id="councilRows"></div>
-          <p class="hint">Track submit + no-objection dates. After 21 business days without a response we assume no objection.</p>
+          <p class="hint" id="councilHint">Track submit + no-objection dates. Assumed no-objection uses the admin setting (spreadsheet default 10 business days).</p>
         </div>
         <label class="full">Comments<textarea id="fComments" rows="3"></textarea></label>
         <p class="hint full" id="autosaveStatus" hidden></p>

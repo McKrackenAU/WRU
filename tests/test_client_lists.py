@@ -35,6 +35,13 @@ def _site(completed: list[str], *, councils=None):
         councils=councils or [],
         indicative_site_start_date=None,
         moa_must_have_received_date=None,
+        must_have_manual=False,
+        moa_submission_date=None,
+        moa_received_date=None,
+        moa_expiry_date=None,
+        extension_submission_date=None,
+        extension_received_date=None,
+        extension_expiry_date=None,
     )
 
 
@@ -91,13 +98,15 @@ def test_progress_bar_pct_ignores_revision():
 def test_business_days_skip_weekend():
     friday = date(2026, 7, 24)  # Friday
     assert add_business_days(friday, 1) == date(2026, 7, 27)  # Monday
-    assert add_business_days(friday, 21) == date(2026, 8, 24)
+    assert add_business_days(friday, 10) == date(2026, 8, 7)
     assert business_days_elapsed(friday, date(2026, 7, 27)) == 1
 
 
-def test_council_assumed_no_objection_after_21_business_days():
+def test_council_assumed_no_objection_after_configured_business_days():
+    # Spreadsheet V6 default = 10 business days (was 21 in earlier app builds)
     submitted = date(2026, 6, 1)  # Monday
     assumed = add_business_days(submitted, COUNCIL_NO_OBJECTION_BUSINESS_DAYS)
+    assert COUNCIL_NO_OBJECTION_BUSINESS_DAYS == 10
     council = SimpleNamespace(
         council_name="Test Council",
         submitted_to_council_date=submitted,

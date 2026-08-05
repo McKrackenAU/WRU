@@ -86,5 +86,5 @@ async function init() {
 }
 
 init().catch((err) => {
-  $("tbody").innerHTML = `<tr><td class="empty" colspan="12">${escapeHtml(err.message)}</td></tr>`;
+  $("tbody").innerHTML = `<tr><td class="empty" colspan="13">${escapeHtml(err.message)}</td></tr>`;
 });

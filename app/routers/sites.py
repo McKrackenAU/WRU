@@ -17,6 +17,7 @@ from ..services import (
     infer_financial_year,
     set_councils,
     site_to_dict,
+    sync_computed_fields,
 )
 
 router = APIRouter(prefix="/api/sites", tags=["sites"])
@@ -152,21 +153,13 @@ def list_generic_moas(db: Session = Depends(get_db)):
 
 @router.post("", response_model=SiteOut, status_code=201)
 def create_site(payload: SiteCreate, db: Session = Depends(get_db)):
-    site = Site(
-        road_name=payload.road_name.strip(),
-        site_number=payload.site_number.strip(),
-        program=(payload.program or "").strip() or None,
-        tgs_reference=(payload.tgs_reference or "").strip() or None,
-        indicative_site_start_date=payload.indicative_site_start_date,
-        moa_must_have_received_date=payload.moa_must_have_received_date,
-        comments=payload.comments,
-        moa_number=payload.moa_number,
-        moa_submission_date=payload.moa_submission_date,
-        is_generic_moa=bool(payload.is_generic_moa),
-        financial_year=payload.financial_year or None,
-        custom_fields=payload.custom_fields or {},
-        archived=False,
-    )
+    data = payload.model_dump(exclude={"councils", "workflow", "geometry", "geometry_name", "linked_generic_moa_id", "custom_fields"})
+    for key in ("road_name", "site_number", "program", "tgs_reference", "moa_number", "extension_flag", "comments"):
+        if isinstance(data.get(key), str):
+            data[key] = data[key].strip() or None
+    data["road_name"] = payload.road_name.strip()
+    data["site_number"] = payload.site_number.strip()
+    site = Site(**data, custom_fields=payload.custom_fields or {}, archived=False)
     db.add(site)
     db.flush()
     ensure_workflow_steps(site, db)
@@ -182,6 +175,7 @@ def create_site(payload: SiteCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not site.financial_year:
         site.financial_year = infer_financial_year(site)
+    sync_computed_fields(site, db)
     _attach_geometry(db, site, payload.geometry, payload.geometry_name)
     db.commit()
     db.refresh(site)
@@ -211,6 +205,10 @@ def update_site(site_id: int, payload: SiteUpdate, db: Session = Depends(get_db)
     linked_id = data.pop("linked_generic_moa_id", None) if "linked_generic_moa_id" in data else ...
 
     for key, value in data.items():
+        # Never blank out required identity fields during partial autosave
+        if key in ("road_name", "site_number"):
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
         if isinstance(value, str):
             value = value.strip() or None
         setattr(site, key, value)
@@ -237,6 +235,7 @@ def update_site(site_id: int, payload: SiteUpdate, db: Session = Depends(get_db)
 
     if not site.financial_year:
         site.financial_year = infer_financial_year(site)
+    sync_computed_fields(site, db)
     if geometry is not None:
         _attach_geometry(db, site, geometry, geometry_name)
     db.commit()

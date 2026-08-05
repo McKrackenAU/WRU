@@ -6,10 +6,36 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from .calculations import compute_today_priority, site_metrics
+from .calculations import compute_must_have_date, compute_today_priority, site_metrics
 from .financial_year import australian_financial_year
 from .models import WORKFLOW_STAGES, Site, SiteCouncil, WorkflowStep
+from .settings_store import get_rules
 from .stage_registry import active_stages, stage_keys as registry_stage_keys
+
+SITE_SCALAR_FIELDS = (
+    "road_name",
+    "site_number",
+    "program",
+    "tgs_reference",
+    "indicative_site_start_date",
+    "moa_must_have_received_date",
+    "must_have_manual",
+    "comments",
+    "moa_number",
+    "moa_submission_date",
+    "moa_received_date",
+    "moa_start_date",
+    "moa_expiry_date",
+    "extension_flag",
+    "extension_submission_date",
+    "extension_received_date",
+    "extension_start_date",
+    "extension_expiry_date",
+    "job_completed_date",
+    "include_in_totals",
+    "is_generic_moa",
+    "financial_year",
+)
 
 
 def slugify_field_key(name: str) -> str:
@@ -55,6 +81,9 @@ def apply_workflow(site: Site, workflow: dict[str, bool] | None, db: Session | N
             step.completed_at = now
         elif not step.completed:
             step.completed_at = None
+        # Sync MoA received date when stage toggled
+        if stage == "moa_received" and step.completed and not site.moa_received_date:
+            site.moa_received_date = date.today()
 
 
 def mark_ready_for_works(site: Site, db: Session | None = None) -> None:
@@ -138,6 +167,7 @@ def infer_financial_year(site: Site) -> str:
         site.indicative_site_start_date
         or site.moa_submission_date
         or site.moa_must_have_received_date
+        or site.moa_received_date
         or date.today()
     )
     return australian_financial_year(anchor)
@@ -157,15 +187,32 @@ def apply_generic_moa_link(site: Site, generic: Site | None, db: Session | None 
     mark_ready_for_works(site, db)
 
 
+def sync_computed_fields(site: Site, db: Session | None = None) -> None:
+    """Auto must-have date + archive-on-complete (spreadsheet AI=Yes behaviour)."""
+    rules = get_rules(db)
+    if rules.auto_compute_must_have and not site.must_have_manual:
+        computed = compute_must_have_date(site, rules=rules)
+        # Only set when not received; keep stored date for register display
+        if computed is not None:
+            site.moa_must_have_received_date = computed
+    if site.job_completed_date and rules.auto_archive_on_job_complete and not site.archived:
+        site.archived = True
+        site.archived_at = datetime.now(timezone.utc)
+        site.archived_fy = site.archived_fy or infer_financial_year(site)
+        site.financial_year = site.financial_year or site.archived_fy
+
+
 def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None = None) -> dict:
     workflow = ordered_workflow(site, db)
     keys, roles, progress = _stage_context(db)
+    rules = get_rules(db)
     metrics = (
         site_metrics(
             site,
             stage_keys=keys,
             list_roles=roles if roles else None,
             progress_keys=progress,
+            rules=rules,
         )
         if include_metrics
         else {}
@@ -188,9 +235,20 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "tgs_reference": site.tgs_reference,
         "indicative_site_start_date": site.indicative_site_start_date,
         "moa_must_have_received_date": site.moa_must_have_received_date,
+        "must_have_manual": bool(getattr(site, "must_have_manual", False)),
         "comments": site.comments,
         "moa_number": site.moa_number,
         "moa_submission_date": site.moa_submission_date,
+        "moa_received_date": getattr(site, "moa_received_date", None),
+        "moa_start_date": getattr(site, "moa_start_date", None),
+        "moa_expiry_date": getattr(site, "moa_expiry_date", None),
+        "extension_flag": getattr(site, "extension_flag", None),
+        "extension_submission_date": getattr(site, "extension_submission_date", None),
+        "extension_received_date": getattr(site, "extension_received_date", None),
+        "extension_start_date": getattr(site, "extension_start_date", None),
+        "extension_expiry_date": getattr(site, "extension_expiry_date", None),
+        "job_completed_date": getattr(site, "job_completed_date", None),
+        "include_in_totals": bool(getattr(site, "include_in_totals", True)),
         "is_generic_moa": bool(getattr(site, "is_generic_moa", False)),
         "linked_generic_moa_id": getattr(site, "linked_generic_moa_id", None),
         "financial_year": fy,
@@ -200,7 +258,7 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "councils": [c["council_name"] for c in council_details],
         "council_details": council_details,
         "custom_fields": site.custom_fields or {},
-        "today_priority": metrics.get("today_priority", compute_today_priority(site)),
+        "today_priority": metrics.get("today_priority", compute_today_priority(site, rules=rules)),
         "metrics": metrics,
         "workflow": [
             {

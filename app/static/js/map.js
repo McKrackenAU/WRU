@@ -8,6 +8,7 @@ let sites = [];
 
 function popupHtml(props) {
   const site = props.site;
+  const featureId = props.feature_id;
   let body = `<strong>${escapeHtml(props.name || "Feature")}</strong><br/>
     <span class="mono">FY ${escapeHtml(props.financial_year || "")}</span>`;
   if (site) {
@@ -18,12 +19,23 @@ function popupHtml(props) {
       <div style="margin-top:0.4rem">
         <a href="/?highlight=${site.id}">Open in Sites</a>
         ${site.archived ? " · archived" : ""}
-      </div>`;
+      </div>
+      <label style="display:block;margin-top:0.5rem;font-size:0.8rem">Relink / unlink
+        <select data-link-feature="${featureId}" style="width:100%;margin-top:0.25rem">
+          <option value="">— Unlink —</option>
+          ${sites
+            .map(
+              (s) =>
+                `<option value="${s.id}" ${s.id === site.id ? "selected" : ""}>${escapeHtml(s.site_number)} · ${escapeHtml(s.road_name)}</option>`
+            )
+            .join("")}
+        </select>
+      </label>`;
   } else {
     body += `<hr style="border:none;border-top:1px solid #d8e0d4;margin:0.5rem 0"/>
       <div class="hint">Not linked to a site yet.</div>
       <label style="display:block;margin-top:0.4rem;font-size:0.8rem">Link to site
-        <select data-link-feature="${props.feature_id}" style="width:100%;margin-top:0.25rem">
+        <select data-link-feature="${featureId}" style="width:100%;margin-top:0.25rem">
           <option value="">—</option>
           ${sites
             .map(
@@ -46,6 +58,14 @@ function setDrawnGeometry(geometry) {
 function clearDrawing() {
   if (drawLayer) drawLayer.clearLayers();
   setDrawnGeometry(null);
+}
+
+function fixMapSize() {
+  if (!map) return;
+  map.invalidateSize(true);
+  // Retry — layout / fonts can settle after first paint
+  setTimeout(() => map.invalidateSize(true), 250);
+  setTimeout(() => map.invalidateSize(true), 800);
 }
 
 async function refreshLayers() {
@@ -89,7 +109,7 @@ async function refreshMap() {
         fillOpacity: 0.85,
       }),
     onEachFeature: (feature, layer) => {
-      layer.bindPopup(popupHtml(feature.properties), { maxWidth: 280 });
+      layer.bindPopup(popupHtml(feature.properties || {}), { maxWidth: 300 });
     },
   }).addTo(map);
 
@@ -99,6 +119,7 @@ async function refreshMap() {
   } catch (_) {
     /* empty layer */
   }
+  fixMapSize();
 }
 
 async function uploadKml() {
@@ -186,12 +207,18 @@ function setupDraw() {
 
 async function init() {
   injectChrome({ active: "/map" });
-  map = L.map("mapCanvas").setView([-37.8136, 144.9631], 11);
+  const canvas = $("mapCanvas");
+  map = L.map(canvas, { preferCanvas: true }).setView([-37.8136, 144.9631], 11);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap",
   }).addTo(map);
   setupDraw();
+  window.addEventListener("resize", fixMapSize);
+  // Fix grey tiles when map is in a CSS grid that sizes after mount
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => fixMapSize()).observe(canvas);
+  }
 
   const meta = await api("/api/meta");
   $("fyFilter").innerHTML =
@@ -240,7 +267,7 @@ async function init() {
 
   await refreshLayers();
   await refreshMap();
-  setTimeout(() => map.invalidateSize(), 100);
+  fixMapSize();
 }
 
 init().catch((err) => alert(err.message));
