@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome } from "./common.js";
+import { $, api, escapeHtml, injectChrome, showPageError } from "./common.js";
 
 async function init() {
   injectChrome({ active: "/admin", mode: "admin" });
@@ -19,5 +19,5 @@ async function init() {
 }
 
 init().catch((e) => {
-  $("adminStats").innerHTML = `<p class="hint">${escapeHtml(e.message)}</p>`;
+  showPageError("adminStats", e, "Could not load admin snapshot");
 });
