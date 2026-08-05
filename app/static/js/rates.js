@@ -63,6 +63,12 @@ async function loadRates() {
       <td><input data-f="day_overtime" type="number" min="0" step="0.01" value="${r.day_overtime}" /></td>
       <td><input data-f="night_ordinary" type="number" min="0" step="0.01" value="${r.night_ordinary}" /></td>
       <td><input data-f="night_overtime" type="number" min="0" step="0.01" value="${r.night_overtime}" /></td>
+      <td><input data-f="saturday_ordinary" type="number" min="0" step="0.01" value="${r.saturday_ordinary ?? 0}" /></td>
+      <td><input data-f="saturday_overtime" type="number" min="0" step="0.01" value="${r.saturday_overtime ?? 0}" /></td>
+      <td><input data-f="sunday_ordinary" type="number" min="0" step="0.01" value="${r.sunday_ordinary ?? 0}" /></td>
+      <td><input data-f="sunday_overtime" type="number" min="0" step="0.01" value="${r.sunday_overtime ?? 0}" /></td>
+      <td><input data-f="public_holiday_ordinary" type="number" min="0" step="0.01" value="${r.public_holiday_ordinary ?? 0}" /></td>
+      <td><input data-f="public_holiday_overtime" type="number" min="0" step="0.01" value="${r.public_holiday_overtime ?? 0}" /></td>
       <td><input data-f="active" type="checkbox" ${r.active ? "checked" : ""} /></td>
       <td>
         <div class="row-actions">
@@ -85,6 +91,12 @@ function rowPayload(tr) {
     day_overtime: Number(tr.querySelector('[data-f="day_overtime"]').value),
     night_ordinary: Number(tr.querySelector('[data-f="night_ordinary"]').value),
     night_overtime: Number(tr.querySelector('[data-f="night_overtime"]').value),
+    saturday_ordinary: Number(tr.querySelector('[data-f="saturday_ordinary"]').value),
+    saturday_overtime: Number(tr.querySelector('[data-f="saturday_overtime"]').value),
+    sunday_ordinary: Number(tr.querySelector('[data-f="sunday_ordinary"]').value),
+    sunday_overtime: Number(tr.querySelector('[data-f="sunday_overtime"]').value),
+    public_holiday_ordinary: Number(tr.querySelector('[data-f="public_holiday_ordinary"]').value),
+    public_holiday_overtime: Number(tr.querySelector('[data-f="public_holiday_overtime"]').value),
     active: tr.querySelector('[data-f="active"]').checked,
   };
 }

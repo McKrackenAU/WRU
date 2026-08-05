@@ -6,9 +6,13 @@ import math
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
+from .public_holidays import holidays_between
+
 ShiftType = Literal["day", "night"]
+RateTier = Literal["weekday", "saturday", "sunday", "public_holiday"]
 
 INF = 10**18
+WEEKDAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def money(value: float) -> float:
@@ -45,20 +49,216 @@ def split_ordinary_ot(shift_hours: float, overtime_after: float) -> tuple[float,
     return ordinary, ot
 
 
-def unit_shift_cost(rate: Any, *, shift_type: ShiftType, ordinary_h: float, ot_h: float) -> float:
-    if shift_type == "night":
-        ord_rate = float(rate.night_ordinary)
-        ot_rate = float(rate.night_overtime)
-    else:
-        ord_rate = float(rate.day_ordinary)
-        ot_rate = float(rate.day_overtime)
-    return ordinary_h * ord_rate + ot_h * ot_rate
+def classify_rate_tier(d: date, *, holiday_names: dict[date, str] | None = None) -> RateTier:
+    holidays = holiday_names if holiday_names is not None else holidays_between(d, d)
+    if d in holidays:
+        return "public_holiday"
+    if d.weekday() == 5:
+        return "saturday"
+    if d.weekday() == 6:
+        return "sunday"
+    return "weekday"
 
 
-def rate_unit_rates(rate: Any, shift_type: ShiftType) -> tuple[float, float]:
+def rate_unit_rates(
+    rate: Any,
+    shift_type: ShiftType,
+    rate_tier: RateTier = "weekday",
+) -> tuple[float, float]:
+    """Ordinary / OT unit rates for a calendar tier.
+
+    Weekend / PH columns fall back to night (then day OT) when unset so existing
+    rate cards keep working until Sat/Sun/PH figures are filled in.
+    """
+    if rate_tier == "saturday":
+        o = float(getattr(rate, "saturday_ordinary", 0) or 0)
+        t = float(getattr(rate, "saturday_overtime", 0) or 0)
+        if o > 0 or t > 0:
+            return (o if o > 0 else t), (t if t > 0 else o)
+        return float(rate.night_ordinary), float(rate.night_overtime)
+
+    if rate_tier in ("sunday", "public_holiday"):
+        if rate_tier == "public_holiday":
+            o = float(getattr(rate, "public_holiday_ordinary", 0) or 0)
+            t = float(getattr(rate, "public_holiday_overtime", 0) or 0)
+            if o <= 0 and t <= 0:
+                o = float(getattr(rate, "sunday_ordinary", 0) or 0)
+                t = float(getattr(rate, "sunday_overtime", 0) or 0)
+        else:
+            o = float(getattr(rate, "sunday_ordinary", 0) or 0)
+            t = float(getattr(rate, "sunday_overtime", 0) or 0)
+        if o > 0 or t > 0:
+            return (o if o > 0 else t), (t if t > 0 else o)
+        # Highest fallback available on the card
+        return float(rate.night_overtime), float(rate.night_overtime)
+
     if shift_type == "night":
         return float(rate.night_ordinary), float(rate.night_overtime)
     return float(rate.day_ordinary), float(rate.day_overtime)
+
+
+def unit_shift_cost(
+    rate: Any,
+    *,
+    shift_type: ShiftType,
+    ordinary_h: float,
+    ot_h: float,
+    rate_tier: RateTier = "weekday",
+) -> float:
+    ord_rate, ot_rate = rate_unit_rates(rate, shift_type, rate_tier)
+    return ordinary_h * ord_rate + ot_h * ot_rate
+
+
+def parse_date_list(raw: Any) -> set[date]:
+    out: set[date] = set()
+    if not raw:
+        return out
+    for item in raw:
+        try:
+            out.add(date.fromisoformat(str(item)[:10]))
+        except ValueError:
+            continue
+    return out
+
+
+def build_work_schedule(
+    works_start: date,
+    days_of_work: int,
+    *,
+    work_weekdays: list[int] | None = None,
+    skip_public_holidays: bool = True,
+    skip_sunday_before_monday_ph: bool = True,
+    rdo_dates: set[date] | None = None,
+    include_dates: set[date] | None = None,
+    exclude_dates: set[date] | None = None,
+    max_span_days: int = 400,
+) -> list[dict[str, Any]]:
+    """Expand a start date + target work-day count into concrete work dates.
+
+    ``work_weekdays`` uses Python weekday numbers (0=Mon … 6=Sun).
+    """
+    if days_of_work <= 0:
+        raise ValueError("days_of_work must be positive")
+    weekdays = set(work_weekdays if work_weekdays is not None else [0, 1, 2, 3, 4])
+    if not weekdays:
+        raise ValueError("Select at least one day of the week")
+    rdo = rdo_dates or set()
+    include = include_dates or set()
+    exclude = exclude_dates or set()
+
+    horizon_end = works_start + timedelta(days=max_span_days)
+    holiday_names = holidays_between(works_start - timedelta(days=2), horizon_end + timedelta(days=2))
+
+    selected: list[dict[str, Any]] = []
+    cursor = works_start
+    guard = 0
+    while len(selected) < days_of_work and guard <= max_span_days:
+        guard += 1
+        d = cursor
+        cursor += timedelta(days=1)
+        flags: list[str] = []
+        ph_name = holiday_names.get(d)
+        if ph_name:
+            flags.append("public_holiday")
+        if d.weekday() == 5:
+            flags.append("saturday")
+        if d.weekday() == 6:
+            flags.append("sunday")
+        if d in rdo:
+            flags.append("rdo")
+
+        forced_in = d in include
+        forced_out = d in exclude or d in rdo
+
+        if forced_out and not forced_in:
+            continue
+        if not forced_in:
+            if d.weekday() not in weekdays:
+                continue
+            if skip_public_holidays and ph_name:
+                continue
+            if (
+                skip_sunday_before_monday_ph
+                and d.weekday() == 6
+                and (d + timedelta(days=1)) in holiday_names
+            ):
+                flags.append("skip_before_monday_ph")
+                continue
+
+        tier = classify_rate_tier(d, holiday_names=holiday_names)
+        selected.append(
+            {
+                "date": d.isoformat(),
+                "weekday": d.weekday(),
+                "weekday_label": WEEKDAY_NAMES[d.weekday()],
+                "rate_tier": tier,
+                "flags": flags,
+                "holiday_name": ph_name,
+                "included": True,
+            }
+        )
+
+    if len(selected) < days_of_work:
+        raise ValueError(
+            f"Could only schedule {len(selected)} of {days_of_work} work days "
+            f"within {max_span_days} calendar days — widen the weekday pattern or reduce days of work."
+        )
+    return selected
+
+
+def preview_schedule_window(
+    works_start: date,
+    *,
+    days_of_work: int,
+    work_weekdays: list[int] | None = None,
+    skip_public_holidays: bool = True,
+    skip_sunday_before_monday_ph: bool = True,
+    rdo_dates: set[date] | None = None,
+    include_dates: set[date] | None = None,
+    exclude_dates: set[date] | None = None,
+    pad_days: int = 14,
+) -> list[dict[str, Any]]:
+    """Calendar preview covering the scheduled span (+pad) with include flags."""
+    work = build_work_schedule(
+        works_start,
+        days_of_work,
+        work_weekdays=work_weekdays,
+        skip_public_holidays=skip_public_holidays,
+        skip_sunday_before_monday_ph=skip_sunday_before_monday_ph,
+        rdo_dates=rdo_dates,
+        include_dates=include_dates,
+        exclude_dates=exclude_dates,
+    )
+    work_set = {date.fromisoformat(r["date"]) for r in work}
+    end = date.fromisoformat(work[-1]["date"]) + timedelta(days=max(0, pad_days))
+    holiday_names = holidays_between(works_start, end)
+    rdo = rdo_dates or set()
+    rows: list[dict[str, Any]] = []
+    cursor = works_start
+    while cursor <= end:
+        ph_name = holiday_names.get(cursor)
+        flags: list[str] = []
+        if ph_name:
+            flags.append("public_holiday")
+        if cursor.weekday() == 5:
+            flags.append("saturday")
+        if cursor.weekday() == 6:
+            flags.append("sunday")
+        if cursor in rdo:
+            flags.append("rdo")
+        rows.append(
+            {
+                "date": cursor.isoformat(),
+                "weekday": cursor.weekday(),
+                "weekday_label": WEEKDAY_NAMES[cursor.weekday()],
+                "rate_tier": classify_rate_tier(cursor, holiday_names=holiday_names),
+                "flags": flags,
+                "holiday_name": ph_name,
+                "included": cursor in work_set,
+            }
+        )
+        cursor += timedelta(days=1)
+    return rows
 
 
 def booking_label_for_pack(rate: Any) -> tuple[str, str]:
@@ -77,6 +277,7 @@ def labour_cost_for_shift(
     overtime_after: float,
     crew: list[dict[str, Any]],
     rates_by_id: dict[int, Any],
+    rate_tier: RateTier = "weekday",
 ) -> dict[str, Any]:
     """Legacy crew items: {rate_id, quantity}."""
     ordinary_h, ot_h = split_ordinary_ot(shift_hours, overtime_after)
@@ -90,7 +291,7 @@ def labour_cost_for_shift(
         rate = rates_by_id.get(rate_id)
         if not rate:
             continue
-        ord_rate, ot_rate = rate_unit_rates(rate, shift_type)
+        ord_rate, ot_rate = rate_unit_rates(rate, shift_type, rate_tier)
         line_total = qty * (ordinary_h * ord_rate + ot_h * ot_rate)
         total += line_total
         lines.append(
@@ -189,6 +390,7 @@ def allocate_resource_packs(
     travel_allowance: float = 0.0,
     meal_allowance: float = 0.0,
     meal_after_hours: float = 9.5,
+    rate_tier: RateTier = "weekday",
 ) -> dict[str, Any]:
     """Cheapest crew-pack mix for TCs/vehicles, plus TMAs, spotters, and allowances.
 
@@ -244,7 +446,9 @@ def allocate_resource_packs(
             veh = 1 if getattr(r, "includes_vehicle", False) else 0
             if ppl <= 0 and veh <= 0:
                 continue
-            uc = unit_shift_cost(r, shift_type=shift_type, ordinary_h=ordinary_h, ot_h=ot_h)
+            uc = unit_shift_cost(
+                r, shift_type=shift_type, ordinary_h=ordinary_h, ot_h=ot_h, rate_tier=rate_tier
+            )
             pack_meta.append((r.id, ppl, veh, uc))
 
         if not pack_meta:
@@ -298,7 +502,9 @@ def allocate_resource_packs(
     if tmas > 0:
         best = None
         for r in tma_rates:
-            uc = unit_shift_cost(r, shift_type=shift_type, ordinary_h=ordinary_h, ot_h=ot_h)
+            uc = unit_shift_cost(
+                r, shift_type=shift_type, ordinary_h=ordinary_h, ot_h=ot_h, rate_tier=rate_tier
+            )
             if best is None or uc < best[1]:
                 best = (r, uc)
         assert best is not None
@@ -310,7 +516,9 @@ def allocate_resource_packs(
     if spotters > 0:
         best = None
         for r in spotter_rates:
-            uc = unit_shift_cost(r, shift_type=shift_type, ordinary_h=ordinary_h, ot_h=ot_h)
+            uc = unit_shift_cost(
+                r, shift_type=shift_type, ordinary_h=ordinary_h, ot_h=ot_h, rate_tier=rate_tier
+            )
             if best is None or uc < best[1]:
                 best = (r, uc)
         assert best is not None
@@ -331,7 +539,7 @@ def allocate_resource_packs(
         ),
     ):
         rate = rates_by_id[rate_id]
-        ord_rate, ot_rate = rate_unit_rates(rate, shift_type)
+        ord_rate, ot_rate = rate_unit_rates(rate, shift_type, rate_tier)
         line_total = qty * (ordinary_h * ord_rate + ot_h * ot_rate)
         total += line_total
         short, detail = booking_label_for_pack(rate)
@@ -367,7 +575,7 @@ def allocate_resource_packs(
         )
 
     if chosen_tma and tma_qty:
-        ord_rate, ot_rate = rate_unit_rates(chosen_tma, shift_type)
+        ord_rate, ot_rate = rate_unit_rates(chosen_tma, shift_type, rate_tier)
         line_total = tma_qty * (ordinary_h * ord_rate + ot_h * ot_rate)
         total += line_total
         lines.append(
@@ -403,7 +611,7 @@ def allocate_resource_packs(
         )
 
     if chosen_spotter and spotter_qty:
-        ord_rate, ot_rate = rate_unit_rates(chosen_spotter, shift_type)
+        ord_rate, ot_rate = rate_unit_rates(chosen_spotter, shift_type, rate_tier)
         line_total = spotter_qty * (ordinary_h * ord_rate + ot_h * ot_rate)
         total += line_total
         lines.append(
@@ -518,6 +726,7 @@ def resolve_shift_labour(
     overtime_after: float,
     rates: list[Any],
     settings: Any = None,
+    rate_tier: RateTier = "weekday",
 ) -> dict[str, Any]:
     """Prefer resource allocation when people/vehicles/tmas/spotters supplied."""
     resources = payload.get("resources")
@@ -544,6 +753,7 @@ def resolve_shift_labour(
             travel_allowance=travel,
             meal_allowance=meal,
             meal_after_hours=meal_after,
+            rate_tier=rate_tier,
         )
     rates_by_id = {r.id: r for r in rates}
     return labour_cost_for_shift(
@@ -552,6 +762,7 @@ def resolve_shift_labour(
         overtime_after=overtime_after,
         crew=payload.get("crew") or [],
         rates_by_id=rates_by_id,
+        rate_tier=rate_tier,
     )
 
 
@@ -608,6 +819,30 @@ def vms_cost(
     }
 
 
+def _shift_type_for_date(
+    work_date: date,
+    *,
+    shift_start_time: str | None,
+    shift_hours: float,
+    forced: ShiftType | None,
+    day_start: float,
+    day_end: float,
+) -> ShiftType:
+    if forced in ("day", "night"):
+        return forced  # type: ignore[return-value]
+    if not shift_start_time:
+        return "day"
+    try:
+        parts = [int(p) for p in str(shift_start_time).split(":")[:2]]
+        hh, mm = parts[0], parts[1] if len(parts) > 1 else 0
+    except (TypeError, ValueError) as exc:
+        raise ValueError("shift_start_time must be HH:MM") from exc
+    mid = datetime.combine(work_date, datetime.min.time()).replace(
+        hour=hh, minute=mm
+    ) + timedelta(hours=shift_hours / 2)
+    return classify_shift_type(mid, day_start_hour=day_start, day_end_hour=day_end)
+
+
 def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any]) -> dict[str, Any]:
     overtime_after = float(
         payload.get("overtime_after_hours", settings.overtime_after_hours)
@@ -621,63 +856,164 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
         day_end = float(payload["day_end_hour"])
 
     works_start = date.fromisoformat(payload["works_start"])
-    # Days of work counted from shift start date (inclusive)
     days_of_work = payload.get("days_of_work")
     shifts_per_day = int(payload.get("shifts_per_day") or 1)
     if shifts_per_day <= 0:
         raise ValueError("shifts_per_day must be positive")
 
-    if days_of_work is not None:
-        days_of_work = int(days_of_work)
-        if days_of_work <= 0:
-            raise ValueError("days_of_work must be positive")
-        works_end = works_start + timedelta(days=days_of_work - 1)
-        total_shifts = days_of_work * shifts_per_day
-    else:
-        works_end = date.fromisoformat(payload.get("works_end") or payload["works_start"])
-        if works_end < works_start:
-            raise ValueError("works_end must be on or after works_start")
-        days_of_work = (works_end - works_start).days + 1
-        if "total_shifts" in payload:
-            total_shifts = int(payload["total_shifts"])
-        else:
-            total_shifts = days_of_work * shifts_per_day
+    shift_start_time = payload.get("shift_start_time")
+    shift_type_raw = payload.get("shift_type")
+    forced_type: ShiftType | None = shift_type_raw if shift_type_raw in ("day", "night") else None
 
+    use_schedule = any(
+        k in payload
+        for k in (
+            "work_weekdays",
+            "work_dates",
+            "skip_public_holidays",
+            "skip_sunday_before_monday_ph",
+            "rdo_dates",
+            "include_dates",
+            "exclude_dates",
+        )
+    )
+
+    schedule_rows: list[dict[str, Any]] = []
+    if payload.get("work_dates"):
+        holiday_names = holidays_between(
+            works_start, works_start + timedelta(days=400)
+        )
+        for raw in payload["work_dates"]:
+            d = date.fromisoformat(str(raw)[:10])
+            schedule_rows.append(
+                {
+                    "date": d.isoformat(),
+                    "weekday": d.weekday(),
+                    "weekday_label": WEEKDAY_NAMES[d.weekday()],
+                    "rate_tier": classify_rate_tier(d, holiday_names=holiday_names),
+                    "flags": ["public_holiday"] if d in holiday_names else [],
+                    "holiday_name": holiday_names.get(d),
+                    "included": True,
+                }
+            )
+        schedule_rows.sort(key=lambda r: r["date"])
+        if not schedule_rows:
+            raise ValueError("work_dates must include at least one date")
+        days_of_work = len(schedule_rows)
+        works_end = date.fromisoformat(schedule_rows[-1]["date"])
+        works_start = date.fromisoformat(schedule_rows[0]["date"])
+    elif use_schedule:
+        if days_of_work is None:
+            raise ValueError("days_of_work is required with a work-day pattern")
+        days_of_work = int(days_of_work)
+        weekdays = payload.get("work_weekdays")
+        if weekdays is not None:
+            weekdays = [int(x) for x in weekdays]
+        schedule_rows = build_work_schedule(
+            works_start,
+            days_of_work,
+            work_weekdays=weekdays,
+            skip_public_holidays=bool(payload.get("skip_public_holidays", True)),
+            skip_sunday_before_monday_ph=bool(
+                payload.get("skip_sunday_before_monday_ph", True)
+            ),
+            rdo_dates=parse_date_list(payload.get("rdo_dates")),
+            include_dates=parse_date_list(payload.get("include_dates")),
+            exclude_dates=parse_date_list(payload.get("exclude_dates")),
+        )
+        works_end = date.fromisoformat(schedule_rows[-1]["date"])
+    else:
+        # Legacy contiguous calendar days
+        if days_of_work is not None:
+            days_of_work = int(days_of_work)
+            if days_of_work <= 0:
+                raise ValueError("days_of_work must be positive")
+            works_end = works_start + timedelta(days=days_of_work - 1)
+        else:
+            works_end = date.fromisoformat(payload.get("works_end") or payload["works_start"])
+            if works_end < works_start:
+                raise ValueError("works_end must be on or after works_start")
+            days_of_work = (works_end - works_start).days + 1
+        cursor = works_start
+        while cursor <= works_end:
+            schedule_rows.append(
+                {
+                    "date": cursor.isoformat(),
+                    "weekday": cursor.weekday(),
+                    "weekday_label": WEEKDAY_NAMES[cursor.weekday()],
+                    "rate_tier": "weekday",
+                    "flags": [],
+                    "holiday_name": None,
+                    "included": True,
+                }
+            )
+            cursor += timedelta(days=1)
+
+    total_shifts = days_of_work * shifts_per_day
     if shift_hours <= 0 or total_shifts <= 0:
         raise ValueError("shift_hours and total_shifts must be positive")
 
-    # Shift start time drives day/night classification when type not forced
-    shift_start_time = payload.get("shift_start_time")  # "HH:MM" or "HH:MM:SS"
-    shift_type_raw = payload.get("shift_type")
-    if shift_type_raw in ("day", "night"):
-        shift_type: ShiftType = shift_type_raw
-    elif shift_start_time:
-        try:
-            parts = [int(p) for p in str(shift_start_time).split(":")[:2]]
-            hh, mm = parts[0], parts[1] if len(parts) > 1 else 0
-        except (TypeError, ValueError) as exc:
-            raise ValueError("shift_start_time must be HH:MM") from exc
-        mid = datetime.combine(works_start, datetime.min.time()).replace(
-            hour=hh, minute=mm
-        ) + timedelta(hours=shift_hours / 2)
-        shift_type = classify_shift_type(mid, day_start_hour=day_start, day_end_hour=day_end)
-    else:
-        shift_type = "day"
+    # Representative shift type (first work day) for booking echo / legacy clients
+    first_date = date.fromisoformat(schedule_rows[0]["date"])
+    shift_type = _shift_type_for_date(
+        first_date,
+        shift_start_time=shift_start_time,
+        shift_hours=shift_hours,
+        forced=forced_type,
+        day_start=day_start,
+        day_end=day_end,
+    )
+
+    labour_cache: dict[tuple[ShiftType, RateTier], dict[str, Any]] = {}
+    site_labour = 0.0
+    site_allowances = 0.0
+    site_crew = 0.0
+    day_breakdown: list[dict[str, Any]] = []
+
+    for row in schedule_rows:
+        d = date.fromisoformat(row["date"])
+        tier: RateTier = row["rate_tier"]  # type: ignore[assignment]
+        st = _shift_type_for_date(
+            d,
+            shift_start_time=shift_start_time,
+            shift_hours=shift_hours,
+            forced=forced_type,
+            day_start=day_start,
+            day_end=day_end,
+        )
+        key = (st, tier)
+        if key not in labour_cache:
+            labour_cache[key] = resolve_shift_labour(
+                payload,
+                shift_hours=shift_hours,
+                shift_type=st,
+                overtime_after=overtime_after,
+                rates=rates,
+                settings=settings,
+                rate_tier=tier,
+            )
+        labour = labour_cache[key]
+        day_crew = labour["shift_total"] * shifts_per_day
+        day_labour = labour["shift_labour_total"] * shifts_per_day
+        day_allow = labour["allowances"]["allowances_total"] * shifts_per_day
+        site_crew += day_crew
+        site_labour += day_labour
+        site_allowances += day_allow
+        day_breakdown.append(
+            {
+                **row,
+                "shift_type": st,
+                "shifts": shifts_per_day,
+                "shift_total": money(labour["shift_total"]),
+                "day_total": money(day_crew),
+            }
+        )
+
+    # Booking sheet from the most common / first labour profile
+    labour = labour_cache.get((shift_type, schedule_rows[0]["rate_tier"]), next(iter(labour_cache.values())))
 
     lead_days = int(payload.get("vms_lead_days", settings.vms_lead_days_default))
     vms_qty = int(payload.get("vms_quantity") or 0)
-
-    labour = resolve_shift_labour(
-        payload,
-        shift_hours=shift_hours,
-        shift_type=shift_type,
-        overtime_after=overtime_after,
-        rates=rates,
-        settings=settings,
-    )
-    site_labour = labour["shift_labour_total"] * total_shifts
-    site_allowances = labour["allowances"]["allowances_total"] * total_shifts
-    site_crew = labour["shift_total"] * total_shifts
     vms = vms_cost(
         quantity=vms_qty,
         lead_days=lead_days,
@@ -707,8 +1043,19 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
             "works_end": works_end.isoformat(),
             "day_start_hour": day_start,
             "day_end_hour": day_end,
+            "work_weekdays": payload.get("work_weekdays"),
+            "skip_public_holidays": bool(payload.get("skip_public_holidays", True))
+            if use_schedule or payload.get("work_dates")
+            else False,
+            "skip_sunday_before_monday_ph": bool(
+                payload.get("skip_sunday_before_monday_ph", True)
+            )
+            if use_schedule or payload.get("work_dates")
+            else False,
+            "rdo_dates": sorted(str(x) for x in parse_date_list(payload.get("rdo_dates"))),
             "resources": (labour.get("allocation") or {}).get("requested"),
         },
+        "schedule": day_breakdown,
         "per_shift": labour,
         "booking_requirements": labour.get("booking_requirements") or [],
         "booking_summary": labour.get("booking_summary") or "",

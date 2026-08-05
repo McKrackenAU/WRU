@@ -4,6 +4,12 @@ let settings = null;
 let sites = [];
 let lastStandard = null;
 let lastClosure = null;
+/** User overrides on the generated calendar */
+let scheduleExclude = new Set();
+let scheduleInclude = new Set();
+let scheduleRdo = new Set();
+let scheduleWorkDates = [];
+let scheduleTimer = null;
 
 const money = (n) =>
   `$${Number(n || 0).toLocaleString(undefined, {
@@ -180,6 +186,30 @@ function vmsBlock(vms) {
     </div>`;
 }
 
+function scheduleTable(schedule) {
+  if (!schedule?.length) return "";
+  const rows = schedule
+    .map(
+      (d) => `<tr>
+        <td>${escapeHtml(d.date)}</td>
+        <td>${escapeHtml(d.weekday_label || "")}</td>
+        <td>${escapeHtml(d.rate_tier || "")}</td>
+        <td>${escapeHtml(d.shift_type || "")}</td>
+        <td class="money">${money(d.day_total)}</td>
+      </tr>`
+    )
+    .join("");
+  return `<div style="margin-top:0.85rem">
+    <strong>Worked days</strong>
+    <div class="table-scroll" style="max-height:14rem;margin-top:0.35rem">
+      <table class="data-table">
+        <thead><tr><th>Date</th><th>Day</th><th>Rate tier</th><th>Shift</th><th>Day total</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
 function renderStandard(result) {
   lastStandard = result;
   const p = result.per_shift;
@@ -200,6 +230,7 @@ function renderStandard(result) {
       (${escapeHtml(result.inputs_echo.shift_type)}${result.inputs_echo.shift_start_time ? ` from ${escapeHtml(result.inputs_echo.shift_start_time)}` : ""}, ${result.inputs_echo.shift_hours}h, OT after ${result.inputs_echo.overtime_after_hours}h)
       ${labourTable(p.lines)}
     </div>
+    ${scheduleTable(result.schedule)}
     ${vmsBlock(result.vms)}
   `;
 }
@@ -368,36 +399,163 @@ async function loadEstimates() {
     : `<li><p class="meta">No saved estimates yet for this view.</p></li>`;
 }
 
-function addDaysISO(iso, days) {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+function selectedWeekdays() {
+  return [...document.querySelectorAll("#dowChecks input[data-dow]:checked")].map((el) =>
+    Number(el.dataset.dow)
+  );
 }
 
-function syncWorkSpan() {
+function scheduleRulesPayload() {
+  return {
+    works_start: $("sStart").value || todayISO(),
+    days_of_work: Math.max(1, Number($("sDays").value) || 1),
+    work_weekdays: selectedWeekdays(),
+    skip_public_holidays: Boolean($("sSkipPh")?.checked),
+    skip_sunday_before_monday_ph: Boolean($("sSkipSunBeforePh")?.checked),
+    rdo_dates: [...scheduleRdo],
+    include_dates: [...scheduleInclude],
+    exclude_dates: [...scheduleExclude],
+  };
+}
+
+function renderWorkCalendar(windowRows, workDates) {
+  const workSet = new Set(workDates || []);
+  const el = $("workCalendar");
+  if (!el) return;
+  const interesting = (windowRows || []).filter(
+    (r) =>
+      workSet.has(r.date) ||
+      (r.flags || []).includes("public_holiday") ||
+      (r.flags || []).includes("rdo") ||
+      scheduleInclude.has(r.date) ||
+      scheduleExclude.has(r.date)
+  );
+  if (!interesting.length) {
+    el.innerHTML = `<li class="meta">No days scheduled — check weekday ticks and start date.</li>`;
+    return;
+  }
+  el.innerHTML = interesting
+    .map((r) => {
+      const included = workSet.has(r.date);
+      const badges = [];
+      if ((r.flags || []).includes("public_holiday") || r.holiday_name) {
+        badges.push(
+          `<span class="cal-badge ph" title="${escapeHtml(r.holiday_name || "Public holiday")}">PH</span>`
+        );
+      }
+      if ((r.flags || []).includes("saturday") || r.rate_tier === "saturday") {
+        badges.push(`<span class="cal-badge sat">Sat</span>`);
+      }
+      if ((r.flags || []).includes("sunday") || r.rate_tier === "sunday") {
+        badges.push(`<span class="cal-badge sun">Sun</span>`);
+      }
+      if (scheduleRdo.has(r.date) || (r.flags || []).includes("rdo")) {
+        badges.push(`<span class="cal-badge rdo">RDO</span>`);
+      }
+      const holiday = r.holiday_name
+        ? `<span class="hint">${escapeHtml(r.holiday_name)}</span>`
+        : "";
+      return `<li class="${included ? "included" : "skipped"}">
+        <label class="inline-check" style="border:none;background:transparent;padding:0">
+          <input type="checkbox" data-cal-date="${escapeHtml(r.date)}" ${included ? "checked" : ""} />
+          <span class="cal-date">${escapeHtml(r.weekday_label)} ${escapeHtml(r.date)}</span>
+        </label>
+        ${badges.join("")}
+        ${holiday}
+      </li>`;
+    })
+    .join("");
+}
+
+async function refreshSchedule() {
   const start = $("sStart").value || todayISO();
-  const days = Math.max(1, Number($("sDays").value) || 1);
-  const perDay = Math.max(1, Number($("sPerDay").value) || 1);
   $("sStart").value = start;
+  const days = Math.max(1, Number($("sDays").value) || 1);
   $("sDays").value = String(days);
+  const perDay = Math.max(1, Number($("sPerDay").value) || 1);
   $("sPerDay").value = String(perDay);
-  $("sEnd").value = addDaysISO(start, days - 1);
-  $("sShifts").value = String(days * perDay);
+
+  if (!selectedWeekdays().length) {
+    $("scheduleHint").textContent = "Tick at least one weekday.";
+    $("workCalendar").innerHTML = `<li class="meta">Select days of the week first.</li>`;
+    scheduleWorkDates = [];
+    return;
+  }
+
+  try {
+    const result = await api("/api/costs/schedule-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scheduleRulesPayload()),
+      timeoutMs: 15000,
+    });
+    scheduleWorkDates = result.work_dates || [];
+    if ($("sEnd")) $("sEnd").value = result.works_end || "";
+    if ($("sShifts")) $("sShifts").value = String(scheduleWorkDates.length * perDay);
+    renderWorkCalendar(result.window || result.schedule || [], scheduleWorkDates);
+    const phCount = (result.schedule || []).filter((r) =>
+      (r.flags || []).includes("public_holiday")
+    ).length;
+    $("scheduleHint").textContent = `${scheduleWorkDates.length} work day(s) · ends ${
+      result.works_end || "—"
+    }${phCount ? ` · ${phCount} public holiday(s) worked` : ""}`;
+  } catch (err) {
+    scheduleWorkDates = [];
+    if ($("scheduleHint")) $("scheduleHint").textContent = err.message || String(err);
+    if ($("workCalendar")) {
+      $("workCalendar").innerHTML = `<li class="meta">${escapeHtml(err.message || String(err))}</li>`;
+    }
+  }
+}
+
+function queueScheduleRefresh() {
+  clearTimeout(scheduleTimer);
+  scheduleTimer = setTimeout(() => {
+    refreshSchedule().catch((e) => {
+      if ($("scheduleHint")) $("scheduleHint").textContent = e.message;
+    });
+  }, 180);
+}
+
+function onCalendarToggle(dateIso, checked) {
+  if (checked) {
+    scheduleExclude.delete(dateIso);
+    scheduleRdo.delete(dateIso);
+    scheduleInclude.add(dateIso);
+  } else {
+    scheduleInclude.delete(dateIso);
+    scheduleExclude.add(dateIso);
+  }
+  queueScheduleRefresh();
+}
+
+function addRdoDate() {
+  const iso = $("sRdoDate")?.value;
+  if (!iso) return;
+  scheduleRdo.add(iso);
+  scheduleInclude.delete(iso);
+  scheduleExclude.add(iso);
+  $("sRdoDate").value = "";
+  queueScheduleRefresh();
 }
 
 function standardPayload() {
-  syncWorkSpan();
   const typeSel = $("sType").value;
   const payload = {
     days_of_work: Number($("sDays").value),
     shifts_per_day: Number($("sPerDay").value),
-    total_shifts: Number($("sShifts").value),
     shift_hours: Number($("sHours").value),
     shift_start_time: $("sStartTime").value || "20:00",
     overtime_after_hours: Number($("sOt").value),
     works_start: $("sStart").value,
     works_end: $("sEnd").value || $("sStart").value,
+    work_weekdays: selectedWeekdays(),
+    skip_public_holidays: Boolean($("sSkipPh")?.checked),
+    skip_sunday_before_monday_ph: Boolean($("sSkipSunBeforePh")?.checked),
+    rdo_dates: [...scheduleRdo],
+    include_dates: [...scheduleInclude],
+    exclude_dates: [...scheduleExclude],
+    work_dates: scheduleWorkDates.length ? [...scheduleWorkDates] : undefined,
     vms_quantity: Number($("sVmsQty").value),
     vms_lead_days: Number($("sVmsLead").value),
     resources: resourcesFrom("s"),
@@ -407,6 +565,10 @@ function standardPayload() {
 }
 
 async function calcStandard() {
+  await refreshSchedule();
+  if (!scheduleWorkDates.length) {
+    throw new Error("No work days scheduled — adjust weekdays or holiday options.");
+  }
   const result = await api("/api/costs/calculate/standard", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -506,7 +668,7 @@ async function init() {
   $("sVmsLead").value = settings.vms_lead_days_default;
   $("cVmsLead").value = settings.vms_lead_days_default;
   $("sStart").value = todayISO();
-  syncWorkSpan();
+  await refreshSchedule();
   const clo = defaultClosureTimes();
   $("cStart").value = clo.start;
   $("cEnd").value = clo.end;
@@ -514,8 +676,19 @@ async function init() {
   await loadEstimates();
 
   ["sStart", "sDays", "sPerDay"].forEach((id) => {
-    $(id)?.addEventListener("change", syncWorkSpan);
-    $(id)?.addEventListener("input", syncWorkSpan);
+    $(id)?.addEventListener("change", queueScheduleRefresh);
+    $(id)?.addEventListener("input", queueScheduleRefresh);
+  });
+  document.querySelectorAll("#dowChecks input[data-dow]").forEach((el) => {
+    el.addEventListener("change", queueScheduleRefresh);
+  });
+  $("sSkipPh")?.addEventListener("change", queueScheduleRefresh);
+  $("sSkipSunBeforePh")?.addEventListener("change", queueScheduleRefresh);
+  $("btnAddRdo")?.addEventListener("click", addRdoDate);
+  $("workCalendar")?.addEventListener("change", (ev) => {
+    const box = ev.target.closest("[data-cal-date]");
+    if (!box) return;
+    onCalendarToggle(box.getAttribute("data-cal-date"), box.checked);
   });
 
   document.querySelectorAll(".tabs [data-tab]").forEach((btn) => {

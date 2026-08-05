@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from pathlib import Path
 
 import aiofiles
@@ -10,10 +11,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..cost_engine import calculate_closure_24h, calculate_standard
+from ..cost_engine import (
+    build_work_schedule,
+    calculate_closure_24h,
+    calculate_standard,
+    parse_date_list,
+    preview_schedule_window,
+)
 from ..cost_export import build_cost_pdf, build_cost_workbook
 from ..database import UPLOAD_DIR, get_db
 from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, Site
+from ..public_holidays import holidays_between
 
 router = APIRouter(prefix="/api/costs", tags=["costs"])
 
@@ -59,6 +67,12 @@ class LabourRateIn(BaseModel):
     day_overtime: float = Field(ge=0)
     night_ordinary: float = Field(ge=0)
     night_overtime: float = Field(ge=0)
+    saturday_ordinary: float = Field(default=0, ge=0)
+    saturday_overtime: float = Field(default=0, ge=0)
+    sunday_ordinary: float = Field(default=0, ge=0)
+    sunday_overtime: float = Field(default=0, ge=0)
+    public_holiday_ordinary: float = Field(default=0, ge=0)
+    public_holiday_overtime: float = Field(default=0, ge=0)
     active: bool = True
     position: int | None = None
 
@@ -326,6 +340,12 @@ def create_rate(payload: LabourRateIn, db: Session = Depends(get_db)):
         day_overtime=payload.day_overtime,
         night_ordinary=payload.night_ordinary,
         night_overtime=payload.night_overtime,
+        saturday_ordinary=payload.saturday_ordinary,
+        saturday_overtime=payload.saturday_overtime,
+        sunday_ordinary=payload.sunday_ordinary,
+        sunday_overtime=payload.sunday_overtime,
+        public_holiday_ordinary=payload.public_holiday_ordinary,
+        public_holiday_overtime=payload.public_holiday_overtime,
         active=payload.active,
         position=payload.position if payload.position is not None else max_pos + 1,
     )
@@ -359,6 +379,12 @@ def update_rate(rate_id: int, payload: LabourRateIn, db: Session = Depends(get_d
     row.day_overtime = payload.day_overtime
     row.night_ordinary = payload.night_ordinary
     row.night_overtime = payload.night_overtime
+    row.saturday_ordinary = payload.saturday_ordinary
+    row.saturday_overtime = payload.saturday_overtime
+    row.sunday_ordinary = payload.sunday_ordinary
+    row.sunday_overtime = payload.sunday_overtime
+    row.public_holiday_ordinary = payload.public_holiday_ordinary
+    row.public_holiday_overtime = payload.public_holiday_overtime
     row.active = payload.active
     if payload.position is not None:
         row.position = payload.position
@@ -375,6 +401,68 @@ def delete_rate(rate_id: int, db: Session = Depends(get_db)):
     db.delete(row)
     db.commit()
     return None
+
+
+@router.get("/public-holidays")
+def list_public_holidays(
+    start: str = Query(..., description="ISO date"),
+    end: str = Query(..., description="ISO date"),
+):
+    """Victorian public holidays in an inclusive date range."""
+    try:
+        start_d = date.fromisoformat(start[:10])
+        end_d = date.fromisoformat(end[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="start/end must be YYYY-MM-DD") from exc
+    items = [
+        {"date": d.isoformat(), "name": name}
+        for d, name in sorted(holidays_between(start_d, end_d).items())
+    ]
+    return {"jurisdiction": "VIC", "holidays": items}
+
+
+@router.post("/schedule-preview")
+def schedule_preview(payload: dict):
+    """Build the work-day calendar for the standard calculator UI."""
+    try:
+        works_start = date.fromisoformat(str(payload["works_start"])[:10])
+        days_of_work = int(payload.get("days_of_work") or 1)
+        weekdays = payload.get("work_weekdays")
+        if weekdays is not None:
+            weekdays = [int(x) for x in weekdays]
+        work = build_work_schedule(
+            works_start,
+            days_of_work,
+            work_weekdays=weekdays,
+            skip_public_holidays=bool(payload.get("skip_public_holidays", True)),
+            skip_sunday_before_monday_ph=bool(
+                payload.get("skip_sunday_before_monday_ph", True)
+            ),
+            rdo_dates=parse_date_list(payload.get("rdo_dates")),
+            include_dates=parse_date_list(payload.get("include_dates")),
+            exclude_dates=parse_date_list(payload.get("exclude_dates")),
+        )
+        window = preview_schedule_window(
+            works_start,
+            days_of_work=days_of_work,
+            work_weekdays=weekdays,
+            skip_public_holidays=bool(payload.get("skip_public_holidays", True)),
+            skip_sunday_before_monday_ph=bool(
+                payload.get("skip_sunday_before_monday_ph", True)
+            ),
+            rdo_dates=parse_date_list(payload.get("rdo_dates")),
+            include_dates=parse_date_list(payload.get("include_dates")),
+            exclude_dates=parse_date_list(payload.get("exclude_dates")),
+        )
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "work_dates": [r["date"] for r in work],
+        "works_end": work[-1]["date"] if work else None,
+        "days_of_work": len(work),
+        "schedule": work,
+        "window": window,
+    }
 
 
 @router.post("/calculate/standard")

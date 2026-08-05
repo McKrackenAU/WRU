@@ -339,6 +339,13 @@ class LabourRate(Base):
     day_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     night_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     night_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Weekend / PH — 0 means “use engine fallback” (night / Sunday rates)
+    saturday_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    saturday_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sunday_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sunday_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    public_holiday_ordinary: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    public_holiday_overtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

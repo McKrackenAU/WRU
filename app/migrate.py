@@ -76,6 +76,20 @@ def run_migrations() -> None:
     ensure_column("labour_rates", "rate_kind", "rate_kind VARCHAR(32) NOT NULL DEFAULT 'legacy'")
     ensure_column("labour_rates", "pack_people", "pack_people INTEGER NOT NULL DEFAULT 1")
     ensure_column("labour_rates", "includes_vehicle", "includes_vehicle BOOLEAN NOT NULL DEFAULT FALSE")
+    ensure_column("labour_rates", "saturday_ordinary", "saturday_ordinary DOUBLE PRECISION NOT NULL DEFAULT 0")
+    ensure_column("labour_rates", "saturday_overtime", "saturday_overtime DOUBLE PRECISION NOT NULL DEFAULT 0")
+    ensure_column("labour_rates", "sunday_ordinary", "sunday_ordinary DOUBLE PRECISION NOT NULL DEFAULT 0")
+    ensure_column("labour_rates", "sunday_overtime", "sunday_overtime DOUBLE PRECISION NOT NULL DEFAULT 0")
+    ensure_column(
+        "labour_rates",
+        "public_holiday_ordinary",
+        "public_holiday_ordinary DOUBLE PRECISION NOT NULL DEFAULT 0",
+    )
+    ensure_column(
+        "labour_rates",
+        "public_holiday_overtime",
+        "public_holiday_overtime DOUBLE PRECISION NOT NULL DEFAULT 0",
+    )
 
     # allowance defaults on cost settings
     ensure_column("cost_settings", "travel_allowance", "travel_allowance DOUBLE PRECISION NOT NULL DEFAULT 45")
