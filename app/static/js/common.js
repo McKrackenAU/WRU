@@ -144,6 +144,13 @@ function sideNavHtml(links, path) {
     .join("");
 }
 
+const NAV_COLLAPSE_KEY = "wru-nav-collapsed";
+const NAV_MOBILE_MQ = "(max-width: 960px)";
+
+function isMobileNav() {
+  return window.matchMedia(NAV_MOBILE_MQ).matches;
+}
+
 function ensureShellStructure() {
   if (!document.querySelector(".skip-link")) {
     const skip = document.createElement("a");
@@ -210,6 +217,115 @@ function ensureShellStructure() {
     sidebar.setAttribute("data-app-sidebar", "");
     root.prepend(sidebar);
   }
+
+  if (!document.querySelector("[data-nav-backdrop]")) {
+    const backdrop = document.createElement("button");
+    backdrop.type = "button";
+    backdrop.className = "nav-backdrop";
+    backdrop.setAttribute("data-nav-backdrop", "");
+    backdrop.setAttribute("aria-label", "Close menu");
+    backdrop.hidden = true;
+    document.body.appendChild(backdrop);
+  }
+}
+
+function syncNavChrome() {
+  const mobile = isMobileNav();
+  const open = mobile
+    ? document.body.classList.contains("nav-open")
+    : !document.body.classList.contains("nav-collapsed");
+  const toggle = $("navToggle");
+  const closeBtn = $("navClose");
+  const backdrop = document.querySelector("[data-nav-backdrop]");
+  const sidebar = document.querySelector("[data-app-sidebar]");
+
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  }
+  if (closeBtn) closeBtn.hidden = !mobile;
+  if (backdrop) {
+    const showBackdrop = mobile && document.body.classList.contains("nav-open");
+    backdrop.hidden = !showBackdrop;
+  }
+  if (sidebar) {
+    sidebar.setAttribute("aria-hidden", open ? "false" : "true");
+    if (open) sidebar.removeAttribute("inert");
+    else sidebar.setAttribute("inert", "");
+  }
+  document.body.classList.toggle("nav-drawer-open", mobile && document.body.classList.contains("nav-open"));
+}
+
+function setNavOpen(open) {
+  if (isMobileNav()) {
+    document.body.classList.toggle("nav-open", open);
+    document.body.classList.remove("nav-collapsed");
+  } else {
+    document.body.classList.toggle("nav-collapsed", !open);
+    document.body.classList.remove("nav-open");
+    try {
+      localStorage.setItem(NAV_COLLAPSE_KEY, !open ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+  syncNavChrome();
+  // Let map / layout listeners reflow after the sidebar transition
+  window.setTimeout(() => window.dispatchEvent(new Event("resize")), 220);
+}
+
+function toggleNav() {
+  const open = isMobileNav()
+    ? document.body.classList.contains("nav-open")
+    : !document.body.classList.contains("nav-collapsed");
+  setNavOpen(!open);
+}
+
+function wireNavToggle() {
+  const toggle = $("navToggle");
+  const closeBtn = $("navClose");
+  const backdrop = document.querySelector("[data-nav-backdrop]");
+  const nav = $("sideNav");
+
+  toggle?.addEventListener("click", toggleNav);
+  closeBtn?.addEventListener("click", () => setNavOpen(false));
+  backdrop?.addEventListener("click", () => setNavOpen(false));
+
+  nav?.querySelectorAll("a.side-link").forEach((a) => {
+    a.addEventListener("click", () => {
+      if (isMobileNav()) setNavOpen(false);
+    });
+  });
+
+  if (!document.body.dataset.navEscWired) {
+    document.body.dataset.navEscWired = "1";
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && document.body.classList.contains("nav-open")) {
+        setNavOpen(false);
+        $("navToggle")?.focus();
+      }
+    });
+    window.matchMedia(NAV_MOBILE_MQ).addEventListener("change", () => {
+      document.body.classList.remove("nav-open");
+      if (!isMobileNav()) {
+        const collapsed = localStorage.getItem(NAV_COLLAPSE_KEY) === "1";
+        document.body.classList.toggle("nav-collapsed", collapsed);
+      } else {
+        document.body.classList.remove("nav-collapsed");
+      }
+      syncNavChrome();
+    });
+  }
+
+  // Restore desktop preference; mobile always starts closed
+  if (isMobileNav()) {
+    document.body.classList.remove("nav-collapsed", "nav-open");
+  } else {
+    document.body.classList.remove("nav-open");
+    const collapsed = localStorage.getItem(NAV_COLLAPSE_KEY) === "1";
+    document.body.classList.toggle("nav-collapsed", collapsed);
+  }
+  syncNavChrome();
 }
 
 /**
@@ -235,10 +351,10 @@ export function injectChrome({ active, mode } = {}) {
           <p class="app-name">${isAdmin ? "WRU Admin" : "WRU TGS Tracker"}</p>
           <p class="tagline">${isAdmin ? "Configuration" : "Traffic guidance · MoA"}</p>
         </div>
+        <button type="button" class="icon-btn sidebar-close" id="navClose" aria-label="Close menu" hidden>
+          <span aria-hidden="true">×</span>
+        </button>
       </div>
-      <button type="button" class="btn sidebar-toggle" id="navToggle" aria-expanded="false" aria-controls="sideNav">
-        Menu
-      </button>
       <nav class="side-nav" id="sideNav" aria-label="${isAdmin ? "Admin" : "Primary"}">
         ${sideNavHtml(links, path)}
       </nav>
@@ -257,11 +373,16 @@ export function injectChrome({ active, mode } = {}) {
   if (header) {
     header.classList.toggle("topbar-admin", isAdmin);
     header.innerHTML = `
-      <div class="brand-block top-brand">
-        <img class="ventia-logo" src="/static/brand/ventia-logo.png" alt="Ventia" />
-        <div class="brand-text">
-          <p class="app-name">${isAdmin ? "Admin console" : "Operations"}</p>
-          <p class="tagline">${isAdmin ? "Stages · rules · rates · updates" : "Sites · lists · tracking · map"}</p>
+      <div class="topbar-start">
+        <button type="button" class="icon-btn nav-burger" id="navToggle" aria-expanded="true" aria-controls="sideNav" aria-label="Menu">
+          <span class="nav-burger-icon" aria-hidden="true"></span>
+        </button>
+        <div class="brand-block top-brand">
+          <img class="ventia-logo" src="/static/brand/ventia-logo.png" alt="Ventia" />
+          <div class="brand-text">
+            <p class="app-name">${isAdmin ? "Admin console" : "Operations"}</p>
+            <p class="tagline">${isAdmin ? "Stages · rules · rates · updates" : "Sites · lists · tracking · map"}</p>
+          </div>
         </div>
       </div>
       <div class="toolbar header-tools">
@@ -300,14 +421,7 @@ export function injectChrome({ active, mode } = {}) {
     }
   }
 
-  const nav = $("sideNav");
-  const toggle = $("navToggle");
-  if (toggle && nav) {
-    toggle.addEventListener("click", () => {
-      const open = document.body.classList.toggle("nav-open");
-      toggle.setAttribute("aria-expanded", open ? "true" : "false");
-    });
-  }
+  wireNavToggle();
 
   loadUserName();
   $("userName")?.addEventListener("change", saveUserName);
