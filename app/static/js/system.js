@@ -202,6 +202,41 @@ async function waitForChange(beforeUpdatedAt, successLabel) {
   await refreshLog();
 }
 
+async function checkForUpdate() {
+  const btn = $("btnCheckUpdate");
+  if (btn) btn.disabled = true;
+  $("updStatus").textContent = "Checking GitHub…";
+  setAlert("pending", "<strong>Checking for updates…</strong> Asking GitHub for the latest VERSION.");
+  try {
+    const result = await api("/api/system/check-update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        branch: $("updBranch")?.value.trim() || "main",
+        repo: $("updRepo")?.value.trim(),
+      }),
+      timeoutMs: 20000,
+    });
+    const detail = result.detail || "Check finished.";
+    $("updStatus").textContent = detail;
+    if (result.update_available) {
+      const remote = result.remote_tag || result.remote_version || "a newer build";
+      setAlert(
+        "warn",
+        `<strong>Update available — ${escapeHtml(remote)}.</strong> ${escapeHtml(detail)} ` +
+          `Use <em>Pull &amp; install update</em> when you’re ready.`
+      );
+    } else {
+      setAlert("ok", `<strong>You’re up to date.</strong> ${escapeHtml(detail)}`);
+    }
+  } catch (err) {
+    $("updStatus").textContent = "";
+    setAlert("bad", `<strong>Couldn’t check for updates.</strong> ${escapeHtml(err.message || err)}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function runUpdate() {
   if (
     !confirm(
@@ -211,6 +246,7 @@ async function runUpdate() {
     return;
   }
   $("btnUpdate").disabled = true;
+  if ($("btnCheckUpdate")) $("btnCheckUpdate").disabled = true;
   $("updStatus").textContent = "Starting…";
   setAlert("pending", "<strong>Update underway.</strong> Hang tight — the page will refresh when it’s back.");
   $("updLog").hidden = false;
@@ -240,6 +276,7 @@ async function runUpdate() {
     await loadVersions().catch(() => {});
   } finally {
     $("btnUpdate").disabled = false;
+    if ($("btnCheckUpdate")) $("btnCheckUpdate").disabled = false;
   }
 }
 
@@ -293,6 +330,7 @@ async function init() {
       .then(() => refreshLog())
       .catch((e) => showPageError("sysMeta", e, "Could not load system status"));
   });
+  on("btnCheckUpdate", "click", () => checkForUpdate().catch((e) => alert(e.message)));
   on("btnUpdate", "click", () => runUpdate().catch((e) => alert(e.message)));
   try {
     await loadVersions();

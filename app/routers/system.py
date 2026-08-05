@@ -7,7 +7,10 @@ import os
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -75,6 +78,25 @@ class SystemUpdateOut(BaseModel):
 
 class RollbackRequest(BaseModel):
     version: str = Field(..., min_length=1, max_length=64)
+
+
+class CheckUpdateRequest(BaseModel):
+    branch: str | None = Field(default=None, max_length=128)
+    repo: str | None = Field(default=None, max_length=512)
+
+
+class CheckUpdateOut(BaseModel):
+    ok: bool
+    update_available: bool
+    current_version: str
+    current_tag: str
+    remote_version: str | None = None
+    remote_tag: str | None = None
+    remote_ref: str
+    repo: str
+    current_commit: str | None = None
+    remote_commit: str | None = None
+    detail: str
 
 
 SHELL_CT = (
@@ -255,6 +277,152 @@ def _probe_can_update() -> tuple[bool, str | None]:
     )
 
 
+def _parse_github_slug(repo_url: str) -> tuple[str, str] | None:
+    """Return (owner, repo) from a GitHub URL, or None if not parseable."""
+    raw = (repo_url or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("git@"):
+        # git@github.com:Owner/Repo.git
+        m = re.match(r"git@[^:]+:([^/]+)/([^/]+?)(?:\.git)?$", raw)
+        if m:
+            return m.group(1), m.group(2)
+        return None
+    try:
+        parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower()
+    if host not in {"github.com", "www.github.com"}:
+        return None
+    parts = [p for p in (parsed.path or "").strip("/").split("/") if p]
+    if len(parts) < 2:
+        return None
+    owner, name = parts[0], parts[1]
+    if name.endswith(".git"):
+        name = name[: -len(".git")]
+    return owner, name
+
+
+def _http_get_text(url: str, *, timeout: float = 10.0, accept: str = "*/*") -> str:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "WRU-TGS-Tracker-Updater",
+            "Accept": accept,
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fixed GitHub hosts only
+        return resp.read().decode("utf-8", errors="replace")
+
+
+def _version_parts(value: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for chunk in _normalize_version(value).split("."):
+        if not chunk:
+            continue
+        m = re.match(r"(\d+)", chunk)
+        parts.append(int(m.group(1)) if m else 0)
+    return tuple(parts) or (0,)
+
+
+def _cmp_versions(a: str, b: str) -> int:
+    """-1 if a < b, 0 if equal, 1 if a > b."""
+    ta, tb = _version_parts(a), _version_parts(b)
+    n = max(len(ta), len(tb))
+    ta = ta + (0,) * (n - len(ta))
+    tb = tb + (0,) * (n - len(tb))
+    if ta < tb:
+        return -1
+    if ta > tb:
+        return 1
+    return 0
+
+
+def _fetch_remote_version(owner: str, repo: str, ref: str) -> str:
+    url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/VERSION"
+    text = _http_get_text(url, timeout=10.0)
+    line = text.strip().splitlines()[0].strip() if text.strip() else ""
+    if not line:
+        raise ValueError("Remote VERSION file is empty")
+    return _normalize_version(line)
+
+
+def _fetch_remote_commit(owner: str, repo: str, ref: str) -> str | None:
+    url = f"https://api.github.com/repos/{owner}/{repo}/commits/{ref}"
+    try:
+        raw = _http_get_text(url, timeout=10.0, accept="application/vnd.github+json")
+        data = json.loads(raw)
+        sha = data.get("sha")
+        return str(sha)[:7] if sha else None
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def check_for_update(*, branch: str, repo: str, current: SystemStatusOut) -> CheckUpdateOut:
+    slug = _parse_github_slug(repo)
+    if not slug:
+        raise HTTPException(
+            status_code=400,
+            detail="Repository must be a GitHub URL (e.g. https://github.com/McKrackenAU/WRU.git)",
+        )
+    owner, name = slug
+    ref = (branch or DEFAULT_BRANCH).strip() or DEFAULT_BRANCH
+
+    try:
+        remote_ver = _fetch_remote_version(owner, name, ref)
+    except urllib.error.HTTPError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not read VERSION from GitHub ({ref}): HTTP {exc.code}",
+        ) from exc
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not reach GitHub to check for updates: {exc}",
+        ) from exc
+
+    remote_tag = _normalize_tag(remote_ver)
+    remote_commit = _fetch_remote_commit(owner, name, ref)
+    current_ver = _normalize_version(current.app_version) or current.app_version
+    current_tag = current.version_tag or _normalize_tag(current_ver)
+    cmp = _cmp_versions(current_ver, remote_ver)
+
+    update_available = False
+    if cmp < 0:
+        update_available = True
+        detail = f"Update available: {remote_tag} on {ref} (you’re on {current_tag})."
+    elif cmp > 0:
+        detail = f"You’re ahead of {ref}: local {current_tag}, remote {remote_tag}."
+    else:
+        # Same VERSION — still flag a newer tip commit when known
+        cur_c = (current.commit or "").strip().lower()
+        rem_c = (remote_commit or "").strip().lower()
+        if cur_c and rem_c and not (cur_c.startswith(rem_c) or rem_c.startswith(cur_c)):
+            update_available = True
+            detail = (
+                f"Same version {remote_tag}, but {ref} has a newer commit "
+                f"({remote_commit} vs local {current.commit})."
+            )
+        else:
+            detail = f"You’re up to date — {current_tag} matches {ref}."
+
+    return CheckUpdateOut(
+        ok=True,
+        update_available=update_available,
+        current_version=current_ver,
+        current_tag=current_tag,
+        remote_version=remote_ver,
+        remote_tag=remote_tag,
+        remote_ref=ref,
+        repo=repo,
+        current_commit=current.commit,
+        remote_commit=remote_commit,
+        detail=detail,
+    )
+
+
 def build_status() -> SystemStatusOut:
     meta = _parse_version_file()
     history = _read_history()
@@ -364,6 +532,16 @@ def system_versions():
 def update_log():
     tail = _read_log_tail(80)
     return {"log": tail or "(no /var/log/wru-update.log yet)", "path": str(UPDATE_LOG)}
+
+
+@router.post("/check-update", response_model=CheckUpdateOut)
+def system_check_update(payload: CheckUpdateRequest | None = None):
+    """Compare the installed VERSION with the selected GitHub branch/tag (no install)."""
+    status = build_status()
+    payload = payload or CheckUpdateRequest()
+    ref = (payload.branch or status.branch or DEFAULT_BRANCH).strip() or DEFAULT_BRANCH
+    repo = (payload.repo or status.repo or DEFAULT_REPO).strip() or DEFAULT_REPO
+    return check_for_update(branch=ref, repo=repo, current=status)
 
 
 @router.post("/update", response_model=SystemUpdateOut)
