@@ -67,6 +67,7 @@ def build_spend_workbook(rows: list[dict[str, Any]], *, title: str = "Actual spe
         "Program",
         "Contractor",
         "Category",
+        "Source",
         "Invoice",
         "Amount",
         "Notes",
@@ -84,6 +85,7 @@ def build_spend_workbook(rows: list[dict[str, Any]], *, title: str = "Actual spe
         contractor = row.get("contractor_name") or "—"
         amount = float(row.get("amount") or 0)
         total += amount
+        source = "From rates" if (row.get("source") or "manual") == "calculated" else "Manual"
         values = [
             _kind_label(row.get("kind")),
             _fmt_date(row.get("work_date")),
@@ -92,6 +94,7 @@ def build_spend_workbook(rows: list[dict[str, Any]], *, title: str = "Actual spe
             row.get("program") or "—",
             contractor,
             row.get("category") or "—",
+            source,
             row.get("invoice_ref") or "—",
             amount,
             row.get("notes") or "",
@@ -99,22 +102,19 @@ def build_spend_workbook(rows: list[dict[str, Any]], *, title: str = "Actual spe
         ]
         for col, val in enumerate(values, start=1):
             cell = ws.cell(r, col, val)
-            if col == 9:
+            if col == 10:
                 cell.number_format = '"$"#,##0.00'
                 cell.font = money_font
 
     total_row = start + 1 + len(rows)
-    ws.cell(total_row, 8, "Total").font = Font(bold=True)
-    total_cell = ws.cell(total_row, 9, total)
+    ws.cell(total_row, 9, "Total").font = Font(bold=True)
+    total_cell = ws.cell(total_row, 10, total)
     total_cell.font = Font(bold=True)
     total_cell.number_format = '"$"#,##0.00'
 
-    widths = [16, 12, 28, 12, 20, 22, 14, 16, 12, 32, 14]
-    for i, w in enumerate(widths, start=1):
-        ws.column_dimensions[chr(64 + i) if i <= 26 else "A"].width = w
-    # Fix columns beyond I
     from openpyxl.utils import get_column_letter
 
+    widths = [16, 12, 28, 12, 20, 22, 14, 12, 16, 12, 32, 14]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -170,12 +170,14 @@ def build_spend_pdf(rows: list[dict[str, Any]], *, title: str = "Actual spend") 
         )
     )
 
-    headers = ["Kind", "Date", "Road", "Site", "Contractor", "Category", "Invoice", "Amount", "Notes"]
+    headers = ["Kind", "Date", "Road", "Site", "Contractor", "Source", "Invoice", "Amount", "Notes"]
     data: list[list[Any]] = [[Paragraph(h, styles["Th"]) for h in headers]]
     if not rows:
         data.append([Paragraph("No spend rows match these filters.", styles["Td"])] + [""] * 8)
     else:
         for row in rows:
+            source = (row.get("source") or "manual")
+            source_label = "From rates" if source == "calculated" else "Manual"
             data.append(
                 [
                     Paragraph(_kind_label(row.get("kind")), styles["Td"]),
@@ -183,14 +185,14 @@ def build_spend_pdf(rows: list[dict[str, Any]], *, title: str = "Actual spend") 
                     Paragraph(str(row.get("road_name") or "—")[:36], styles["Td"]),
                     Paragraph(str(row.get("site_number") or "—"), styles["Td"]),
                     Paragraph(str(row.get("contractor_name") or "—")[:28], styles["Td"]),
-                    Paragraph(str(row.get("category") or "—")[:18], styles["Td"]),
+                    Paragraph(source_label, styles["Td"]),
                     Paragraph(str(row.get("invoice_ref") or "—")[:18], styles["Td"]),
                     Paragraph(_money(row.get("amount")), styles["Td"]),
                     Paragraph(str(row.get("notes") or "")[:80], styles["Td"]),
                 ]
             )
 
-    col_w = [28 * mm, 20 * mm, 42 * mm, 18 * mm, 36 * mm, 24 * mm, 24 * mm, 22 * mm, 48 * mm]
+    col_w = [28 * mm, 20 * mm, 42 * mm, 18 * mm, 36 * mm, 22 * mm, 24 * mm, 22 * mm, 50 * mm]
     table = Table(data, colWidths=col_w, repeatRows=1)
     cmds: list[tuple] = [
         ("BACKGROUND", (0, 0), (-1, 0), GREEN),

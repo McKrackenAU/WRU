@@ -533,6 +533,8 @@ class ActualSpend(Base):
     )
     work_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     amount: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # manual | calculated
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     traffic_contractor_id: Mapped[int | None] = mapped_column(
         ForeignKey("traffic_contractors.id", ondelete="SET NULL"), nullable=True, index=True
@@ -542,6 +544,8 @@ class ActualSpend(Base):
     )
     invoice_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

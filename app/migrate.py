@@ -74,6 +74,9 @@ def run_migrations() -> None:
         "traffic_contractor_id",
         "traffic_contractor_id INTEGER REFERENCES traffic_contractors(id) ON DELETE SET NULL",
     )
+    ensure_column("actual_spends", "source", "source VARCHAR(16) NOT NULL DEFAULT 'manual'")
+    ensure_column("actual_spends", "inputs", "inputs JSONB NOT NULL DEFAULT '{}'::jsonb")
+    ensure_column("actual_spends", "results", "results JSONB NOT NULL DEFAULT '{}'::jsonb")
 
     # Seed register_order from current start-date ordering when missing
     with engine.begin() as conn:
