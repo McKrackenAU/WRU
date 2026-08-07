@@ -1964,7 +1964,7 @@ html.dark .leaflet-control-scale-line {
   border-bottom: none;
 }
 
-/* Hide unused program buckets until a drag starts (they remain drop targets). */
+/* Sections emptied mid-drag stay available as drop targets only while dragging. */
 .register-program.is-empty {
   display: none;
 }
@@ -1976,6 +1976,34 @@ html.dark .leaflet-control-scale-line {
 .register-program.drag-over {
   background: color-mix(in srgb, var(--ventia-green) 10%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ventia-green-mid) 55%, transparent);
+}
+
+.register-create-program {
+  display: none;
+  margin: 0.75rem 0 0.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed color-mix(in srgb, var(--ventia-green-mid) 55%, var(--ventia-border));
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--ventia-green) 6%, transparent);
+  text-align: center;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+#registerList.is-dnd-active .register-create-program {
+  display: block;
+}
+
+.register-create-program-inner {
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--ventia-ink);
+}
+
+.register-create-program.drag-over {
+  background: color-mix(in srgb, var(--ventia-green) 14%, transparent);
+  border-color: var(--ventia-green-mid);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ventia-green-mid) 45%, transparent);
 }
 
 .register-row.is-dragging {

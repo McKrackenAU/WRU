@@ -5,6 +5,7 @@ import {
   escapeHtml,
   fmtDate,
   injectChrome,
+  isAdminUser,
   mustBandClass,
   on,
   showPageError,
@@ -249,6 +250,18 @@ function ensureEmptyPlaceholder(tbody) {
   if (hasRows && empty) empty.remove();
 }
 
+function rowsAlreadyPlaced(tbody, rows, beforeRow) {
+  if (!rows.length || rows.some((r) => r.parentElement !== tbody)) return false;
+  const current = [...tbody.querySelectorAll("tr.register-row")];
+  const start = current.indexOf(rows[0]);
+  if (start < 0) return false;
+  for (let i = 0; i < rows.length; i++) {
+    if (current[start + i] !== rows[i]) return false;
+  }
+  const afterBlock = current[start + rows.length] || null;
+  return afterBlock === beforeRow;
+}
+
 function placeDraggedRows(section, beforeRow) {
   const root = $("registerList");
   if (!root || !section) return;
@@ -256,6 +269,8 @@ function placeDraggedRows(section, beforeRow) {
   if (!tbody) return;
   const rows = draggedRowEls(root);
   if (!rows.length) return;
+  if (rows.includes(beforeRow)) return;
+  if (rowsAlreadyPlaced(tbody, rows, beforeRow)) return;
 
   for (const row of rows) {
     const fromBody = row.closest("tbody");
@@ -264,10 +279,38 @@ function placeDraggedRows(section, beforeRow) {
     } else {
       tbody.appendChild(row);
     }
-    if (fromBody && fromBody !== tbody) ensureEmptyPlaceholder(fromBody);
+    if (fromBody && fromBody !== tbody) {
+      const fromSection = fromBody.closest("section.register-program");
+      ensureEmptyPlaceholder(fromBody);
+      if (fromSection) {
+        fromSection.classList.toggle("is-empty", !fromBody.querySelector("tr.register-row"));
+      }
+    }
   }
   ensureEmptyPlaceholder(tbody);
   section.classList.toggle("is-empty", !tbody.querySelector("tr.register-row"));
+}
+
+async function ensureProgramCategory(name) {
+  const target = name.trim();
+  if (!target) return;
+  const known = (state.meta.programs || []).some(
+    (p) => String(p).trim().toLowerCase() === target.toLowerCase()
+  );
+  if (known) return;
+  try {
+    await api("/api/admin/programs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: target, active: true }),
+    });
+  } catch (err) {
+    const msg = errorMessage(err, "");
+    // Non-admins can still assign the program string on sites; category seeds from usage.
+    if (/already exists/i.test(msg)) return;
+    if (!isAdminUser()) return;
+    throw err;
+  }
 }
 
 async function persistRegisterOrder(program, siteIds) {
@@ -286,6 +329,30 @@ async function persistRegisterOrder(program, siteIds) {
   state.dndCommitted = true;
   await loadAll();
   setStatus(`Updated ${target}`);
+}
+
+async function createProgramFromDrop(siteIds) {
+  const ids = [...new Set(siteIds.map(Number).filter((id) => id > 0))];
+  if (!ids.length) return;
+  const entered = window.prompt("New program name");
+  if (entered == null) {
+    await loadAll();
+    return;
+  }
+  const name = entered.trim();
+  if (!name) {
+    await loadAll();
+    return;
+  }
+  setStatus(`Creating ${name}…`);
+  await ensureProgramCategory(name);
+  await persistRegisterOrder(name, ids);
+}
+
+function clearDragMarks(root) {
+  root.querySelectorAll(".is-dragging, .drag-over, .drop-before").forEach((el) => {
+    el.classList.remove("is-dragging", "drag-over", "drop-before");
+  });
 }
 
 function wireProgramDragDrop() {
@@ -313,7 +380,6 @@ function wireProgramDragDrop() {
     state.dndCommitted = false;
     state.suppressRowOpen = true;
     root.classList.add("is-dnd-active");
-    row.classList.add("is-dragging");
     for (const el of draggedRowEls(root)) el.classList.add("is-dragging");
     ev.dataTransfer.effectAllowed = "move";
     ev.dataTransfer.setData("text/plain", ids.join(","));
@@ -329,9 +395,7 @@ function wireProgramDragDrop() {
     const committed = state.dndCommitted;
     state.dragSiteIds = [];
     root.classList.remove("is-dnd-active");
-    root.querySelectorAll(".is-dragging, .drag-over, .drop-before").forEach((el) => {
-      el.classList.remove("is-dragging", "drag-over", "drop-before");
-    });
+    clearDragMarks(root);
     window.setTimeout(() => {
       state.suppressRowOpen = false;
     }, 120);
@@ -341,11 +405,23 @@ function wireProgramDragDrop() {
   });
 
   root.addEventListener("dragover", (ev) => {
+    const createZone = ev.target.closest("[data-create-program]");
+    if (createZone && root.contains(createZone)) {
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "move";
+      root.querySelectorAll(".register-program.drag-over, .register-create-program.drag-over").forEach((el) => {
+        if (el !== createZone) el.classList.remove("drag-over");
+      });
+      createZone.classList.add("drag-over");
+      root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
+      return;
+    }
+
     const section = ev.target.closest("section.register-program[data-program]");
     if (!section || !root.contains(section)) return;
     ev.preventDefault();
     ev.dataTransfer.dropEffect = "move";
-    root.querySelectorAll(".register-program.drag-over").forEach((el) => {
+    root.querySelectorAll(".register-program.drag-over, .register-create-program.drag-over").forEach((el) => {
       if (el !== section) el.classList.remove("drag-over");
     });
     section.classList.add("drag-over");
@@ -356,7 +432,9 @@ function wireProgramDragDrop() {
       const rect = overRow.getBoundingClientRect();
       const before = ev.clientY < rect.top + rect.height / 2;
       const tbody = overRow.parentElement;
-      const rows = [...tbody.querySelectorAll("tr.register-row")];
+      const rows = [...tbody.querySelectorAll("tr.register-row")].filter(
+        (r) => !r.classList.contains("is-dragging")
+      );
       const idx = rows.indexOf(overRow);
       const beforeRow = before ? overRow : rows[idx + 1] || null;
       if (beforeRow) beforeRow.classList.add("drop-before");
@@ -367,13 +445,30 @@ function wireProgramDragDrop() {
   });
 
   root.addEventListener("dragleave", (ev) => {
-    const section = ev.target.closest("section.register-program");
-    if (!section) return;
-    if (section.contains(ev.relatedTarget)) return;
-    section.classList.remove("drag-over");
+    const zone = ev.target.closest("section.register-program, .register-create-program");
+    if (!zone) return;
+    if (zone.contains(ev.relatedTarget)) return;
+    zone.classList.remove("drag-over");
   });
 
   root.addEventListener("drop", (ev) => {
+    const createZone = ev.target.closest("[data-create-program]");
+    if (createZone && root.contains(createZone)) {
+      ev.preventDefault();
+      createZone.classList.remove("drag-over");
+      const ids = state.dragSiteIds.length
+        ? [...state.dragSiteIds]
+        : (ev.dataTransfer.getData("text/plain") || "")
+            .split(",")
+            .map((s) => Number(s.trim()))
+            .filter((n) => n > 0);
+      createProgramFromDrop(ids).catch((err) => {
+        alert(errorMessage(err, "Could not create program"));
+        loadAll().catch(() => {});
+      });
+      return;
+    }
+
     const section = ev.target.closest("section.register-program[data-program]");
     if (!section || !root.contains(section)) return;
     ev.preventDefault();
@@ -394,12 +489,12 @@ function wireProgramDragDrop() {
 function renderRegister() {
   const root = $("registerList");
   if (!root) return;
-  if (!state.sites.length && !(state.meta.programs || []).length) {
+  if (!state.sites.length) {
     root.innerHTML = `<div class="register-empty">No active sites match these filters.</div>`;
     return;
   }
 
-  // Group by program. Empty seeded programs stay in the DOM as drop targets but stay hidden until drag.
+  // Only show programs that currently have sites. Empty seeded categories stay out of the way.
   const groups = new Map();
   for (const site of state.sites) {
     const key = programKey(site.program);
@@ -408,8 +503,7 @@ function renderRegister() {
   }
   const order = [];
   for (const p of state.meta.programs || []) {
-    if (!order.includes(p)) order.push(p);
-    if (!groups.has(p)) groups.set(p, []);
+    if (groups.has(p) && !order.includes(p)) order.push(p);
   }
   for (const k of groups.keys()) {
     if (!order.includes(k)) order.push(k);
@@ -430,18 +524,15 @@ function renderRegister() {
       </tr>
     </thead>`;
 
-  root.innerHTML = order
+  const sections = order
     .map((program) => {
       const rows = groups.get(program) || [];
-      const emptyClass = rows.length ? "" : " is-empty";
       const ganttLink =
         program === GANTT_DEFAULT_PROGRAM || program.toLowerCase().includes("lifecycle")
           ? `<a class="btn btn-sm" href="/gantt?program=${encodeURIComponent(program)}">Gantt</a>`
           : `<a class="btn btn-sm btn-quiet" href="/gantt?program=${encodeURIComponent(program)}">Enable Gantt</a>`;
-      const body = rows.length
-        ? rows.map(siteRowHtml).join("")
-        : `<tr class="register-empty-row"><td colspan="9"><span class="hint">Drop sites here</span></td></tr>`;
-      return `<section class="register-program${emptyClass}" data-program="${escapeHtml(program)}">
+      const body = rows.map(siteRowHtml).join("");
+      return `<section class="register-program" data-program="${escapeHtml(program)}">
         <div class="register-program-head">
           <h2 class="register-program-title">${escapeHtml(program)} <span class="hint">${rows.length}</span></h2>
           <div class="register-program-actions">${ganttLink}</div>
@@ -455,6 +546,12 @@ function renderRegister() {
       </section>`;
     })
     .join("");
+
+  root.innerHTML =
+    sections +
+    `<section class="register-create-program" data-create-program="1" aria-label="Create new program">
+      <div class="register-create-program-inner">Create new</div>
+    </section>`;
   syncBulkBar();
   wireProgramDragDrop();
 }
