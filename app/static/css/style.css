@@ -1957,10 +1957,44 @@ html.dark .leaflet-control-scale-line {
 
 .register-program {
   border-bottom: 1px solid var(--ventia-border);
+  transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
 .register-program:last-child {
   border-bottom: none;
+}
+
+.register-program.drag-over {
+  background: color-mix(in srgb, var(--ventia-green) 10%, transparent);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ventia-green-mid) 55%, transparent);
+}
+
+.register-row.is-dragging {
+  opacity: 0.45;
+}
+
+.register-row.is-dragging td {
+  background: color-mix(in srgb, var(--ventia-green) 12%, transparent);
+}
+
+.drag-grip {
+  display: inline-block;
+  margin-right: 0.4rem;
+  color: var(--ventia-muted);
+  letter-spacing: -0.08em;
+  font-size: 0.8rem;
+  cursor: grab;
+  user-select: none;
+}
+
+.register-empty-row td {
+  text-align: center;
+  padding: 1.1rem 0.85rem;
+  border-bottom: none;
+}
+
+.register-empty-row .hint {
+  color: var(--ventia-muted);
 }
 
 .register-program-title {
@@ -2019,7 +2053,7 @@ html.dark .leaflet-control-scale-line {
 }
 
 .register-row {
-  cursor: pointer;
+  cursor: grab;
   transition: background 0.12s ease;
 }
 

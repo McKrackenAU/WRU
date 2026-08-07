@@ -24,6 +24,8 @@ const state = {
   highlightHandled: false,
   activeTab: "overview",
   selectedIds: new Set(),
+  dragSiteIds: [],
+  suppressRowOpen: false,
 };
 
 const GANTT_DEFAULT_PROGRAM = "Lifecycle pavements";
@@ -190,12 +192,12 @@ function siteRowHtml(site) {
   const councils = (site.councils || []).slice(0, 2).join(", ");
   const more = (site.councils || []).length > 2 ? ` +${site.councils.length - 2}` : "";
   const checked = state.selectedIds.has(site.id) ? "checked" : "";
-  return `<tr class="register-row ${highlight}" data-site-id="${site.id}" data-action="open" data-id="${site.id}">
+  return `<tr class="register-row ${highlight}" draggable="true" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}">
     <td class="select-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
     <td>
-      <div class="site-title">${escapeHtml(site.road_name)}</div>
+      <div class="site-title"><span class="drag-grip" title="Drag to another program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}</div>
       <div class="site-meta">
         <span class="mono">${escapeHtml(site.site_number)}</span>
         ${councils ? ` · ${escapeHtml(councils)}${escapeHtml(more)}` : ""}
@@ -222,15 +224,140 @@ function siteRowHtml(site) {
   </tr>`;
 }
 
+async function moveSitesToProgram(siteIds, program) {
+  const target = (program || "").trim();
+  if (!target || target === "Unassigned") {
+    // Allow explicit Unassigned only when dropping on that bucket
+  }
+  const ids = [...new Set(siteIds.map(Number).filter((id) => id > 0))];
+  if (!ids.length) return;
+
+  const toMove = ids.filter((id) => {
+    const site = state.sites.find((s) => s.id === id);
+    const current = (site?.program || "").trim() || "Unassigned";
+    return site && current !== target;
+  });
+  if (!toMove.length) return;
+
+  setStatus(
+    toMove.length === 1
+      ? `Moving site to ${target}…`
+      : `Moving ${toMove.length} sites to ${target}…`
+  );
+  await Promise.all(
+    toMove.map((id) =>
+      api(`/api/sites/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ program: target === "Unassigned" ? null : target }),
+      })
+    )
+  );
+  await loadAll();
+  setStatus(
+    toMove.length === 1
+      ? `Moved to ${target}`
+      : `Moved ${toMove.length} sites to ${target}`
+  );
+}
+
+function wireProgramDragDrop() {
+  const root = $("registerList");
+  if (!root || root.dataset.programDndWired) return;
+  root.dataset.programDndWired = "1";
+
+  root.addEventListener("dragstart", (ev) => {
+    const row = ev.target.closest("tr.register-row");
+    if (!row || !root.contains(row)) return;
+    if (ev.target.closest("input, select, button, a, .actions-col, .status-col, .select-col")) {
+      ev.preventDefault();
+      return;
+    }
+    const id = Number(row.dataset.siteId);
+    if (!id) {
+      ev.preventDefault();
+      return;
+    }
+    const ids =
+      state.selectedIds.has(id) && state.selectedIds.size > 1
+        ? [...state.selectedIds]
+        : [id];
+    state.dragSiteIds = ids;
+    state.suppressRowOpen = true;
+    row.classList.add("is-dragging");
+    ev.dataTransfer.effectAllowed = "move";
+    ev.dataTransfer.setData("text/plain", ids.join(","));
+    try {
+      ev.dataTransfer.setData("application/x-wru-site-ids", JSON.stringify(ids));
+    } catch {
+      /* some browsers are picky about custom types */
+    }
+  });
+
+  root.addEventListener("dragend", () => {
+    state.dragSiteIds = [];
+    root.querySelectorAll(".is-dragging, .drag-over").forEach((el) => {
+      el.classList.remove("is-dragging", "drag-over");
+    });
+    window.setTimeout(() => {
+      state.suppressRowOpen = false;
+    }, 120);
+  });
+
+  root.addEventListener("dragover", (ev) => {
+    const section = ev.target.closest("section.register-program[data-program]");
+    if (!section || !root.contains(section)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "move";
+    root.querySelectorAll(".register-program.drag-over").forEach((el) => {
+      if (el !== section) el.classList.remove("drag-over");
+    });
+    section.classList.add("drag-over");
+  });
+
+  root.addEventListener("dragleave", (ev) => {
+    const section = ev.target.closest("section.register-program");
+    if (!section) return;
+    if (section.contains(ev.relatedTarget)) return;
+    section.classList.remove("drag-over");
+  });
+
+  root.addEventListener("drop", (ev) => {
+    const section = ev.target.closest("section.register-program[data-program]");
+    if (!section || !root.contains(section)) return;
+    ev.preventDefault();
+    section.classList.remove("drag-over");
+    let ids = state.dragSiteIds;
+    if (!ids?.length) {
+      try {
+        ids = JSON.parse(ev.dataTransfer.getData("application/x-wru-site-ids") || "[]");
+      } catch {
+        ids = [];
+      }
+    }
+    if (!ids?.length) {
+      ids = (ev.dataTransfer.getData("text/plain") || "")
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => n > 0);
+    }
+    const program = section.getAttribute("data-program") || "";
+    moveSitesToProgram(ids, program).catch((err) => {
+      alert(errorMessage(err, "Could not move site(s)"));
+      loadAll().catch(() => {});
+    });
+  });
+}
+
 function renderRegister() {
   const root = $("registerList");
   if (!root) return;
-  if (!state.sites.length) {
+  if (!state.sites.length && !(state.meta.programs || []).length) {
     root.innerHTML = `<div class="register-empty">No active sites match these filters.</div>`;
     return;
   }
 
-  // Spreadsheet-style: group by program section
+  // Spreadsheet-style: group by program section (keep empty programs as drop targets)
   const groups = new Map();
   for (const site of state.sites) {
     const key = (site.program || "").trim() || "Unassigned";
@@ -239,10 +366,14 @@ function renderRegister() {
   }
   const order = [];
   for (const p of state.meta.programs || []) {
-    if (groups.has(p)) order.push(p);
+    if (!order.includes(p)) order.push(p);
+    if (!groups.has(p)) groups.set(p, []);
   }
   for (const k of groups.keys()) {
     if (!order.includes(k)) order.push(k);
+  }
+  if (!state.sites.length) {
+    // Still show program buckets so filtered-empty isn't a dead page when programs exist
   }
 
   const head = `
@@ -267,7 +398,10 @@ function renderRegister() {
         program === GANTT_DEFAULT_PROGRAM || program.toLowerCase().includes("lifecycle")
           ? `<a class="btn btn-sm" href="/gantt?program=${encodeURIComponent(program)}">Gantt</a>`
           : `<a class="btn btn-sm btn-quiet" href="/gantt?program=${encodeURIComponent(program)}">Enable Gantt</a>`;
-      return `<section class="register-program">
+      const body = rows.length
+        ? rows.map(siteRowHtml).join("")
+        : `<tr class="register-empty-row"><td colspan="9"><span class="hint">Drop sites here</span></td></tr>`;
+      return `<section class="register-program" data-program="${escapeHtml(program)}">
         <div class="register-program-head">
           <h2 class="register-program-title">${escapeHtml(program)} <span class="hint">${rows.length}</span></h2>
           <div class="register-program-actions">${ganttLink}</div>
@@ -275,13 +409,14 @@ function renderRegister() {
         <div class="register-table-wrap">
           <table class="register-table">
             ${head}
-            <tbody>${rows.map(siteRowHtml).join("")}</tbody>
+            <tbody>${body}</tbody>
           </table>
         </div>
       </section>`;
     })
     .join("");
   syncBulkBar();
+  wireProgramDragDrop();
 }
 
 async function loadAll() {
@@ -883,7 +1018,9 @@ function bindEvents() {
   on("siteForm", "change", scheduleAutosave);
 
   on("registerList", "click", (ev) => {
-    if (ev.target.closest("[data-status-select], .status-col, .select-col, .actions-col, a.btn")) return;
+    if (state.suppressRowOpen) return;
+    if (ev.target.closest("[data-status-select], .status-col, .select-col, .actions-col, a.btn, .drag-grip"))
+      return;
     const btn = ev.target.closest("[data-action='open']");
     if (!btn) return;
     const id = Number(btn.dataset.id);
