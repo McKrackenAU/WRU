@@ -24,6 +24,7 @@ from ..models import (
 )
 from ..routers.costs import get_or_create_settings
 from ..spend_export import build_spend_pdf, build_spend_workbook
+from ..spend_from_estimates import sync_spend_from_estimates
 
 router = APIRouter(prefix="/api", tags=["spend"])
 
@@ -50,7 +51,7 @@ class SpendIn(BaseModel):
     site_id: int
     work_date: date | None = None
     amount: float | None = Field(default=None, ge=0)
-    source: str = Field(default="manual", pattern="^(manual|calculated)$")
+    source: str = Field(default="manual", pattern="^(manual|calculated|from_estimate)$")
     category: str | None = Field(default=None, max_length=64)
     traffic_contractor_id: int | None = None
     asphalt_subcontractor_id: int | None = None
@@ -65,7 +66,7 @@ class SpendPatch(BaseModel):
     site_id: int | None = None
     work_date: date | None = None
     amount: float | None = Field(default=None, ge=0)
-    source: str | None = Field(default=None, pattern="^(manual|calculated)$")
+    source: str | None = Field(default=None, pattern="^(manual|calculated|from_estimate)$")
     category: str | None = None
     traffic_contractor_id: int | None = None
     asphalt_subcontractor_id: int | None = None
@@ -326,8 +327,12 @@ def list_spend(
     asphalt_subcontractor_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    sync_estimates: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):
+    if sync_estimates:
+        # Keep site-level actuals aligned with latest saved estimates
+        sync_spend_from_estimates(db, site_id=site_id)
     rows = _spend_query(
         db,
         kind=kind,
@@ -338,6 +343,16 @@ def list_spend(
         date_to=date_to,
     ).all()
     return [_spend_public(r) for r in rows]
+
+
+@router.post("/spend/sync-from-estimates")
+def sync_from_estimates(
+    site_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    if site_id is not None and not db.get(Site, site_id):
+        raise HTTPException(status_code=404, detail="Site not found")
+    return sync_spend_from_estimates(db, site_id=site_id)
 
 
 def _load_spend(db: Session, spend_id: int) -> ActualSpend:

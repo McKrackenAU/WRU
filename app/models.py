@@ -533,7 +533,7 @@ class ActualSpend(Base):
     )
     work_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     amount: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    # manual | calculated
+    # manual | calculated | from_estimate
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     traffic_contractor_id: Mapped[int | None] = mapped_column(

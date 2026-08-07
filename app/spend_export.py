@@ -85,7 +85,13 @@ def build_spend_workbook(rows: list[dict[str, Any]], *, title: str = "Actual spe
         contractor = row.get("contractor_name") or "—"
         amount = float(row.get("amount") or 0)
         total += amount
-        source = "From rates" if (row.get("source") or "manual") == "calculated" else "Manual"
+        src = row.get("source") or "manual"
+        if src == "calculated":
+            source = "From rates"
+        elif src == "from_estimate":
+            source = "From estimate"
+        else:
+            source = "Manual"
         values = [
             _kind_label(row.get("kind")),
             _fmt_date(row.get("work_date")),
@@ -176,8 +182,13 @@ def build_spend_pdf(rows: list[dict[str, Any]], *, title: str = "Actual spend") 
         data.append([Paragraph("No spend rows match these filters.", styles["Td"])] + [""] * 8)
     else:
         for row in rows:
-            source = (row.get("source") or "manual")
-            source_label = "From rates" if source == "calculated" else "Manual"
+            source = row.get("source") or "manual"
+            if source == "calculated":
+                source_label = "From rates"
+            elif source == "from_estimate":
+                source_label = "From estimate"
+            else:
+                source_label = "Manual"
             data.append(
                 [
                     Paragraph(_kind_label(row.get("kind")), styles["Td"]),

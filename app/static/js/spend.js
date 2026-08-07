@@ -30,7 +30,9 @@ function kindLabel(kind) {
 }
 
 function sourceLabel(source) {
-  return source === "calculated" ? "From rates" : "Manual";
+  if (source === "calculated") return "From rates";
+  if (source === "from_estimate") return "From estimate";
+  return "Manual";
 }
 
 function filterParams() {
@@ -263,6 +265,10 @@ async function init() {
   state.asphalt = Array.isArray(asphalt) ? asphalt : [];
   state.rates = Array.isArray(rates) ? rates : [];
   fillSelects();
+  const params = new URLSearchParams(location.search);
+  const siteFromUrl = params.get("site_id");
+  if (siteFromUrl && $("filterSite")) $("filterSite").value = siteFromUrl;
+  if (siteFromUrl && $("spendSite")) $("spendSite").value = siteFromUrl;
   syncModeFields();
   await loadRows();
 
@@ -290,6 +296,19 @@ async function init() {
     state.asphaltLines[idx].rate_id = sel.value ? Number(sel.value) : null;
   });
   on("btnPreview", "click", () => previewSpend().catch((e) => alertDialog(e.message)));
+  on("btnSyncEstimates", "click", async () => {
+    try {
+      const site = $("filterSite")?.value || "";
+      const q = site ? `?site_id=${encodeURIComponent(site)}` : "";
+      const res = await api(`/api/spend/sync-from-estimates${q}`, { method: "POST" });
+      await loadRows();
+      alertDialog(
+        `Estimates synced — ${res.created || 0} created, ${res.updated || 0} updated, ${res.skipped || 0} skipped.`
+      );
+    } catch (e) {
+      alertDialog(e.message);
+    }
+  });
   on("btnApplyFilters", "click", () =>
     loadRows().catch((e) => {
       alertDialog(e.message);

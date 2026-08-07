@@ -545,6 +545,8 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db)):
 
 @router.post("/estimates", status_code=201)
 def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
+    from ..spend_from_estimates import upsert_spend_from_estimate
+
     site = db.get(Site, payload.site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -561,6 +563,16 @@ def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
         created_by=payload.created_by,
     )
     db.add(row)
+    db.flush()
+    upsert_spend_from_estimate(
+        db,
+        kind="traffic",
+        site_id=site.id,
+        amount=summary,
+        estimate_id=row.id,
+        estimate_name=row.name,
+        created_by=payload.created_by,
+    )
     db.commit()
     db.refresh(row)
     return _estimate_out(row, include_results=True)

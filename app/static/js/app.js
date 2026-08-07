@@ -1014,19 +1014,52 @@ function moneyFmt(n) {
 
 async function refreshCosts() {
   if (!state.detailSiteId) return;
-  const rows = await api(`/api/costs/estimates?site_id=${state.detailSiteId}`);
-  $("costList").innerHTML = rows.length
-    ? rows
-        .map(
-          (r) => `<li>
-          <div class="top">
-            <span>${escapeHtml(r.mode === "closure_24h" ? "24h closure" : "Standard")} · ${new Date(r.created_at).toLocaleString()}</span>
-            <a class="btn btn-sm" href="/costs?site_id=${state.detailSiteId}">Open</a>
-          </div>
-          <p><strong>${escapeHtml(r.name)}</strong> — <span class="money">${moneyFmt(r.summary_total)}</span></p>
-        </li>`
-        )
-        .join("")
+  const sid = state.detailSiteId;
+  const spendLink = $("btnOpenSpend");
+  if (spendLink) spendLink.href = `/spend?site_id=${sid}`;
+  const costLink = $("btnOpenCosts");
+  if (costLink) costLink.href = `/costs?site_id=${sid}`;
+
+  const [trafficEst, asphaltEst, spend] = await Promise.all([
+    api(`/api/costs/estimates?site_id=${sid}`),
+    api(`/api/asphalt/estimates?site_id=${sid}`),
+    api(`/api/spend?site_id=${sid}`),
+  ]);
+  const trafficTotal = (spend || [])
+    .filter((r) => r.kind === "traffic")
+    .reduce((s, r) => s + Number(r.amount || 0), 0);
+  const asphaltTotal = (spend || [])
+    .filter((r) => r.kind === "asphalt")
+    .reduce((s, r) => s + Number(r.amount || 0), 0);
+  const summary = $("spendSummary");
+  if (summary) {
+    summary.innerHTML =
+      spend?.length
+        ? `Actual spend — traffic <strong class="money">${moneyFmt(trafficTotal)}</strong> · pavements <strong class="money">${moneyFmt(asphaltTotal)}</strong> <span class="meta">(auto-filled from estimates; edit on Actual spend)</span>`
+        : `Actual spend — none yet. Saving a cost estimate will populate it.`;
+  }
+
+  const trafficItems = (trafficEst || []).map(
+    (r) => `<li>
+      <div class="top">
+        <span>Traffic · ${escapeHtml(r.mode === "closure_24h" ? "24h closure" : "Standard")} · ${new Date(r.created_at).toLocaleString()}</span>
+        <a class="btn btn-sm" href="/costs?site_id=${sid}">Open</a>
+      </div>
+      <p><strong>${escapeHtml(r.name)}</strong> — <span class="money">${moneyFmt(r.summary_total)}</span></p>
+    </li>`
+  );
+  const asphaltItems = (asphaltEst || []).map(
+    (r) => `<li>
+      <div class="top">
+        <span>Pavements · ${new Date(r.created_at).toLocaleString()}</span>
+        <a class="btn btn-sm" href="/asphalt?site_id=${sid}">Open</a>
+      </div>
+      <p><strong>${escapeHtml(r.name)}</strong> — <span class="money">${moneyFmt(r.summary_total)}</span></p>
+    </li>`
+  );
+  const items = [...trafficItems, ...asphaltItems];
+  $("costList").innerHTML = items.length
+    ? items.join("")
     : `<li><p class="meta">No cost estimates yet.</p></li>`;
 }
 
