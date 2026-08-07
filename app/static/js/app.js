@@ -372,9 +372,6 @@ function renderRegister() {
   for (const k of groups.keys()) {
     if (!order.includes(k)) order.push(k);
   }
-  if (!state.sites.length) {
-    // Still show program buckets so filtered-empty isn't a dead page when programs exist
-  }
 
   const head = `
     <thead>
