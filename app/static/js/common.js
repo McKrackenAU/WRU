@@ -38,6 +38,43 @@ export function isAdminUser() {
   }
 }
 
+/** Turn FastAPI / fetch failure payloads into a readable message (never blank). */
+export function formatApiDetail(detail, fallback = "Request failed") {
+  if (detail == null || detail === "") return fallback;
+  if (typeof detail === "string") return detail.trim() || fallback;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (item == null) return "";
+      if (typeof item === "string") return item;
+      const loc = Array.isArray(item.loc)
+        ? item.loc.filter((p) => p !== "body" && p !== "query").join(".")
+        : "";
+      const msg = item.msg || item.message || "";
+      if (loc && msg) return `${loc}: ${msg}`;
+      return msg || loc || "";
+    }).filter(Boolean);
+    return parts.join("; ") || fallback;
+  }
+  if (typeof detail === "object") {
+    if (detail.msg || detail.message) return String(detail.msg || detail.message);
+    try {
+      const raw = JSON.stringify(detail);
+      return raw && raw !== "{}" ? raw : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return String(detail) || fallback;
+}
+
+export function errorMessage(err, fallback = "Something went wrong") {
+  if (err == null) return fallback;
+  if (typeof err === "string") return err.trim() || fallback;
+  const msg = err.message || err.detail || "";
+  if (typeof msg === "string" && msg.trim()) return msg.trim();
+  return formatApiDetail(msg, fallback);
+}
+
 export async function api(path, options = {}) {
   const ctrl = new AbortController();
   const timeoutMs = options.timeoutMs ?? 45000;
@@ -55,14 +92,14 @@ export async function api(path, options = {}) {
       throw new Error("Not authenticated");
     }
     if (!res.ok) {
-      let detail = res.statusText;
+      let detail = res.statusText || `HTTP ${res.status}`;
       try {
         const body = await res.json();
-        detail = body.detail || JSON.stringify(body);
+        detail = formatApiDetail(body?.detail ?? body, detail);
       } catch (_) {
-        /* ignore */
+        /* ignore non-JSON error bodies */
       }
-      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      throw new Error(detail || `Request failed (${res.status})`);
     }
     if (res.status === 204) return null;
     const ct = res.headers.get("content-type") || "";

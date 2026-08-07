@@ -1,6 +1,7 @@
 import {
   $,
   api,
+  errorMessage,
   escapeHtml,
   fmtDate,
   injectChrome,
@@ -110,7 +111,7 @@ async function quickSetStatus(siteId, stageKey, selectEl) {
     setStatus(`Updated status → ${stageLabel(state.meta, stageKey)}`);
   } catch (err) {
     if (selectEl) selectEl.value = prev;
-    alert(err.message || String(err));
+    alert(errorMessage(err, "Could not update status"));
   } finally {
     if (selectEl) {
       selectEl.disabled = false;
@@ -613,7 +614,7 @@ async function saveSite(ev) {
     $("autosaveStatus").hidden = false;
     $("autosaveStatus").textContent = `Saved ${new Date().toLocaleTimeString()}`;
   } catch (err) {
-    alert(err.message);
+    alert(errorMessage(err, "Could not save site"));
   }
 }
 
@@ -644,7 +645,7 @@ function scheduleAutosave() {
       }`;
     } catch (err) {
       $("autosaveStatus").hidden = false;
-      $("autosaveStatus").textContent = `Autosave failed: ${err.message}`;
+      $("autosaveStatus").textContent = `Autosave failed: ${errorMessage(err, "unknown error")}`;
     }
   }, 700);
 }
@@ -843,7 +844,9 @@ function bindEvents() {
   on("btnArchiveSite", "click", () => archiveSite().catch((e) => alert(e.message)));
   on("btnAddTrack", "click", () => addTracking().catch((e) => alert(e.message)));
   on("btnUploadDoc", "click", () => uploadDoc().catch((e) => alert(e.message)));
-  on("siteForm", "submit", (ev) => saveSite(ev).catch((e) => alert(e.message)));
+  on("siteForm", "submit", (ev) =>
+    saveSite(ev).catch((e) => alert(errorMessage(e, "Could not save site")))
+  );
   on("colType", "change", () => {
     if ($("colOptionsWrap")) $("colOptionsWrap").hidden = $("colType").value !== "select";
   });

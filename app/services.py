@@ -112,7 +112,12 @@ def ordered_workflow(site: Site, db: Session | None = None) -> list[WorkflowStep
 
 
 def set_councils(site: Site, councils: list[Any] | None) -> None:
-    """Accept list[str] or list[{council_name, submitted_to_council_date, no_objection_date}]."""
+    """Accept list[str] or list[{council_name, submitted_to_council_date, no_objection_date}].
+
+    Updates the collection in place. Avoid clear()+re-add of the same council names —
+    that can trip the unique (site_id, council_name) constraint mid-flush and break
+    autosave with an opaque 500.
+    """
     if councils is None:
         return
     cleaned: list[dict[str, Any]] = []
@@ -147,15 +152,29 @@ def set_councils(site: Site, councils: list[Any] | None) -> None:
         seen.add(key)
         cleaned.append(item)
 
-    site.councils.clear()
+    existing = {c.council_name.lower(): c for c in list(site.councils or [])}
+    keep: set[str] = set()
     for item in cleaned:
-        site.councils.append(
-            SiteCouncil(
-                council_name=item["council_name"],
-                submitted_to_council_date=item["submitted_to_council_date"],
-                no_objection_date=item["no_objection_date"],
+        key = item["council_name"].lower()
+        keep.add(key)
+        row = existing.get(key)
+        if row is not None:
+            row.submitted_to_council_date = item["submitted_to_council_date"]
+            row.no_objection_date = item["no_objection_date"]
+            # Preserve canonical casing from the form when it changes
+            if row.council_name != item["council_name"]:
+                row.council_name = item["council_name"]
+        else:
+            site.councils.append(
+                SiteCouncil(
+                    council_name=item["council_name"],
+                    submitted_to_council_date=item["submitted_to_council_date"],
+                    no_objection_date=item["no_objection_date"],
+                )
             )
-        )
+    for key, row in existing.items():
+        if key not in keep:
+            site.councils.remove(row)
 
 
 def infer_financial_year(site: Site) -> str:

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
@@ -276,7 +277,14 @@ def update_site(site_id: int, payload: SiteUpdate, db: Session = Depends(get_db)
     sync_computed_fields(site, db)
     if geometry is not None:
         _attach_geometry(db, site, geometry, geometry_name)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Could not save site (database conflict — check council names are unique).",
+        ) from exc
     db.refresh(site)
     return site_to_dict(site, db=db)
 
