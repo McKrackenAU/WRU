@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog } from "./common.js";
 
 async function loadSettings() {
   const s = await api("/api/costs/settings");
@@ -142,7 +142,7 @@ async function init() {
   await loadTrafficContractors();
 
   $("btnSaveSettings").addEventListener("click", () =>
-    saveSettings().catch((e) => alert(e.message))
+    saveSettings().catch((e) => { alertDialog(e.message); })
   );
   $("rKind").addEventListener("change", syncNewKind);
 
@@ -161,7 +161,7 @@ async function init() {
       $("tNotes").value = "";
       await loadTrafficContractors();
     } catch (e) {
-      alert(e.message);
+      alertDialog(e.message);
     }
   });
 
@@ -183,12 +183,12 @@ async function init() {
         await loadTrafficContractors();
       }
       if (del) {
-        if (!confirm("Deactivate this traffic contractor?")) return;
+        if (!await confirmDialog("Deactivate this traffic contractor?")) return;
         await api(`/api/traffic-contractors/${del.dataset.delTraffic}`, { method: "DELETE" });
         await loadTrafficContractors();
       }
     } catch (e) {
-      alert(e.message);
+      alertDialog(e.message);
     }
   });
 
@@ -213,7 +213,7 @@ async function init() {
       $("rName").value = "";
       await loadRates();
     } catch (e) {
-      alert(e.message);
+      alertDialog(e.message);
     }
   });
 
@@ -230,14 +230,14 @@ async function init() {
         });
       }
       if (del) {
-        if (!confirm("Delete this rate?")) return;
+        if (!await confirmDialog("Delete this rate?")) return;
         await api(`/api/costs/rates/${del.dataset.del}`, { method: "DELETE" });
         await loadRates();
       }
     } catch (e) {
-      alert(e.message);
+      alertDialog(e.message);
     }
   });
 }
 
-init().catch((e) => alert(e.message));
+init().catch((e) => { alertDialog(e.message); });

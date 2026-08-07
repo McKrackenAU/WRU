@@ -1,13 +1,16 @@
 import {
   $,
   api,
-  errorMessage,
+  on,
   escapeHtml,
   fmtDate,
   injectChrome,
+  errorMessage,
+  alertDialog,
+  confirmDialog,
+  promptDialog,
   isAdminUser,
   mustBandClass,
-  on,
   showPageError,
   stageLabel,
   userName,
@@ -115,7 +118,7 @@ async function quickSetStatus(siteId, stageKey, selectEl) {
     setStatus(`Updated status → ${stageLabel(state.meta, stageKey)}`);
   } catch (err) {
     if (selectEl) selectEl.value = prev;
-    alert(errorMessage(err, "Could not update status"));
+    alertDialog(errorMessage(err, "Could not update status"));
   } finally {
     if (selectEl) {
       selectEl.disabled = false;
@@ -333,7 +336,7 @@ async function persistRegisterOrder(program, siteIds) {
 async function createProgramFromDrop(siteIds) {
   const ids = [...new Set(siteIds.map(Number).filter((id) => id > 0))];
   if (!ids.length) return;
-  const entered = window.prompt("New program name");
+  const entered = await promptDialog("New program name");
   if (entered == null) {
     await loadAll();
     return;
@@ -462,7 +465,7 @@ function wireProgramDragDrop() {
             .map((s) => Number(s.trim()))
             .filter((n) => n > 0);
       createProgramFromDrop(ids).catch((err) => {
-        alert(errorMessage(err, "Could not create program"));
+        alertDialog(errorMessage(err, "Could not create program"));
         loadAll().catch(() => {});
       });
       return;
@@ -479,7 +482,7 @@ function wireProgramDragDrop() {
       .map((row) => Number(row.dataset.siteId))
       .filter((id) => id > 0);
     persistRegisterOrder(program, ids).catch((err) => {
-      alert(errorMessage(err, "Could not update site order"));
+        alertDialog(errorMessage(err, "Could not update site order"));
       loadAll().catch(() => {});
     });
   });
@@ -857,7 +860,7 @@ async function saveSite(ev) {
   const id = $("siteId").value;
   const payload = collectSitePayload();
   if (!payload.road_name || !payload.site_number) {
-    alert("Road name and site number are required.");
+    alertDialog("Road name and site number are required.");
     return;
   }
   try {
@@ -885,7 +888,7 @@ async function saveSite(ev) {
     $("autosaveStatus").hidden = false;
     $("autosaveStatus").textContent = `Saved ${new Date().toLocaleTimeString()}`;
   } catch (err) {
-    alert(errorMessage(err, "Could not save site"));
+    alertDialog(errorMessage(err, "Could not save site"));
   }
 }
 
@@ -924,7 +927,7 @@ function scheduleAutosave() {
 async function archiveSite() {
   const id = $("siteId").value;
   if (!id) return;
-  const fy = prompt("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
+  const fy = await promptDialog("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
   if (fy === null) return;
   await api(`/api/sites/${id}/archive`, {
     method: "POST",
@@ -939,8 +942,8 @@ async function archiveSite() {
 async function bulkArchiveSelected() {
   const ids = [...state.selectedIds];
   if (!ids.length) return;
-  if (!confirm(`Archive ${ids.length} selected site${ids.length === 1 ? "" : "s"}?`)) return;
-  const fy = prompt("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
+  if (!await confirmDialog(`Archive ${ids.length} selected site${ids.length === 1 ? "" : "s"}?`)) return;
+  const fy = await promptDialog("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
   if (fy === null) return;
   await api("/api/sites/bulk-archive", {
     method: "POST",
@@ -979,7 +982,10 @@ async function openColumns() {
 
 async function addColumn() {
   const name = $("colName").value.trim();
-  if (!name) return alert("Column name is required");
+  if (!name) {
+      alertDialog("Column name is required");
+      return;
+    }
   const field_type = $("colType").value;
   const options =
     field_type === "select"
@@ -1082,7 +1088,10 @@ async function addTracking() {
 async function uploadDoc() {
   if (!state.detailSiteId) return;
   const fileInput = $("docFile");
-  if (!fileInput.files?.length) return alert("Choose a file first");
+  if (!fileInput.files?.length) {
+      alertDialog("Choose a file first");
+      return;
+    }
   const fd = new FormData();
   fd.append("file", fileInput.files[0]);
   fd.append("category", $("docCategory").value);
@@ -1091,7 +1100,7 @@ async function uploadDoc() {
   const res = await fetch(`/api/sites/${state.detailSiteId}/documents`, { method: "POST", body: fd });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    alert(body.detail || "Upload failed");
+    alertDialog(body.detail || "Upload failed");
     return;
   }
   fileInput.value = "";
@@ -1111,12 +1120,14 @@ function debounce(fn, ms) {
 function bindEvents() {
   on("btnAddSite", "click", () => openSiteDrawer());
   on("btnColumns", "click", openColumns);
-  on("btnAddColumn", "click", () => addColumn().catch((e) => alert(e.message)));
-  on("btnArchiveSite", "click", () => archiveSite().catch((e) => alert(e.message)));
-  on("btnAddTrack", "click", () => addTracking().catch((e) => alert(e.message)));
-  on("btnUploadDoc", "click", () => uploadDoc().catch((e) => alert(e.message)));
+  on("btnAddColumn", "click", () => addColumn().catch((e) => { alertDialog(e.message); }));
+  on("btnArchiveSite", "click", () => archiveSite().catch((e) => { alertDialog(e.message); }));
+  on("btnAddTrack", "click", () => addTracking().catch((e) => { alertDialog(e.message); }));
+  on("btnUploadDoc", "click", () => uploadDoc().catch((e) => { alertDialog(e.message); }));
   on("siteForm", "submit", (ev) =>
-    saveSite(ev).catch((e) => alert(errorMessage(e, "Could not save site")))
+    saveSite(ev).catch((e) => {
+      alertDialog(errorMessage(e, "Could not save site"));
+    })
   );
   on("colType", "change", () => {
     if ($("colOptionsWrap")) $("colOptionsWrap").hidden = $("colType").value !== "select";
@@ -1176,7 +1187,7 @@ function bindEvents() {
     const sel = ev.target.closest("[data-status-select]");
     if (!sel) return;
     const id = sel.getAttribute("data-status-select");
-    quickSetStatus(id, sel.value, sel).catch((e) => alert(e.message));
+    quickSetStatus(id, sel.value, sel).catch((e) => { alertDialog(e.message); });
   });
 
   on("selectAllVisible", "change", (ev) => {
@@ -1192,13 +1203,15 @@ function bindEvents() {
     renderRegister();
   });
   on("btnBulkArchive", "click", () => {
-    bulkArchiveSelected().catch((e) => alert(e.message || String(e)));
+    bulkArchiveSelected().catch((e) => {
+      alertDialog(e.message || String(e));
+    });
   });
 
   on("columnList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-col]");
     if (!btn) return;
-    if (!confirm("Remove this column and clear its values from all sites?")) return;
+    if (!await confirmDialog("Remove this column and clear its values from all sites?")) return;
     await api(`/api/columns/${btn.dataset.delCol}`, { method: "DELETE" });
     await loadAll();
     renderColumnList();
@@ -1216,7 +1229,7 @@ function bindEvents() {
   on("docList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-doc]");
     if (!btn) return;
-    if (!confirm("Delete this document?")) return;
+    if (!await confirmDialog("Delete this document?")) return;
     await api(`/api/documents/${btn.dataset.delDoc}`, { method: "DELETE" });
     await refreshDocuments();
   });

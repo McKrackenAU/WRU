@@ -555,3 +555,162 @@ export function showPageError(targetId, err, fallbackTitle = "Something went wro
     <p class="hint">Try a hard refresh (Ctrl+Shift+R). If this keeps happening after an update, run the shell updater once as root.</p>
   </div>`;
 }
+
+/* —— Centered app dialogs (replace native alert/confirm/prompt) —— */
+
+let _dialogSeq = 0;
+
+function ensureAppDialog() {
+  let root = document.getElementById("appDialog");
+  if (root) return root;
+  root = document.createElement("dialog");
+  root.id = "appDialog";
+  root.className = "app-dialog";
+  root.setAttribute("aria-modal", "true");
+  root.innerHTML = `
+    <form method="dialog" class="app-dialog-card" id="appDialogForm">
+      <header class="app-dialog-head">
+        <h2 id="appDialogTitle">Confirm</h2>
+      </header>
+      <div class="app-dialog-body" id="appDialogBody"></div>
+      <div class="app-dialog-prompt" id="appDialogPromptWrap" hidden>
+        <label class="app-dialog-prompt-label" for="appDialogInput" id="appDialogPromptLabel">Value</label>
+        <input id="appDialogInput" name="value" autocomplete="off" />
+      </div>
+      <footer class="app-dialog-foot">
+        <button type="button" class="btn" id="appDialogCancel" value="cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="appDialogOk" value="ok">OK</button>
+      </footer>
+    </form>
+  `;
+  document.body.appendChild(root);
+  return root;
+}
+
+function messageToHtml(message) {
+  const parts = String(message ?? "")
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return "<p></p>";
+  return parts
+    .map((part, idx) => {
+      const html = escapeHtml(part).replaceAll("\n", "<br />");
+      return idx === 0 ? `<p class="app-dialog-lead">${html}</p>` : `<p class="hint">${html}</p>`;
+    })
+    .join("");
+}
+
+/**
+ * @param {{
+ *   mode?: 'alert'|'confirm'|'prompt',
+ *   title?: string,
+ *   message: string,
+ *   confirmLabel?: string,
+ *   cancelLabel?: string,
+ *   danger?: boolean,
+ *   defaultValue?: string,
+ *   inputLabel?: string,
+ * }} opts
+ * @returns {Promise<boolean|string|null>}
+ */
+function showAppDialog(opts) {
+  const {
+    mode = "confirm",
+    title,
+    message,
+    confirmLabel = "OK",
+    cancelLabel = "Cancel",
+    danger = false,
+    defaultValue = "",
+    inputLabel = "Value",
+  } = opts || {};
+
+  const root = ensureAppDialog();
+  const form = root.querySelector("#appDialogForm");
+  const titleEl = root.querySelector("#appDialogTitle");
+  const bodyEl = root.querySelector("#appDialogBody");
+  const promptWrap = root.querySelector("#appDialogPromptWrap");
+  const promptLabel = root.querySelector("#appDialogPromptLabel");
+  const inputEl = root.querySelector("#appDialogInput");
+  const okBtn = root.querySelector("#appDialogOk");
+  const cancelBtn = root.querySelector("#appDialogCancel");
+
+  const defaultTitle = mode === "alert" ? "Notice" : mode === "prompt" ? "Input" : "Confirm";
+  titleEl.textContent = title || defaultTitle;
+  bodyEl.innerHTML = messageToHtml(message);
+  okBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel;
+  okBtn.classList.toggle("btn-danger", !!danger);
+  okBtn.classList.toggle("btn-primary", !danger);
+  cancelBtn.hidden = mode === "alert";
+  promptWrap.hidden = mode !== "prompt";
+  if (mode === "prompt") {
+    promptLabel.textContent = inputLabel;
+    inputEl.value = defaultValue ?? "";
+  }
+
+  const token = ++_dialogSeq;
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      form.removeEventListener("submit", onSubmit);
+      cancelBtn.removeEventListener("click", onCancel);
+      root.removeEventListener("cancel", onCancelEsc);
+    };
+
+    const finish = (value) => {
+      if (token !== _dialogSeq) return;
+      cleanup();
+      if (root.open) root.close();
+      resolve(value);
+    };
+
+    const onSubmit = (ev) => {
+      ev.preventDefault();
+      if (mode === "prompt") finish(inputEl.value);
+      else if (mode === "confirm") finish(true);
+      else finish(undefined);
+    };
+    const onCancel = (ev) => {
+      ev.preventDefault();
+      finish(mode === "prompt" ? null : false);
+    };
+    const onCancelEsc = (ev) => {
+      ev.preventDefault();
+      finish(mode === "prompt" ? null : mode === "confirm" ? false : undefined);
+    };
+
+    form.addEventListener("submit", onSubmit);
+    cancelBtn.addEventListener("click", onCancel);
+    root.addEventListener("cancel", onCancelEsc);
+
+    if (typeof root.showModal === "function") root.showModal();
+    else root.setAttribute("open", "");
+
+    requestAnimationFrame(() => {
+      if (mode === "prompt") inputEl.focus();
+      else okBtn.focus();
+    });
+  });
+}
+
+/** Centered confirm — resolves true/false. */
+export function confirmDialog(message, opts = {}) {
+  return showAppDialog({ mode: "confirm", message, ...opts });
+}
+
+/** Centered alert — resolves when dismissed. */
+export function alertDialog(message, opts = {}) {
+  return showAppDialog({ mode: "alert", message, confirmLabel: opts.confirmLabel || "OK", ...opts });
+}
+
+/** Centered prompt — resolves string or null if cancelled. */
+export function promptDialog(message, defaultValue = "", opts = {}) {
+  return showAppDialog({
+    mode: "prompt",
+    message,
+    defaultValue,
+    ...opts,
+  });
+}

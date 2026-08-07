@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, userName } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, userName } from "./common.js";
 
 const BASEMAP_KEY = "wru-map-basemap";
 
@@ -236,7 +236,10 @@ async function refreshMap() {
 
 async function uploadKml() {
   const file = $("kmlFile").files?.[0];
-  if (!file) return alert("Choose a KML file");
+  if (!file) {
+      alertDialog("Choose a KML file");
+      return;
+    }
   const fd = new FormData();
   fd.append("file", file);
   if ($("layerName").value.trim()) fd.append("name", $("layerName").value.trim());
@@ -245,7 +248,7 @@ async function uploadKml() {
   const res = await fetch("/api/map/layers", { method: "POST", body: fd });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    alert(body.detail || "Upload failed");
+    alertDialog(body.detail || "Upload failed");
     return;
   }
   $("kmlFile").value = "";
@@ -257,8 +260,14 @@ async function uploadKml() {
 async function saveDrawnSite() {
   const road = $("drawRoad").value.trim();
   const siteNo = $("drawSiteNo").value.trim();
-  if (!road || !siteNo) return alert("Road name and site number are required");
-  if (!drawnGeometry) return alert("Draw a point, line, or polygon first");
+  if (!road || !siteNo) {
+      alertDialog("Road name and site number are required");
+      return;
+    }
+  if (!drawnGeometry) {
+      alertDialog("Draw a point, line, or polygon first");
+      return;
+    }
   try {
     await api("/api/sites", {
       method: "POST",
@@ -279,9 +288,9 @@ async function saveDrawnSite() {
     sites = [...sites, ...archived];
     await refreshLayers();
     await refreshMap();
-    alert("Site added to the register and map.");
+    alertDialog("Site added to the register and map.");
   } catch (err) {
-    alert(err.message);
+    alertDialog(err.message);
   }
 }
 
@@ -408,7 +417,7 @@ async function init() {
   $("layerList").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-del-layer]");
     if (!btn) return;
-    if (!confirm("Delete this KML layer and its features?")) return;
+    if (!await confirmDialog("Delete this KML layer and its features?")) return;
     await api(`/api/map/layers/${btn.dataset.delLayer}`, { method: "DELETE" });
     await refreshLayers();
     await refreshMap();
@@ -440,6 +449,6 @@ init().catch((err) => {
       err.message || String(err)
     )}</p></div>`;
   } else {
-    alert(err.message);
+    alertDialog(err.message);
   }
 });

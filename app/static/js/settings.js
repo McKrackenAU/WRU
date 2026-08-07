@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog } from "./common.js";
 
 async function loadRules() {
   const r = await api("/api/admin/settings");
@@ -66,7 +66,10 @@ async function addLookup() {
 
 async function runImport(dryRun) {
   const file = $("importFile").files?.[0];
-  if (!file) return alert("Choose an Excel tracker file");
+  if (!file) {
+      alertDialog("Choose an Excel tracker file");
+      return;
+    }
   const fd = new FormData();
   fd.append("file", file);
   const params = new URLSearchParams({
@@ -79,7 +82,7 @@ async function runImport(dryRun) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     $("importStatus").textContent = "";
-    alert(body.detail || "Import failed");
+    alertDialog(body.detail || "Import failed");
     return;
   }
   $("importStatus").textContent = dryRun
@@ -91,22 +94,22 @@ async function runImport(dryRun) {
 
 async function init() {
   injectChrome({ active: "/admin/settings", mode: "admin" });
-  $("rulesForm").addEventListener("submit", (e) => saveRules(e).catch((err) => alert(err.message)));
-  $("lookupKind").addEventListener("change", () => loadLookups().catch((e) => alert(e.message)));
-  $("btnAddLookup").addEventListener("click", () => addLookup().catch((e) => alert(e.message)));
+  $("rulesForm").addEventListener("submit", (e) => saveRules(e).catch((err) => { alertDialog(err.message); }));
+  $("lookupKind").addEventListener("change", () => loadLookups().catch((e) => { alertDialog(e.message); }));
+  $("btnAddLookup").addEventListener("click", () => addLookup().catch((e) => { alertDialog(e.message); }));
   $("lookupList").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-del-lookup]");
     if (!btn) return;
     await api(`/api/admin/lookups/${btn.dataset.delLookup}`, { method: "DELETE" });
     await loadLookups();
   });
-  $("btnDryRun").addEventListener("click", () => runImport(true).catch((e) => alert(e.message)));
-  $("btnImport").addEventListener("click", () => {
-    if (!confirm("Import tracker rows into the live register?")) return;
-    runImport(false).catch((e) => alert(e.message));
+  $("btnDryRun").addEventListener("click", () => runImport(true).catch((e) => { alertDialog(e.message); }));
+  $("btnImport").addEventListener("click", async () => {
+    if (!(await confirmDialog("Import tracker rows into the live register?"))) return;
+    runImport(false).catch((e) => { alertDialog(e.message); });
   });
   await loadRules();
   await loadLookups();
 }
 
-init().catch((e) => alert(e.message));
+init().catch((e) => { alertDialog(e.message); });

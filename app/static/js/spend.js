@@ -1,4 +1,15 @@
-import { $, api, escapeHtml, fmtDate, injectChrome, on, showPageError, userName } from "./common.js";
+import {
+  $,
+  api,
+  on,
+  escapeHtml,
+  fmtDate,
+  injectChrome,
+  alertDialog,
+  confirmDialog,
+  showPageError,
+  userName,
+} from "./common.js";
 
 const state = {
   sites: [],
@@ -131,13 +142,13 @@ async function init() {
   await loadRows();
 
   on("spendKind", "change", syncKindFields);
-  on("btnApplyFilters", "click", () => loadRows().catch((e) => alert(e.message)));
+  on("btnApplyFilters", "click", () => loadRows().catch((e) => { alertDialog(e.message); }));
   on("spendForm", "submit", async (ev) => {
     ev.preventDefault();
     const kind = $("spendKind").value;
     const siteId = Number($("spendSite").value || 0);
     if (!siteId) {
-      alert("Select a site");
+      alertDialog("Select a site");
       return;
     }
     await api("/api/spend", {
@@ -165,7 +176,7 @@ async function init() {
   on("spendBody", "click", async (ev) => {
     const btn = ev.target.closest("[data-del]");
     if (!btn) return;
-    if (!confirm("Delete this spend row?")) return;
+    if (!await confirmDialog("Delete this spend row?")) return;
     await api(`/api/spend/${btn.dataset.del}`, { method: "DELETE" });
     await loadRows();
   });

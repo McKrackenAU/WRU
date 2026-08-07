@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog } from "./common.js";
 
 function roleOptions(selected) {
   return ["none", "permits", "trims", "complete"]
@@ -65,7 +65,7 @@ async function init() {
       $("sKey").value = "";
       await loadStages();
     } catch (e) {
-      alert(e.message);
+      alertDialog(e.message);
     }
   });
 
@@ -79,7 +79,7 @@ async function init() {
       $("pName").value = "";
       await loadPrograms();
     } catch (e) {
-      alert(e.message);
+      alertDialog(e.message);
     }
   });
 
@@ -103,22 +103,22 @@ async function init() {
         await loadStages();
       }
       if (del) {
-        if (!confirm("Deactivate this stage? Historical site steps keep the key.")) return;
+        if (!await confirmDialog("Deactivate this stage? Historical site steps keep the key.")) return;
         await api(`/api/admin/stages/${del.dataset.delStage}`, { method: "DELETE" });
         await loadStages();
       }
     } catch (e) {
-      alert(e.message);
+      alertDialog(e.message);
     }
   });
 
   $("programList").addEventListener("click", async (ev) => {
     const del = ev.target.closest("[data-del-prog]");
     if (!del) return;
-    if (!confirm("Deactivate this program category?")) return;
+    if (!await confirmDialog("Deactivate this program category?")) return;
     await api(`/api/admin/programs/${del.dataset.delProg}`, { method: "DELETE" });
     await loadPrograms();
   });
 }
 
-init().catch((e) => alert(e.message));
+init().catch((e) => { alertDialog(e.message); });

@@ -1,4 +1,14 @@
-import { $, api, escapeHtml, injectChrome, on, showPageError, userName } from "./common.js";
+import {
+  $,
+  api,
+  on,
+  escapeHtml,
+  injectChrome,
+  alertDialog,
+  confirmDialog,
+  showPageError,
+  userName,
+} from "./common.js";
 
 const state = {
   sites: [],
@@ -193,7 +203,10 @@ async function calculate() {
 async function saveEstimate() {
   if (!state.lastResult || !state.lastInputs) return;
   const siteId = Number($("siteSelect").value);
-  if (!siteId) return alert("Select a site");
+  if (!siteId) {
+      alertDialog("Select a site");
+      return;
+    }
   const name = $("estimateName").value.trim() || "Asphalt estimate";
   await api("/api/asphalt/estimates", {
     method: "POST",
@@ -209,7 +222,7 @@ async function saveEstimate() {
     }),
   });
   await loadHistory();
-  alert("Asphalt estimate saved.");
+  alertDialog("Asphalt estimate saved.");
 }
 
 async function init() {
@@ -258,13 +271,13 @@ async function init() {
     renderLines();
   });
   on("subSelect", "change", () => renderLines());
-  on("siteSelect", "change", () => loadHistory().catch((e) => alert(e.message)));
-  on("btnCalculate", "click", () => calculate().catch((e) => alert(e.message)));
-  on("btnSave", "click", () => saveEstimate().catch((e) => alert(e.message)));
+  on("siteSelect", "change", () => loadHistory().catch((e) => { alertDialog(e.message); }));
+  on("btnCalculate", "click", () => calculate().catch((e) => { alertDialog(e.message); }));
+  on("btnSave", "click", () => saveEstimate().catch((e) => { alertDialog(e.message); }));
   on("historyList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-est]");
     if (!btn) return;
-    if (!confirm("Delete this estimate?")) return;
+    if (!await confirmDialog("Delete this estimate?")) return;
     await api(`/api/asphalt/estimates/${btn.dataset.delEst}`, { method: "DELETE" });
     await loadHistory();
   });

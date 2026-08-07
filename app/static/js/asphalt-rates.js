@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, on, showPageError } from "./common.js";
+import { $, api, on, escapeHtml, injectChrome, confirmDialog, showPageError } from "./common.js";
 
 const state = { subcontractors: [], rates: [] };
 
@@ -104,14 +104,14 @@ async function init() {
   on("subList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-sub]");
     if (!btn) return;
-    if (!confirm("Delete this subcontractor and its rates?")) return;
+    if (!await confirmDialog("Delete this subcontractor and its rates?")) return;
     await api(`/api/asphalt/subcontractors/${btn.dataset.delSub}`, { method: "DELETE" });
     await reload();
   });
   on("rateList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-rate]");
     if (!btn) return;
-    if (!confirm("Delete this rate?")) return;
+    if (!await confirmDialog("Delete this rate?")) return;
     await api(`/api/asphalt/rates/${btn.dataset.delRate}`, { method: "DELETE" });
     await reload();
   });

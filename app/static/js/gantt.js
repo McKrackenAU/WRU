@@ -1,4 +1,14 @@
-import { $, api, escapeHtml, fmtDate, injectChrome, on, showPageError } from "./common.js";
+import {
+  $,
+  api,
+  on,
+  escapeHtml,
+  fmtDate,
+  injectChrome,
+  alertDialog,
+  confirmDialog,
+  showPageError,
+} from "./common.js";
 
 const DEFAULT_PROGRAM = "Lifecycle pavements";
 const state = {
@@ -302,11 +312,11 @@ async function init() {
     const url = new URL(location.href);
     url.searchParams.set("program", program());
     history.replaceState({}, "", url);
-    loadBoard().catch((e) => alert(e.message));
+    loadBoard().catch((e) => { alertDialog(e.message); });
   });
   on("pdfAsphaltFilter", "change", syncPdfLink);
   on("pdfTrafficFilter", "change", syncPdfLink);
-  on("btnSaveBoard", "click", () => saveBoard().catch((e) => alert(e.message)));
+  on("btnSaveBoard", "click", () => saveBoard().catch((e) => { alertDialog(e.message); }));
   on("btnSyncSites", "click", async () => {
     state.board = await api(
       `/api/gantt/board/sync-program-sites?program=${encodeURIComponent(program())}`,
@@ -338,7 +348,7 @@ async function init() {
   on("ganttList", "click", async (ev) => {
     const rm = ev.target.closest("[data-rm]");
     if (!rm) return;
-    if (!confirm("Remove this site from the Gantt?")) return;
+    if (!await confirmDialog("Remove this site from the Gantt?")) return;
     state.board = await api(
       `/api/gantt/board/items/${rm.dataset.rm}?program=${encodeURIComponent(program())}`,
       { method: "DELETE" }

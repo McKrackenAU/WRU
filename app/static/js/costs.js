@@ -1,4 +1,13 @@
-import { $, api, escapeHtml, injectChrome, userName } from "./common.js";
+import {
+  $,
+  api,
+  escapeHtml,
+  injectChrome,
+  alertDialog,
+  confirmDialog,
+  promptDialog,
+  userName,
+} from "./common.js";
 
 let settings = null;
 let sites = [];
@@ -286,7 +295,10 @@ function renderClosure(result) {
 }
 
 async function exportResult(result, format) {
-  if (!result) return alert("Calculate first");
+  if (!result) {
+      alertDialog("Calculate first");
+      return;
+    }
   const siteId = selectedSiteId();
   const res = await fetch(`/api/costs/export/${format}`, {
     method: "POST",
@@ -596,15 +608,21 @@ async function calcClosure() {
 
 async function saveEstimate(mode) {
   const result = mode === "standard" ? lastStandard : lastClosure;
-  if (!result) return alert("Calculate first");
+  if (!result) {
+      alertDialog("Calculate first");
+      return;
+    }
   const siteId = selectedSiteId();
-  if (!siteId) return alert("Select a MoA / site before saving this estimate.");
+  if (!siteId) {
+      alertDialog("Select a MoA / site before saving this estimate.");
+      return;
+    }
   const site = selectedSite();
   const defaultName =
     mode === "standard"
       ? `${site?.site_number || "Site"} standard ${$("sStart").value}`
       : `${site?.site_number || "Site"} 24h ${$("cStart").value.slice(0, 10)}`;
-  const name = prompt("Estimate name", defaultName);
+  const name = await promptDialog("Estimate name", defaultName);
   if (!name) return;
   const inputs =
     mode === "standard"
@@ -634,7 +652,10 @@ async function saveEstimate(mode) {
 
 async function uploadAttachment(estimateId) {
   const fileInput = document.querySelector(`[data-att-file="${estimateId}"]`);
-  if (!fileInput?.files?.length) return alert("Choose a file first");
+  if (!fileInput?.files?.length) {
+      alertDialog("Choose a file first");
+      return;
+    }
   const desc = document.querySelector(`[data-att-desc="${estimateId}"]`);
   const fd = new FormData();
   fd.append("file", fileInput.files[0]);
@@ -703,57 +724,57 @@ async function init() {
 
   $("costSite").addEventListener("change", () => {
     updateSiteHint();
-    if ($("historyFilter").value === "assigned") loadEstimates().catch((e) => alert(e.message));
+    if ($("historyFilter").value === "assigned") loadEstimates().catch((e) => { alertDialog(e.message); });
   });
   $("historyFilter").addEventListener("change", () =>
-    loadEstimates().catch((e) => alert(e.message))
+    loadEstimates().catch((e) => { alertDialog(e.message); })
   );
 
   $("btnCalcStandard").addEventListener("click", () =>
-    calcStandard().catch((e) => alert(e.message))
+    calcStandard().catch((e) => { alertDialog(e.message); })
   );
   $("btnCalcClosure").addEventListener("click", () =>
-    calcClosure().catch((e) => alert(e.message))
+    calcClosure().catch((e) => { alertDialog(e.message); })
   );
   $("btnSaveStandard").addEventListener("click", () =>
-    saveEstimate("standard").catch((e) => alert(e.message))
+    saveEstimate("standard").catch((e) => { alertDialog(e.message); })
   );
   $("btnSaveClosure").addEventListener("click", () =>
-    saveEstimate("closure_24h").catch((e) => alert(e.message))
+    saveEstimate("closure_24h").catch((e) => { alertDialog(e.message); })
   );
   $("btnExportStdExcel").addEventListener("click", () =>
-    exportResult(lastStandard, "excel").catch((e) => alert(e.message))
+    exportResult(lastStandard, "excel").catch((e) => { alertDialog(e.message); })
   );
   $("btnExportStdPdf").addEventListener("click", () =>
-    exportResult(lastStandard, "pdf").catch((e) => alert(e.message))
+    exportResult(lastStandard, "pdf").catch((e) => { alertDialog(e.message); })
   );
   $("btnExportCloExcel").addEventListener("click", () =>
-    exportResult(lastClosure, "excel").catch((e) => alert(e.message))
+    exportResult(lastClosure, "excel").catch((e) => { alertDialog(e.message); })
   );
   $("btnExportCloPdf").addEventListener("click", () =>
-    exportResult(lastClosure, "pdf").catch((e) => alert(e.message))
+    exportResult(lastClosure, "pdf").catch((e) => { alertDialog(e.message); })
   );
 
   $("estimateList").addEventListener("click", async (ev) => {
     const delEst = ev.target.closest("[data-del-est]");
     if (delEst) {
-      if (!confirm("Delete saved estimate and its attachments?")) return;
+      if (!await confirmDialog("Delete saved estimate and its attachments?")) return;
       await api(`/api/costs/estimates/${delEst.dataset.delEst}`, { method: "DELETE" });
       await loadEstimates();
       return;
     }
     const delAtt = ev.target.closest("[data-del-att]");
     if (delAtt) {
-      if (!confirm("Remove this attachment?")) return;
+      if (!await confirmDialog("Remove this attachment?")) return;
       await api(`/api/costs/attachments/${delAtt.dataset.delAtt}`, { method: "DELETE" });
       await loadEstimates();
       return;
     }
     const up = ev.target.closest("[data-att-upload]");
     if (up) {
-      await uploadAttachment(Number(up.dataset.attUpload)).catch((e) => alert(e.message));
+      await uploadAttachment(Number(up.dataset.attUpload)).catch((e) => { alertDialog(e.message); });
     }
   });
 }
 
-init().catch((e) => alert(e.message));
+init().catch((e) => { alertDialog(e.message); });

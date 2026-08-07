@@ -1,4 +1,13 @@
-import { $, api, escapeHtml, injectChrome, on, showPageError } from "./common.js";
+import {
+  $,
+  api,
+  on,
+  escapeHtml,
+  injectChrome,
+  alertDialog,
+  confirmDialog,
+  showPageError,
+} from "./common.js";
 
 let logPollTimer = null;
 
@@ -134,7 +143,7 @@ function renderHistory(payload) {
   body.querySelectorAll("[data-rollback]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const ver = btn.getAttribute("data-rollback");
-      runRollback(ver).catch((e) => alert(e.message));
+      runRollback(ver).catch((e) => { alertDialog(e.message); });
     });
   });
 }
@@ -239,9 +248,10 @@ async function checkForUpdate() {
 
 async function runUpdate() {
   if (
-    !confirm(
-      "Update WRU from GitHub now?\n\nYour data and uploads stay. The app will restart briefly."
-    )
+    !(await confirmDialog(
+      "Update WRU from GitHub now?\n\nYour data and uploads stay. The app will restart briefly.",
+      { title: "Install update", confirmLabel: "Update", cancelLabel: "Cancel" }
+    ))
   ) {
     return;
   }
@@ -282,9 +292,10 @@ async function runUpdate() {
 
 async function runRollback(version) {
   if (
-    !confirm(
-      `Roll back to ${version}?\n\nYour data and uploads stay. The app will restart briefly.`
-    )
+    !(await confirmDialog(
+      `Roll back to ${version}?\n\nYour data and uploads stay. The app will restart briefly.`,
+      { title: "Roll back", confirmLabel: "Roll back", cancelLabel: "Cancel", danger: true }
+    ))
   ) {
     return;
   }
@@ -366,7 +377,7 @@ async function saveNearmapKey(clear = false) {
     await loadNearmapConfig();
   } catch (err) {
     if (status) status.textContent = "";
-    alert(err.message || err);
+    alertDialog(err.message || err);
   }
 }
 
@@ -384,13 +395,12 @@ async function init() {
       .catch((e) => showPageError("sysMeta", e, "Could not load system status"));
     loadNearmapConfig().catch(() => {});
   });
-  on("btnCheckUpdate", "click", () => checkForUpdate().catch((e) => alert(e.message)));
-  on("btnUpdate", "click", () => runUpdate().catch((e) => alert(e.message)));
-  on("btnSaveNearmap", "click", () => saveNearmapKey(false).catch((e) => alert(e.message)));
-  on("btnClearNearmap", "click", () => {
-    if (confirm("Remove the saved Nearmap API key?")) {
-      saveNearmapKey(true).catch((e) => alert(e.message));
-    }
+  on("btnCheckUpdate", "click", () => checkForUpdate().catch((e) => { alertDialog(e.message); }));
+  on("btnUpdate", "click", () => runUpdate().catch((e) => { alertDialog(e.message); }));
+  on("btnSaveNearmap", "click", () => saveNearmapKey(false).catch((e) => { alertDialog(e.message); }));
+  on("btnClearNearmap", "click", async () => {
+    if (!(await confirmDialog("Remove the saved Nearmap API key?"))) return;
+    saveNearmapKey(true).catch((e) => { alertDialog(e.message); });
   });
   try {
     await loadVersions();
@@ -410,5 +420,5 @@ async function init() {
 
 init().catch((e) => {
   showPageError("sysMeta", e, "System page failed to start");
-  alert(e.message);
+  alertDialog(e.message);
 });

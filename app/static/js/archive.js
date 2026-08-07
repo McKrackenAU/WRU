@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome } from "./common.js";
+import { $, api, escapeHtml, injectChrome, confirmDialog } from "./common.js";
 
 function debounce(fn, ms) {
   let t;
@@ -48,7 +48,7 @@ async function init() {
   $("tbody").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-restore]");
     if (!btn) return;
-    if (!confirm("Restore this site to the active register?")) return;
+    if (!await confirmDialog("Restore this site to the active register?")) return;
     await api(`/api/sites/${btn.dataset.restore}/restore`, { method: "POST" });
     await load();
   });

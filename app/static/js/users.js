@@ -1,4 +1,13 @@
-import { $, api, escapeHtml, injectChrome, on, showPageError } from "./common.js";
+import {
+  $,
+  api,
+  on,
+  escapeHtml,
+  injectChrome,
+  alertDialog,
+  confirmDialog,
+  showPageError,
+} from "./common.js";
 
 function fmtWhen(iso) {
   if (!iso) return "—";
@@ -79,26 +88,26 @@ async function loadUsers() {
         });
         await loadUsers();
       } catch (err) {
-        alert(err.message || String(err));
+        alertDialog(err.message || String(err));
       }
     });
     tr.querySelector("[data-reset]")?.addEventListener("click", async () => {
-      if (!confirm("Reset this user’s password to a temporary value?")) return;
+      if (!await confirmDialog("Reset this user’s password to a temporary value?")) return;
       try {
         const out = await api(`/api/admin/users/${id}/reset-password`, { method: "POST" });
-        alert(`Temporary password for ${out.username}:\n\n${out.temporary_password}\n\nThey must change it on next login.`);
+        alertDialog(`Temporary password for ${out.username}:\n\n${out.temporary_password}\n\nThey must change it on next login.`);
         await loadUsers();
       } catch (err) {
-        alert(err.message || String(err));
+        alertDialog(err.message || String(err));
       }
     });
     tr.querySelector("[data-delete]")?.addEventListener("click", async () => {
-      if (!confirm("Delete this user permanently?")) return;
+      if (!await confirmDialog("Delete this user permanently?")) return;
       try {
         await api(`/api/admin/users/${id}`, { method: "DELETE" });
         await loadUsers();
       } catch (err) {
-        alert(err.message || String(err));
+        alertDialog(err.message || String(err));
       }
     });
   });

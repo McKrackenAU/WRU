@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, stageLabel } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, stageLabel } from "./common.js";
 
 function progressBar(pct) {
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
@@ -52,4 +52,4 @@ async function init() {
   renderRows("trimsBody", trims, meta);
 }
 
-init().catch((e) => alert(e.message));
+init().catch((e) => { alertDialog(e.message); });

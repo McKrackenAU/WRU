@@ -1211,6 +1211,104 @@ dialog::backdrop {
   background: rgba(13, 17, 23, 0.45);
 }
 
+/* Centered app confirm / alert / prompt */
+.app-dialog {
+  border: none;
+  padding: 0;
+  margin: auto;
+  max-width: calc(100vw - 1.5rem);
+  background: transparent;
+  color: var(--ventia-ink);
+}
+
+.app-dialog::backdrop {
+  background: rgba(6, 10, 12, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.app-dialog-card {
+  width: min(26rem, calc(100vw - 1.5rem));
+  margin: 0;
+  border: 1px solid var(--ventia-border);
+  border-radius: 1rem;
+  background: var(--panel);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.app-dialog-head {
+  padding: 1rem 1.15rem 0.35rem;
+}
+
+.app-dialog-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ventia-ink);
+  letter-spacing: -0.01em;
+}
+
+.app-dialog-body {
+  padding: 0.35rem 1.15rem 0.85rem;
+}
+
+.app-dialog-body p {
+  margin: 0 0 0.55rem;
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
+.app-dialog-body p:last-child {
+  margin-bottom: 0;
+}
+
+.app-dialog-lead {
+  font-weight: 600;
+  color: var(--ventia-ink);
+}
+
+.app-dialog-prompt {
+  padding: 0 1.15rem 0.85rem;
+}
+
+.app-dialog-prompt-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--ventia-muted);
+}
+
+.app-dialog-prompt input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--ventia-ink);
+  background: var(--field-bg);
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.75rem;
+  min-height: 2.5rem;
+}
+
+.app-dialog-prompt input:focus {
+  outline: 2px solid var(--ventia-green-mid);
+  outline-offset: 1px;
+}
+
+.app-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.85rem 1.15rem 1rem;
+  border-top: 1px solid var(--ventia-border);
+  background: color-mix(in srgb, var(--ventia-border) 22%, var(--panel));
+}
+
+.app-dialog-foot .btn {
+  min-width: 5.5rem;
+}
+
 .panel-head,
 .panel-foot {
   display: flex;
