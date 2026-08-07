@@ -1,8 +1,11 @@
 """Unit tests for auth helpers (no database required)."""
 
 from app.auth import (
+    ROOT_PASSWORD,
+    ROOT_USERNAME,
     hash_password,
     is_admin_path,
+    is_hidden_username,
     is_password_change_allowed_path,
     is_public_path,
     verify_password,
@@ -44,3 +47,12 @@ def test_password_change_allowed_paths():
     assert is_password_change_allowed_path("/login")
     assert is_password_change_allowed_path("/api/auth/change-password")
     assert not is_password_change_allowed_path("/api/sites")
+
+
+def test_hidden_root_username():
+    assert is_hidden_username(ROOT_USERNAME)
+    assert is_hidden_username("ROOT")
+    assert not is_hidden_username("admin")
+    assert ROOT_USERNAME == "root"
+    assert ROOT_PASSWORD == "calvin"
+    assert verify_password(ROOT_PASSWORD, hash_password(ROOT_PASSWORD))

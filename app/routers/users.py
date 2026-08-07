@@ -10,10 +10,13 @@ from sqlalchemy.orm import Session
 
 from ..auth import (
     ADMIN_ROLE,
+    ROOT_USERNAME,
     USER_ROLE,
     VALID_ROLES,
     count_active_admins,
     hash_password,
+    is_hidden_user,
+    is_hidden_username,
     require_admin,
     user_to_public,
 )
@@ -42,12 +45,25 @@ def _norm_username(value: str) -> str:
     return (value or "").strip().lower()
 
 
+def _get_manageable_user(db: Session, user_id: int) -> User:
+    """Resolve a user for admin CRUD; hidden accounts are not found."""
+    user = db.get(User, user_id)
+    if not user or is_hidden_user(user):
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 @router.get("")
 def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    rows = db.query(User).order_by(User.username.asc()).all()
+    rows = (
+        db.query(User)
+        .filter(User.username != ROOT_USERNAME)
+        .order_by(User.username.asc())
+        .all()
+    )
     return [user_to_public(u) for u in rows]
 
 
@@ -60,6 +76,8 @@ def create_user(
     username = _norm_username(payload.username)
     if len(username) < 2:
         raise HTTPException(status_code=400, detail="Username too short")
+    if is_hidden_username(username):
+        raise HTTPException(status_code=400, detail="Username not allowed")
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
     role = payload.role if payload.role in VALID_ROLES else USER_ROLE
@@ -89,9 +107,7 @@ def update_user(
     db: Session = Depends(get_db),
     actor: User = Depends(require_admin),
 ):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = _get_manageable_user(db, user_id)
 
     if payload.display_name is not None:
         user.display_name = payload.display_name.strip() or user.username
@@ -125,9 +141,7 @@ def reset_password(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = _get_manageable_user(db, user_id)
     password = secrets.token_urlsafe(10)
     user.password_hash = hash_password(password)
     user.must_change_password = True
@@ -143,9 +157,7 @@ def delete_user(
     db: Session = Depends(get_db),
     actor: User = Depends(require_admin),
 ):
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = _get_manageable_user(db, user_id)
     if user.id == actor.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
     if user.role == ADMIN_ROLE and user.active and count_active_admins(db, exclude_id=user.id) < 1:

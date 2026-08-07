@@ -128,7 +128,7 @@ def run_migrations() -> None:
     from .settings_store import ensure_settings
     from .stage_registry import ensure_lookup_seed, ensure_program_seed, ensure_stage_seed
 
-    from .auth import ensure_admin_user
+    from .auth import ensure_admin_user, ensure_root_user
 
     db = SessionLocal()
     try:
@@ -137,6 +137,7 @@ def run_migrations() -> None:
         ensure_lookup_seed(db)
         ensure_settings(db)
         ensure_admin_user(db)
+        ensure_root_user(db)
     finally:
         db.close()
 
