@@ -1964,6 +1964,15 @@ html.dark .leaflet-control-scale-line {
   border-bottom: none;
 }
 
+/* Hide unused program buckets until a drag starts (they remain drop targets). */
+.register-program.is-empty {
+  display: none;
+}
+
+#registerList.is-dnd-active .register-program.is-empty {
+  display: block;
+}
+
 .register-program.drag-over {
   background: color-mix(in srgb, var(--ventia-green) 10%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ventia-green-mid) 55%, transparent);
@@ -1975,6 +1984,10 @@ html.dark .leaflet-control-scale-line {
 
 .register-row.is-dragging td {
   background: color-mix(in srgb, var(--ventia-green) 12%, transparent);
+}
+
+.register-row.drop-before td {
+  box-shadow: inset 0 2px 0 0 var(--ventia-green-mid);
 }
 
 .drag-grip {

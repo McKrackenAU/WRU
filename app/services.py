@@ -251,6 +251,7 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "road_name": site.road_name,
         "site_number": site.site_number,
         "program": site.program,
+        "register_order": getattr(site, "register_order", None),
         "tgs_reference": site.tgs_reference,
         "indicative_site_start_date": site.indicative_site_start_date,
         "moa_must_have_received_date": site.moa_must_have_received_date,

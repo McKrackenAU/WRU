@@ -69,6 +69,7 @@ class SiteBase(BaseModel):
     road_name: str = Field(min_length=1, max_length=255)
     site_number: str = Field(min_length=1, max_length=64)
     program: str | None = None
+    register_order: int | None = None
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
@@ -98,6 +99,7 @@ class SiteCreate(BaseModel):
     road_name: str = Field(min_length=1, max_length=255)
     site_number: str = Field(min_length=1, max_length=64)
     program: str | None = None
+    register_order: int | None = None
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
@@ -129,6 +131,7 @@ class SiteUpdate(BaseModel):
     road_name: str | None = None
     site_number: str | None = None
     program: str | None = None
+    register_order: int | None = None
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
@@ -171,10 +174,21 @@ class SiteBulkArchiveOut(BaseModel):
     financial_year: str | None = None
 
 
+class SiteReorderRequest(BaseModel):
+    program: str | None = None
+    site_ids: list[int] = Field(min_length=1)
+
+
+class SiteReorderOut(BaseModel):
+    program: str | None = None
+    site_ids: list[int]
+
+
 class SiteOut(SiteBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    register_order: int | None = None
     archived: bool = False
     archived_at: datetime | None = None
     archived_fy: str | None = None

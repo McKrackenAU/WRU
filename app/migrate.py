@@ -66,6 +66,30 @@ def run_migrations() -> None:
     ensure_column("sites", "extension_expiry_date", "extension_expiry_date DATE")
     ensure_column("sites", "job_completed_date", "job_completed_date DATE")
     ensure_column("sites", "include_in_totals", "include_in_totals BOOLEAN NOT NULL DEFAULT TRUE")
+    ensure_column("sites", "register_order", "register_order INTEGER")
+
+    # Seed register_order from current start-date ordering when missing
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                WITH ranked AS (
+                  SELECT id,
+                         ROW_NUMBER() OVER (
+                           PARTITION BY COALESCE(NULLIF(BTRIM(program), ''), 'Unassigned')
+                           ORDER BY indicative_site_start_date ASC NULLS LAST, id ASC
+                         ) * 10 AS ord
+                  FROM sites
+                  WHERE register_order IS NULL
+                )
+                UPDATE sites
+                SET register_order = ranked.ord
+                FROM ranked
+                WHERE sites.id = ranked.id
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_register_order ON sites (register_order)"))
 
     # documents expansions
     ensure_column("documents", "moa_number", "moa_number VARCHAR(64)")

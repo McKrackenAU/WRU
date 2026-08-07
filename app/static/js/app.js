@@ -26,6 +26,7 @@ const state = {
   selectedIds: new Set(),
   dragSiteIds: [],
   suppressRowOpen: false,
+  dndCommitted: false,
 };
 
 const GANTT_DEFAULT_PROGRAM = "Lifecycle pavements";
@@ -197,7 +198,7 @@ function siteRowHtml(site) {
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
     <td>
-      <div class="site-title"><span class="drag-grip" title="Drag to another program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}</div>
+      <div class="site-title"><span class="drag-grip" title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}</div>
       <div class="site-meta">
         <span class="mono">${escapeHtml(site.site_number)}</span>
         ${councils ? ` · ${escapeHtml(councils)}${escapeHtml(more)}` : ""}
@@ -224,41 +225,67 @@ function siteRowHtml(site) {
   </tr>`;
 }
 
-async function moveSitesToProgram(siteIds, program) {
-  const target = (program || "").trim();
-  if (!target || target === "Unassigned") {
-    // Allow explicit Unassigned only when dropping on that bucket
+function programKey(value) {
+  return (value || "").trim() || "Unassigned";
+}
+
+function draggedRowEls(root) {
+  const idSet = new Set(state.dragSiteIds.map(Number));
+  return [...root.querySelectorAll("tr.register-row")].filter((row) =>
+    idSet.has(Number(row.dataset.siteId))
+  );
+}
+
+function ensureEmptyPlaceholder(tbody) {
+  if (!tbody) return;
+  const hasRows = tbody.querySelector("tr.register-row");
+  const empty = tbody.querySelector("tr.register-empty-row");
+  if (!hasRows && !empty) {
+    tbody.insertAdjacentHTML(
+      "beforeend",
+      `<tr class="register-empty-row"><td colspan="9"><span class="hint">Drop sites here</span></td></tr>`
+    );
   }
+  if (hasRows && empty) empty.remove();
+}
+
+function placeDraggedRows(section, beforeRow) {
+  const root = $("registerList");
+  if (!root || !section) return;
+  const tbody = section.querySelector("tbody");
+  if (!tbody) return;
+  const rows = draggedRowEls(root);
+  if (!rows.length) return;
+
+  for (const row of rows) {
+    const fromBody = row.closest("tbody");
+    if (beforeRow && beforeRow.parentElement === tbody) {
+      tbody.insertBefore(row, beforeRow);
+    } else {
+      tbody.appendChild(row);
+    }
+    if (fromBody && fromBody !== tbody) ensureEmptyPlaceholder(fromBody);
+  }
+  ensureEmptyPlaceholder(tbody);
+  section.classList.toggle("is-empty", !tbody.querySelector("tr.register-row"));
+}
+
+async function persistRegisterOrder(program, siteIds) {
   const ids = [...new Set(siteIds.map(Number).filter((id) => id > 0))];
   if (!ids.length) return;
-
-  const toMove = ids.filter((id) => {
-    const site = state.sites.find((s) => s.id === id);
-    const current = (site?.program || "").trim() || "Unassigned";
-    return site && current !== target;
+  const target = programKey(program);
+  setStatus(`Saving order in ${target}…`);
+  await api("/api/sites/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      program: target === "Unassigned" ? null : target,
+      site_ids: ids,
+    }),
   });
-  if (!toMove.length) return;
-
-  setStatus(
-    toMove.length === 1
-      ? `Moving site to ${target}…`
-      : `Moving ${toMove.length} sites to ${target}…`
-  );
-  await Promise.all(
-    toMove.map((id) =>
-      api(`/api/sites/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ program: target === "Unassigned" ? null : target }),
-      })
-    )
-  );
+  state.dndCommitted = true;
   await loadAll();
-  setStatus(
-    toMove.length === 1
-      ? `Moved to ${target}`
-      : `Moved ${toMove.length} sites to ${target}`
-  );
+  setStatus(`Updated ${target}`);
 }
 
 function wireProgramDragDrop() {
@@ -283,8 +310,11 @@ function wireProgramDragDrop() {
         ? [...state.selectedIds]
         : [id];
     state.dragSiteIds = ids;
+    state.dndCommitted = false;
     state.suppressRowOpen = true;
+    root.classList.add("is-dnd-active");
     row.classList.add("is-dragging");
+    for (const el of draggedRowEls(root)) el.classList.add("is-dragging");
     ev.dataTransfer.effectAllowed = "move";
     ev.dataTransfer.setData("text/plain", ids.join(","));
     try {
@@ -295,13 +325,19 @@ function wireProgramDragDrop() {
   });
 
   root.addEventListener("dragend", () => {
+    const hadDrag = state.dragSiteIds.length > 0;
+    const committed = state.dndCommitted;
     state.dragSiteIds = [];
-    root.querySelectorAll(".is-dragging, .drag-over").forEach((el) => {
-      el.classList.remove("is-dragging", "drag-over");
+    root.classList.remove("is-dnd-active");
+    root.querySelectorAll(".is-dragging, .drag-over, .drop-before").forEach((el) => {
+      el.classList.remove("is-dragging", "drag-over", "drop-before");
     });
     window.setTimeout(() => {
       state.suppressRowOpen = false;
     }, 120);
+    if (hadDrag && !committed) {
+      loadAll().catch(() => {});
+    }
   });
 
   root.addEventListener("dragover", (ev) => {
@@ -313,6 +349,21 @@ function wireProgramDragDrop() {
       if (el !== section) el.classList.remove("drag-over");
     });
     section.classList.add("drag-over");
+
+    const overRow = ev.target.closest("tr.register-row");
+    root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
+    if (overRow && section.contains(overRow) && !overRow.classList.contains("is-dragging")) {
+      const rect = overRow.getBoundingClientRect();
+      const before = ev.clientY < rect.top + rect.height / 2;
+      const tbody = overRow.parentElement;
+      const rows = [...tbody.querySelectorAll("tr.register-row")];
+      const idx = rows.indexOf(overRow);
+      const beforeRow = before ? overRow : rows[idx + 1] || null;
+      if (beforeRow) beforeRow.classList.add("drop-before");
+      placeDraggedRows(section, beforeRow);
+    } else if (!overRow) {
+      placeDraggedRows(section, null);
+    }
   });
 
   root.addEventListener("dragleave", (ev) => {
@@ -327,23 +378,14 @@ function wireProgramDragDrop() {
     if (!section || !root.contains(section)) return;
     ev.preventDefault();
     section.classList.remove("drag-over");
-    let ids = state.dragSiteIds;
-    if (!ids?.length) {
-      try {
-        ids = JSON.parse(ev.dataTransfer.getData("application/x-wru-site-ids") || "[]");
-      } catch {
-        ids = [];
-      }
-    }
-    if (!ids?.length) {
-      ids = (ev.dataTransfer.getData("text/plain") || "")
-        .split(",")
-        .map((s) => Number(s.trim()))
-        .filter((n) => n > 0);
-    }
+    root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
+
     const program = section.getAttribute("data-program") || "";
-    moveSitesToProgram(ids, program).catch((err) => {
-      alert(errorMessage(err, "Could not move site(s)"));
+    const ids = [...section.querySelectorAll("tr.register-row")]
+      .map((row) => Number(row.dataset.siteId))
+      .filter((id) => id > 0);
+    persistRegisterOrder(program, ids).catch((err) => {
+      alert(errorMessage(err, "Could not update site order"));
       loadAll().catch(() => {});
     });
   });
@@ -357,10 +399,10 @@ function renderRegister() {
     return;
   }
 
-  // Spreadsheet-style: group by program section (keep empty programs as drop targets)
+  // Group by program. Empty seeded programs stay in the DOM as drop targets but stay hidden until drag.
   const groups = new Map();
   for (const site of state.sites) {
-    const key = (site.program || "").trim() || "Unassigned";
+    const key = programKey(site.program);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(site);
   }
@@ -391,6 +433,7 @@ function renderRegister() {
   root.innerHTML = order
     .map((program) => {
       const rows = groups.get(program) || [];
+      const emptyClass = rows.length ? "" : " is-empty";
       const ganttLink =
         program === GANTT_DEFAULT_PROGRAM || program.toLowerCase().includes("lifecycle")
           ? `<a class="btn btn-sm" href="/gantt?program=${encodeURIComponent(program)}">Gantt</a>`
@@ -398,7 +441,7 @@ function renderRegister() {
       const body = rows.length
         ? rows.map(siteRowHtml).join("")
         : `<tr class="register-empty-row"><td colspan="9"><span class="hint">Drop sites here</span></td></tr>`;
-      return `<section class="register-program" data-program="${escapeHtml(program)}">
+      return `<section class="register-program${emptyClass}" data-program="${escapeHtml(program)}">
         <div class="register-program-head">
           <h2 class="register-program-title">${escapeHtml(program)} <span class="hint">${rows.length}</span></h2>
           <div class="register-program-actions">${ganttLink}</div>

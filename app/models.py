@@ -147,6 +147,7 @@ class Site(Base):
     road_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     site_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     program: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    register_order: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     tgs_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     indicative_site_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     moa_must_have_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)

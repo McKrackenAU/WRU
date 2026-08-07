@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -16,6 +16,8 @@ from ..schemas import (
     SiteBulkArchiveRequest,
     SiteCreate,
     SiteOut,
+    SiteReorderOut,
+    SiteReorderRequest,
     SiteUpdate,
 )
 from ..services import (
@@ -126,7 +128,11 @@ def list_sites(
     if generic_moa is not None:
         query = query.filter(Site.is_generic_moa.is_(generic_moa))
 
-    sites = query.order_by(Site.indicative_site_start_date.asc().nullslast(), Site.id.asc()).all()
+    sites = query.order_by(
+        Site.register_order.asc().nullslast(),
+        Site.indicative_site_start_date.asc().nullslast(),
+        Site.id.asc(),
+    ).all()
     results = [site_to_dict(site, db=db) for site in sites]
 
     if priority is not None:
@@ -190,6 +196,53 @@ def bulk_archive_sites(payload: SiteBulkArchiveRequest, db: Session = Depends(ge
     return SiteBulkArchiveOut(archived=len(archived_ids), site_ids=archived_ids, financial_year=fy_used)
 
 
+def _program_key(value: str | None) -> str:
+    return (value or "").strip() or "Unassigned"
+
+
+def _program_filter(program: str | None):
+    key = _program_key(program)
+    if key == "Unassigned":
+        return or_(Site.program.is_(None), Site.program == "", func.btrim(Site.program) == "")
+    return func.lower(func.btrim(Site.program)) == key.lower()
+
+
+@router.post("/reorder", response_model=SiteReorderOut)
+def reorder_sites(payload: SiteReorderRequest, db: Session = Depends(get_db)):
+    """Persist register row order within a program (and move sites into that program if needed)."""
+    target = _program_key(payload.program)
+    ids = [int(i) for i in payload.site_ids if int(i) > 0]
+    if not ids:
+        raise HTTPException(status_code=400, detail="No site ids provided")
+    if len(ids) != len(set(ids)):
+        raise HTTPException(status_code=400, detail="Duplicate site ids in order list")
+
+    sites = db.query(Site).filter(Site.id.in_(ids), Site.archived.is_(False)).all()
+    by_id = {s.id: s for s in sites}
+    if len(by_id) != len(ids):
+        raise HTTPException(status_code=404, detail="One or more sites were not found")
+
+    program_value = None if target == "Unassigned" else target
+    for idx, site_id in enumerate(ids):
+        site = by_id[site_id]
+        site.program = program_value
+        site.register_order = (idx + 1) * 10
+
+    # Keep any other sites in this program after the reordered set, stable relative order
+    others = (
+        db.query(Site)
+        .filter(Site.archived.is_(False), _program_filter(target), Site.id.notin_(ids))
+        .order_by(Site.register_order.asc().nullslast(), Site.indicative_site_start_date.asc().nullslast(), Site.id.asc())
+        .all()
+    )
+    base = len(ids) * 10
+    for offset, site in enumerate(others, start=1):
+        site.register_order = base + offset * 10
+
+    db.commit()
+    return SiteReorderOut(program=program_value, site_ids=ids)
+
+
 @router.post("", response_model=SiteOut, status_code=201)
 def create_site(payload: SiteCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"councils", "workflow", "geometry", "geometry_name", "linked_generic_moa_id", "custom_fields"})
@@ -198,6 +251,14 @@ def create_site(payload: SiteCreate, db: Session = Depends(get_db)):
             data[key] = data[key].strip() or None
     data["road_name"] = payload.road_name.strip()
     data["site_number"] = payload.site_number.strip()
+    if data.get("register_order") is None:
+        prog = data.get("program")
+        max_ord = (
+            db.query(func.max(Site.register_order))
+            .filter(_program_filter(prog), Site.archived.is_(False))
+            .scalar()
+        )
+        data["register_order"] = (max_ord or 0) + 10
     site = Site(**data, custom_fields=payload.custom_fields or {}, archived=False)
     db.add(site)
     db.flush()
