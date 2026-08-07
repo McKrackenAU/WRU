@@ -7,11 +7,16 @@ from sqlalchemy import inspect, text
 from .database import Base, engine
 from .models import (  # noqa: F401 — register metadata
     AppSettings,
+    AsphaltEstimate,
+    AsphaltRate,
+    AsphaltSubcontractor,
     CostEstimate,
     CostEstimateAttachment,
     CostSettings,
     CustomColumn,
     Document,
+    GanttBoard,
+    GanttItem,
     LabourRate,
     LookupItem,
     MapFeature,

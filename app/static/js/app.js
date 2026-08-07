@@ -22,7 +22,10 @@ const state = {
   highlightId: null,
   highlightHandled: false,
   activeTab: "overview",
+  selectedIds: new Set(),
 };
+
+const GANTT_DEFAULT_PROGRAM = "Lifecycle pavements";
 
 function setStatus(msg) {
   const el = $("statusLine");
@@ -158,6 +161,21 @@ function listBadge(list) {
   return `<span class="badge badge-muted">—</span>`;
 }
 
+function syncBulkBar() {
+  const bar = $("bulkBar");
+  const count = state.selectedIds.size;
+  if (bar) bar.hidden = count === 0;
+  const label = $("bulkCount");
+  if (label) label.textContent = `${count} selected`;
+  const all = $("selectAllVisible");
+  if (all) {
+    const visibleIds = state.sites.map((s) => s.id);
+    all.checked = visibleIds.length > 0 && visibleIds.every((id) => state.selectedIds.has(id));
+    all.indeterminate =
+      count > 0 && visibleIds.some((id) => state.selectedIds.has(id)) && !all.checked;
+  }
+}
+
 function siteRowHtml(site) {
   const m = site.metrics || {};
   const must = m.must_have_status || {};
@@ -170,7 +188,11 @@ function siteRowHtml(site) {
   const highlight = state.highlightId === site.id ? "row-highlight" : "";
   const councils = (site.councils || []).slice(0, 2).join(", ");
   const more = (site.councils || []).length > 2 ? ` +${site.councils.length - 2}` : "";
+  const checked = state.selectedIds.has(site.id) ? "checked" : "";
   return `<tr class="register-row ${highlight}" data-site-id="${site.id}" data-action="open" data-id="${site.id}">
+    <td class="select-col" onclick="event.stopPropagation()">
+      <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
+    </td>
     <td>
       <div class="site-title">${escapeHtml(site.road_name)}</div>
       <div class="site-meta">
@@ -189,9 +211,12 @@ function siteRowHtml(site) {
     <td class="mono"><span class="${mustBandClass(must.band)}">${mustDisplay || "—"}</span></td>
     <td>${listBadge(m.client_list)}</td>
     <td class="mono">${escapeHtml(site.moa_number || "—")}</td>
-    <td class="row-actions" onclick="event.stopPropagation()">
-      <button type="button" class="btn btn-primary btn-sm" data-action="open" data-id="${site.id}">Open</button>
-      <a class="btn btn-sm" href="/costs?site_id=${site.id}">Cost</a>
+    <td class="actions-col" onclick="event.stopPropagation()">
+      <div class="register-actions">
+        <button type="button" class="btn btn-primary btn-sm" data-action="open" data-id="${site.id}">Open</button>
+        <a class="btn btn-sm" href="/costs?site_id=${site.id}">Traffic</a>
+        <a class="btn btn-sm" href="/asphalt?site_id=${site.id}">Asphalt</a>
+      </div>
     </td>
   </tr>`;
 }
@@ -222,6 +247,7 @@ function renderRegister() {
   const head = `
     <thead>
       <tr>
+        <th class="select-col"></th>
         <th>Site</th>
         <th>Status</th>
         <th>Pri</th>
@@ -229,15 +255,22 @@ function renderRegister() {
         <th>Must-have</th>
         <th>List</th>
         <th>MoA</th>
-        <th></th>
+        <th class="actions-col"></th>
       </tr>
     </thead>`;
 
   root.innerHTML = order
     .map((program) => {
       const rows = groups.get(program) || [];
+      const ganttLink =
+        program === GANTT_DEFAULT_PROGRAM || program.toLowerCase().includes("lifecycle")
+          ? `<a class="btn btn-sm" href="/gantt?program=${encodeURIComponent(program)}">Gantt</a>`
+          : `<a class="btn btn-sm btn-quiet" href="/gantt?program=${encodeURIComponent(program)}">Enable Gantt</a>`;
       return `<section class="register-program">
-        <h2 class="register-program-title">${escapeHtml(program)} <span class="hint">${rows.length}</span></h2>
+        <div class="register-program-head">
+          <h2 class="register-program-title">${escapeHtml(program)} <span class="hint">${rows.length}</span></h2>
+          <div class="register-program-actions">${ganttLink}</div>
+        </div>
         <div class="register-table-wrap">
           <table class="register-table">
             ${head}
@@ -247,6 +280,7 @@ function renderRegister() {
       </section>`;
     })
     .join("");
+  syncBulkBar();
 }
 
 async function loadAll() {
@@ -625,7 +659,23 @@ async function archiveSite() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ financial_year: fy.trim() || null }),
   });
+  state.selectedIds.delete(Number(id));
   closeDrawer();
+  await loadAll();
+}
+
+async function bulkArchiveSelected() {
+  const ids = [...state.selectedIds];
+  if (!ids.length) return;
+  if (!confirm(`Archive ${ids.length} selected site${ids.length === 1 ? "" : "s"}?`)) return;
+  const fy = prompt("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
+  if (fy === null) return;
+  await api("/api/sites/bulk-archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ site_ids: ids, financial_year: fy.trim() || null }),
+  });
+  state.selectedIds.clear();
   await loadAll();
 }
 
@@ -830,7 +880,7 @@ function bindEvents() {
   on("siteForm", "change", scheduleAutosave);
 
   on("registerList", "click", (ev) => {
-    if (ev.target.closest("[data-status-select], .status-col")) return;
+    if (ev.target.closest("[data-status-select], .status-col, .select-col, .actions-col, a.btn")) return;
     const btn = ev.target.closest("[data-action='open']");
     if (!btn) return;
     const id = Number(btn.dataset.id);
@@ -839,10 +889,34 @@ function bindEvents() {
   });
 
   on("registerList", "change", (ev) => {
+    const box = ev.target.closest("[data-select-id]");
+    if (box) {
+      const id = Number(box.getAttribute("data-select-id"));
+      if (box.checked) state.selectedIds.add(id);
+      else state.selectedIds.delete(id);
+      syncBulkBar();
+      return;
+    }
     const sel = ev.target.closest("[data-status-select]");
     if (!sel) return;
     const id = sel.getAttribute("data-status-select");
     quickSetStatus(id, sel.value, sel).catch((e) => alert(e.message));
+  });
+
+  on("selectAllVisible", "change", (ev) => {
+    const on = !!ev.target.checked;
+    for (const site of state.sites) {
+      if (on) state.selectedIds.add(site.id);
+      else state.selectedIds.delete(site.id);
+    }
+    renderRegister();
+  });
+  on("btnClearSelection", "click", () => {
+    state.selectedIds.clear();
+    renderRegister();
+  });
+  on("btnBulkArchive", "click", () => {
+    bulkArchiveSelected().catch((e) => alert(e.message || String(e)));
   });
 
   on("columnList", "click", async (ev) => {

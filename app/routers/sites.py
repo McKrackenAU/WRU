@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import get_db
 from ..financial_year import australian_financial_year
 from ..models import MapFeature, MapLayer, Site, SiteCouncil
-from ..schemas import SiteArchiveRequest, SiteCreate, SiteOut, SiteUpdate
+from ..schemas import (
+    SiteArchiveRequest,
+    SiteBulkArchiveOut,
+    SiteBulkArchiveRequest,
+    SiteCreate,
+    SiteOut,
+    SiteUpdate,
+)
 from ..services import (
     apply_generic_moa_link,
     apply_workflow,
@@ -158,6 +165,28 @@ def list_generic_moas(db: Session = Depends(get_db)):
         .all()
     )
     return [site_to_dict(s, db=db) for s in sites]
+
+
+@router.post("/bulk-archive", response_model=SiteBulkArchiveOut)
+def bulk_archive_sites(payload: SiteBulkArchiveRequest, db: Session = Depends(get_db)):
+    ids = sorted({int(i) for i in payload.site_ids if int(i) > 0})
+    if not ids:
+        raise HTTPException(status_code=400, detail="No site ids provided")
+    sites = db.query(Site).filter(Site.id.in_(ids), Site.archived.is_(False)).all()
+    if not sites:
+        raise HTTPException(status_code=404, detail="No matching active sites found")
+    now = datetime.now(timezone.utc)
+    archived_ids: list[int] = []
+    fy_used: str | None = (payload.financial_year or "").strip() or None
+    for site in sites:
+        fy = fy_used or infer_financial_year(site)
+        site.archived = True
+        site.archived_at = now
+        site.archived_fy = fy
+        site.financial_year = site.financial_year or fy
+        archived_ids.append(site.id)
+    db.commit()
+    return SiteBulkArchiveOut(archived=len(archived_ids), site_ids=archived_ids, financial_year=fy_used)
 
 
 @router.post("", response_model=SiteOut, status_code=201)

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Asphalt costs · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Asphalt costs</h1>
+          <p>Build asphalt estimates from subcontractor rate cards — separate from traffic management costing.</p>
+        </div>
+        <div class="toolbar">
+          <a class="btn" href="/admin/asphalt">Edit subcontractors / rates</a>
+          <a class="btn" href="/costs">Traffic costs</a>
+        </div>
+      </div>
+
+      <section class="panel-card form-grid">
+        <label>
+          Site
+          <select id="siteSelect" required></select>
+        </label>
+        <label>
+          Subcontractor
+          <select id="subSelect"></select>
+        </label>
+        <label>
+          Shift / rate tier
+          <select id="shiftType">
+            <option value="day">Day</option>
+            <option value="night">Night</option>
+          </select>
+        </label>
+        <label>
+          Contingency %
+          <input id="contingency" type="number" min="0" step="0.5" value="0" />
+        </label>
+        <label class="full">
+          Estimate name
+          <input id="estimateName" placeholder="e.g. Dynon Rd asphalt package" />
+        </label>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <div class="page-head" style="margin:0 0 0.75rem;padding:0">
+          <h2 style="margin:0;font-size:1.05rem">Line items</h2>
+          <button type="button" class="btn btn-primary" id="btnAddLine">Add line</button>
+        </div>
+        <div id="linesWrap"></div>
+        <div class="toolbar" style="margin-top:0.85rem">
+          <button type="button" class="btn btn-primary" id="btnCalculate">Calculate</button>
+          <button type="button" class="btn" id="btnSave" disabled>Save estimate</button>
+        </div>
+        <div id="resultBox" class="asphalt-result" hidden></div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2 style="margin-top:0">Saved estimates</h2>
+        <div id="historyList"><p class="hint">Select a site to load history.</p></div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/asphalt.js"></script>
+</body>
+</html>

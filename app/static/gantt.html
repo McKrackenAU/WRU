@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Works Gantt · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Works Gantt</h1>
+          <p>Reorder sites to cascade start dates reactively — public holidays and subcontractor RDOs are applied automatically.</p>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="btn" id="btnSyncSites">Sync program sites</button>
+          <button type="button" class="btn btn-primary" id="btnSaveBoard">Save board settings</button>
+        </div>
+      </div>
+
+      <section class="panel-card form-grid">
+        <label>
+          Program
+          <select id="programSelect"></select>
+        </label>
+        <label>
+          Anchor start
+          <input id="anchorStart" type="date" />
+        </label>
+        <label>
+          Skip public holidays
+          <select id="skipPh">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </label>
+        <label>
+          Skip Sunday before Monday PH
+          <select id="skipSun">
+            <option value="1">Yes</option>
+            <option value="0">No</option>
+          </select>
+        </label>
+        <label class="full">
+          Board RDO dates <span class="hint">(comma-separated ISO)</span>
+          <input id="boardRdos" placeholder="2026-08-04, 2026-09-01" />
+        </label>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <div class="page-head" style="margin:0 0 0.75rem;padding:0">
+          <h2 style="margin:0;font-size:1.05rem">Sequence</h2>
+          <span class="hint" id="ganttHint">Drag rows to reorder</span>
+        </div>
+        <div id="ganttList"><p class="hint">Loading…</p></div>
+        <div class="gantt-chart" id="ganttChart" hidden></div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>Add site to sequence</h2>
+        <form class="form-grid" id="addItemForm">
+          <label>Site <select id="addSite" required></select></label>
+          <label>Shifts <input id="addShifts" type="number" min="1" value="1" required /></label>
+          <label>Subcontractor <select id="addSub"><option value="">Board calendar</option></select></label>
+          <div class="full"><button type="submit" class="btn btn-primary">Add to Gantt</button></div>
+        </form>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/gantt.js"></script>
+</body>
+</html>

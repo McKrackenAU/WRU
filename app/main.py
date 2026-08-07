@@ -25,12 +25,14 @@ from .financial_year import fy_choices
 from .migrate import run_migrations
 from .models import DOC_CATEGORIES, LookupItem, Site, SiteCouncil, User
 from .routers import (
+    asphalt,
     auth as auth_router,
     columns,
     costs,
     dashboard,
     documents,
     export,
+    gantt,
     import_tracker,
     map_layers,
     settings_admin,
@@ -69,6 +71,8 @@ app.include_router(dashboard.router)
 app.include_router(export.router)
 app.include_router(map_layers.router)
 app.include_router(costs.router)
+app.include_router(asphalt.router)
+app.include_router(gantt.router)
 app.include_router(stages.router)
 app.include_router(settings_admin.router)
 app.include_router(import_tracker.router)
@@ -280,6 +284,16 @@ def costs_page():
     return _page("costs.html")
 
 
+@app.get("/asphalt")
+def asphalt_page():
+    return _page("asphalt.html")
+
+
+@app.get("/gantt")
+def gantt_page():
+    return _page("gantt.html")
+
+
 # —— Admin console (separate shell from day-to-day tracker) ——
 @app.get("/admin")
 def admin_home(_: User = Depends(require_admin)):
@@ -299,6 +313,11 @@ def admin_settings_page(_: User = Depends(require_admin)):
 @app.get("/admin/rates")
 def admin_rates_page(_: User = Depends(require_admin)):
     return _page("rates.html")
+
+
+@app.get("/admin/asphalt")
+def admin_asphalt_page(_: User = Depends(require_admin)):
+    return _page("asphalt-rates.html")
 
 
 @app.get("/admin/system")

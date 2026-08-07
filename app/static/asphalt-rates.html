@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Asphalt rates · WRU Admin</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Asphalt subcontractors &amp; rates</h1>
+          <p>Unit rates and RDO calendars used by asphalt costing and the works Gantt.</p>
+        </div>
+      </div>
+
+      <section class="panel-card">
+        <h2>Add subcontractor</h2>
+        <form class="form-grid" id="subForm">
+          <label>Name <input id="subName" required maxlength="128" /></label>
+          <label>Notes <input id="subNotes" maxlength="255" /></label>
+          <label class="full">RDO dates <span class="hint">(ISO dates, comma-separated)</span>
+            <input id="subRdos" placeholder="2026-08-04, 2026-09-01" />
+          </label>
+          <div class="full"><button class="btn btn-primary" type="submit">Add subcontractor</button></div>
+        </form>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>Subcontractors</h2>
+        <div id="subList"><p class="hint">Loading…</p></div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>Add rate</h2>
+        <form class="form-grid" id="rateForm">
+          <label>Subcontractor
+            <select id="rateSub" required></select>
+          </label>
+          <label>Name <input id="rateName" required maxlength="128" /></label>
+          <label>Unit
+            <select id="rateUnit">
+              <option value="m2">m²</option>
+              <option value="tonne">tonne</option>
+              <option value="lm">lm</option>
+              <option value="shift">shift</option>
+              <option value="day">day</option>
+              <option value="lump">lump</option>
+            </select>
+          </label>
+          <label>Day rate <input id="rateDay" type="number" min="0" step="0.01" value="0" /></label>
+          <label>Night rate <input id="rateNight" type="number" min="0" step="0.01" value="0" /></label>
+          <label>Saturday <input id="rateSat" type="number" min="0" step="0.01" value="0" /></label>
+          <label>Sunday <input id="rateSun" type="number" min="0" step="0.01" value="0" /></label>
+          <label>Public holiday <input id="ratePh" type="number" min="0" step="0.01" value="0" /></label>
+          <div class="full"><button class="btn btn-primary" type="submit">Add rate</button></div>
+        </form>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>Rates</h2>
+        <div id="rateList"><p class="hint">Loading…</p></div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/asphalt-rates.js"></script>
+</body>
+</html>

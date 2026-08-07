@@ -160,6 +160,17 @@ class SiteArchiveRequest(BaseModel):
     financial_year: str | None = None
 
 
+class SiteBulkArchiveRequest(BaseModel):
+    site_ids: list[int] = Field(min_length=1)
+    financial_year: str | None = None
+
+
+class SiteBulkArchiveOut(BaseModel):
+    archived: int
+    site_ids: list[int]
+    financial_year: str | None = None
+
+
 class SiteOut(SiteBase):
     model_config = ConfigDict(from_attributes=True)
 

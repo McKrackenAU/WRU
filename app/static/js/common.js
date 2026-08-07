@@ -163,7 +163,9 @@ export const OPS_NAV = [
   { href: "/", label: "Sites", hint: "TGS / MoA register" },
   { href: "/lists", label: "Client lists", hint: "Permits & TRIMS" },
   { href: "/tracking", label: "Tracking", hint: "Activity log" },
-  { href: "/costs", label: "Costs", hint: "Estimates" },
+  { href: "/costs", label: "Traffic costs", hint: "TM estimates" },
+  { href: "/asphalt", label: "Asphalt costs", hint: "Subcontractor rates" },
+  { href: "/gantt", label: "Gantt", hint: "Works sequence" },
   { href: "/documents", label: "Documents", hint: "Files" },
   { href: "/map", label: "Map", hint: "Site markups" },
   { href: "/archive", label: "Archive", hint: "Completed jobs" },
@@ -175,7 +177,8 @@ export const ADMIN_NAV = [
   { href: "/admin/users", label: "Users", hint: "Logins & roles" },
   { href: "/admin/stages", label: "Stages & programs", hint: "Workflow" },
   { href: "/admin/settings", label: "Rules & import", hint: "SLAs · spreadsheet" },
-  { href: "/admin/rates", label: "Rates", hint: "Crew & allowances" },
+  { href: "/admin/rates", label: "Traffic rates", hint: "Crew & allowances" },
+  { href: "/admin/asphalt", label: "Asphalt rates", hint: "Subcontractors" },
   { href: "/admin/system", label: "System & updates", hint: "Version · GitHub" },
 ];
 

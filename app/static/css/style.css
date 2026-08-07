@@ -1070,14 +1070,83 @@ html.dark .data-table th {
 }
 
 .row-actions {
-  display: flex;
-  gap: 0.3rem;
+  white-space: nowrap;
 }
 
 .row-actions .btn {
   padding: 0.28rem 0.5rem;
   font-size: 0.75rem;
   min-height: 0;
+}
+
+.register-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.register-actions .btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.75rem;
+  min-height: 0;
+  line-height: 1.2;
+}
+
+.register-table td.actions-col,
+.register-table th.actions-col {
+  border-left: none;
+  white-space: nowrap;
+}
+
+.register-table td.select-col,
+.register-table th.select-col {
+  width: 2.25rem;
+  text-align: center;
+  padding-left: 0.65rem;
+  padding-right: 0.35rem;
+}
+
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 0.85rem;
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--ventia-green) 8%, var(--panel));
+}
+
+.bulk-count {
+  font-size: 0.85rem;
+  color: var(--ventia-muted);
+  margin-right: auto;
+}
+
+.register-program-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: color-mix(in srgb, var(--ventia-border) 28%, var(--panel));
+  border-bottom: 1px solid var(--ventia-border);
+}
+
+.register-program-head .register-program-title {
+  border-bottom: none;
+  flex: 1;
+}
+
+.register-program-actions {
+  padding-right: 0.75rem;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.btn-quiet {
+  opacity: 0.85;
 }
 
 .foot-note {
@@ -1902,8 +1971,8 @@ html.dark .leaflet-control-scale-line {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--ventia-ink);
-  background: color-mix(in srgb, var(--ventia-border) 28%, var(--panel));
-  border-bottom: 1px solid var(--ventia-border);
+  background: transparent;
+  border-bottom: none;
   border-left: 3px solid var(--ventia-green-mid);
   display: flex;
   align-items: baseline;
@@ -2307,4 +2376,120 @@ body.drawer-open {
   border-radius: calc(var(--radius) - 0.15rem);
   padding: 0.65rem 0.75rem;
   font-size: 0.9rem;
+}
+
+/* —— Asphalt / Gantt —— */
+.asphalt-result {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ventia-border);
+}
+
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.plain-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--ventia-border);
+}
+
+.gantt-sequence {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.gantt-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto auto auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: grab;
+}
+
+.gantt-item.dragging {
+  opacity: 0.55;
+}
+
+.gantt-item-handle {
+  color: var(--ventia-muted);
+  font-size: 0.85rem;
+  letter-spacing: -0.08em;
+  user-select: none;
+}
+
+.gantt-shifts input,
+.gantt-sub select {
+  min-height: 2.2rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.45rem;
+  background: var(--field-bg);
+  color: inherit;
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+}
+
+.gantt-shifts input { width: 4.5rem; }
+.gantt-sub select { max-width: 9rem; }
+
+.gantt-chart {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.gantt-row-bar {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 1fr;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.gantt-row-label {
+  font-size: 0.8rem;
+  color: var(--ventia-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gantt-track {
+  position: relative;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ventia-border) 55%, transparent);
+  overflow: hidden;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ventia-green-mid) 80%, #1f2933);
+}
+
+html.dark .gantt-bar {
+  background: color-mix(in srgb, var(--ventia-green) 70%, #0a0c0e);
+}
+
+@media (max-width: 900px) {
+  .gantt-item {
+    grid-template-columns: auto 1fr;
+  }
+  .gantt-row-bar {
+    grid-template-columns: 1fr;
+  }
 }

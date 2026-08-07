@@ -426,3 +426,141 @@ class CostEstimateAttachment(Base):
     )
 
     estimate: Mapped[CostEstimate] = relationship(back_populates="attachments")
+
+
+class AsphaltSubcontractor(Base):
+    """Asphalt crew / subcontractor with optional RDO calendar."""
+
+    __tablename__ = "asphalt_subcontractors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Python weekday ints 0=Mon … 6=Sun (default Mon–Fri)
+    work_weekdays: Mapped[list] = mapped_column(JSON, nullable=False, default=lambda: [0, 1, 2, 3, 4])
+    # ISO date strings for standing RDOs for this subcontractor
+    rdo_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    skip_public_holidays: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    skip_sunday_before_monday_ph: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    rates: Mapped[list[AsphaltRate]] = relationship(
+        back_populates="subcontractor", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class AsphaltRate(Base):
+    """Unit rate card for an asphalt subcontractor."""
+
+    __tablename__ = "asphalt_rates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subcontractor_id: Mapped[int] = mapped_column(
+        ForeignKey("asphalt_subcontractors.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    unit: Mapped[str] = mapped_column(String(32), nullable=False, default="m2")  # m2|tonne|lm|shift|day|lump
+    day_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    night_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    saturday_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sunday_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    public_holiday_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    subcontractor: Mapped[AsphaltSubcontractor] = relationship(back_populates="rates")
+
+
+class AsphaltEstimate(Base):
+    """Saved asphalt cost estimate linked to a site."""
+
+    __tablename__ = "asphalt_estimates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    subcontractor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("asphalt_subcontractors.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    results: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class GanttBoard(Base):
+    """Program-level works sequence / Gantt settings."""
+
+    __tablename__ = "gantt_boards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    program: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    anchor_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    work_weekdays: Mapped[list] = mapped_column(JSON, nullable=False, default=lambda: [0, 1, 2, 3, 4])
+    skip_public_holidays: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    skip_sunday_before_monday_ph: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Board-level RDO / exclude / include ISO dates
+    rdo_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    exclude_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    include_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    items: Mapped[list[GanttItem]] = relationship(
+        back_populates="board", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class GanttItem(Base):
+    """One site bar on a program Gantt — order drives reactive dates."""
+
+    __tablename__ = "gantt_items"
+    __table_args__ = (UniqueConstraint("board_id", "site_id", name="uq_gantt_board_site"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    board_id: Mapped[int] = mapped_column(
+        ForeignKey("gantt_boards.id", ondelete="CASCADE"), index=True
+    )
+    site_id: Mapped[int] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    shifts_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # after_previous | fixed_start
+    link_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="after_previous")
+    fixed_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subcontractor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("asphalt_subcontractors.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    planned_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    planned_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Item-level date overrides (ISO strings)
+    rdo_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    exclude_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    include_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    board: Mapped[GanttBoard] = relationship(back_populates="items")
+    site: Mapped[Site] = relationship(lazy="selectin")
+    subcontractor: Mapped[AsphaltSubcontractor | None] = relationship(lazy="selectin")

@@ -61,6 +61,16 @@
         </select>
       </div>
 
+      <div class="bulk-bar" id="bulkBar" hidden>
+        <label class="inline-check">
+          <input type="checkbox" id="selectAllVisible" />
+          Select all visible
+        </label>
+        <span class="bulk-count" id="bulkCount">0 selected</span>
+        <button type="button" class="btn" id="btnClearSelection">Clear</button>
+        <button type="button" class="btn btn-primary" id="btnBulkArchive">Archive selected</button>
+      </div>
+
       <div class="register-layout">
         <div class="register-list panel-card" id="registerList">
           <p class="hint" style="padding:1rem">Loading…</p>
