@@ -258,7 +258,13 @@ def patch_item(
     for key, value in data.items():
         setattr(item, key, value)
     db.commit()
-    return _recompute_and_save(db, board)
+    cascading = (
+        db.query(GanttItem)
+        .filter(GanttItem.board_id == board.id, GanttItem.link_mode == "after_previous")
+        .count()
+        > 0
+    )
+    return _recompute_and_save(db, board, write_back_sites=cascading)
 
 
 @router.post("/board/reorder")
