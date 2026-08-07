@@ -126,6 +126,33 @@
           <button type="button" class="btn btn-primary" id="btnAddRate">Add rate</button>
         </div>
       </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>Traffic contractors</h2>
+        <p class="hint">TM companies used on the Gantt (traffic filter / PDF export) and Actual spend tracking.</p>
+        <div class="table-card" style="box-shadow:none">
+          <div class="table-scroll" style="max-height:none">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Notes</th>
+                  <th>Active</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="trafficBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="form-grid" style="margin-top:1rem">
+          <label>Name<input id="tName" maxlength="128" placeholder="e.g. Acme Traffic" /></label>
+          <label class="full">Notes<input id="tNotes" maxlength="255" /></label>
+        </div>
+        <div class="toolbar" style="margin-top:0.85rem">
+          <button type="button" class="btn btn-primary" id="btnAddTraffic">Add traffic contractor</button>
+        </div>
+      </section>
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>

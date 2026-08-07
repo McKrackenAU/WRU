@@ -260,4 +260,7 @@ def is_admin_path(path: str, method: str = "GET") -> bool:
         if path.startswith("/api/asphalt/subcontractors") or path.startswith("/api/asphalt/rates"):
             # GET is open to ops; mutating asphalt rate cards is admin-only
             return True
+        if path.startswith("/api/traffic-contractors"):
+            # GET is open to ops; mutating traffic contractors is admin-only
+            return True
     return False

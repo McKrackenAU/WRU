@@ -5,12 +5,14 @@ from __future__ import annotations
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..gantt_engine import recompute_board_dates
-from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site
+from ..gantt_export import build_gantt_pdf
+from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site, TrafficContractor
 from ..services import sync_computed_fields
 
 router = APIRouter(prefix="/api/gantt", tags=["gantt"])
@@ -35,6 +37,7 @@ class ItemIn(BaseModel):
     link_mode: str = Field(default="after_previous", pattern="^(after_previous|fixed_start)$")
     fixed_start: date | None = None
     subcontractor_id: int | None = None
+    traffic_contractor_id: int | None = None
     rdo_dates: list[str] = Field(default_factory=list)
     exclude_dates: list[str] = Field(default_factory=list)
     include_dates: list[str] = Field(default_factory=list)
@@ -47,6 +50,7 @@ class ItemPatch(BaseModel):
     link_mode: str | None = Field(default=None, pattern="^(after_previous|fixed_start)$")
     fixed_start: date | None = None
     subcontractor_id: int | None = None
+    traffic_contractor_id: int | None = None
     rdo_dates: list[str] | None = None
     exclude_dates: list[str] | None = None
     include_dates: list[str] | None = None
@@ -92,7 +96,11 @@ def _load_board(db: Session, program: str) -> GanttBoard:
 def _recompute_and_save(db: Session, board: GanttBoard, *, write_back_sites: bool = False) -> dict:
     items = (
         db.query(GanttItem)
-        .options(selectinload(GanttItem.site), selectinload(GanttItem.subcontractor))
+        .options(
+            selectinload(GanttItem.site),
+            selectinload(GanttItem.subcontractor),
+            selectinload(GanttItem.traffic_contractor),
+        )
         .filter(GanttItem.board_id == board.id)
         .order_by(GanttItem.position.asc(), GanttItem.id.asc())
         .all()
@@ -209,6 +217,8 @@ def add_item(
         raise HTTPException(status_code=400, detail="Site is already on this Gantt")
     if payload.subcontractor_id and not db.get(AsphaltSubcontractor, payload.subcontractor_id):
         raise HTTPException(status_code=404, detail="Subcontractor not found")
+    if payload.traffic_contractor_id and not db.get(TrafficContractor, payload.traffic_contractor_id):
+        raise HTTPException(status_code=404, detail="Traffic contractor not found")
     max_pos = (
         db.query(GanttItem.position)
         .filter(GanttItem.board_id == board.id)
@@ -230,6 +240,7 @@ def add_item(
         link_mode=link_mode,
         fixed_start=fixed if link_mode == "fixed_start" else payload.fixed_start,
         subcontractor_id=payload.subcontractor_id,
+        traffic_contractor_id=payload.traffic_contractor_id,
         rdo_dates=payload.rdo_dates or [],
         exclude_dates=payload.exclude_dates or [],
         include_dates=payload.include_dates or [],
@@ -255,6 +266,9 @@ def patch_item(
     if "subcontractor_id" in data and data["subcontractor_id"] is not None:
         if not db.get(AsphaltSubcontractor, data["subcontractor_id"]):
             raise HTTPException(status_code=404, detail="Subcontractor not found")
+    if "traffic_contractor_id" in data and data["traffic_contractor_id"] is not None:
+        if not db.get(TrafficContractor, data["traffic_contractor_id"]):
+            raise HTTPException(status_code=404, detail="Traffic contractor not found")
     for key, value in data.items():
         setattr(item, key, value)
     db.commit()
@@ -335,3 +349,38 @@ def sync_program_sites(
     out = _recompute_and_save(db, board, write_back_sites=False)
     out["synced_added"] = added
     return out
+
+
+@router.get("/board/export.pdf")
+def export_board_pdf(
+    program: str = Query(default=DEFAULT_GANTT_PROGRAM),
+    subcontractor_id: int | None = Query(default=None),
+    traffic_contractor_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """MS Project–style landscape Gantt PDF (whole board or by contractor)."""
+    board = _load_board(db, program)
+    _auto_populate_board(db, board)
+    payload = _recompute_and_save(db, board, write_back_sites=False)
+    items = list(payload.get("items") or [])
+    filter_bits: list[str] = []
+    if subcontractor_id:
+        sub = db.get(AsphaltSubcontractor, subcontractor_id)
+        if not sub:
+            raise HTTPException(status_code=404, detail="Asphalt subcontractor not found")
+        items = [i for i in items if i.get("subcontractor_id") == subcontractor_id]
+        filter_bits.append(f"Asphalt: {sub.name}")
+    if traffic_contractor_id:
+        traffic = db.get(TrafficContractor, traffic_contractor_id)
+        if not traffic:
+            raise HTTPException(status_code=404, detail="Traffic contractor not found")
+        items = [i for i in items if i.get("traffic_contractor_id") == traffic_contractor_id]
+        filter_bits.append(f"Traffic: {traffic.name}")
+    payload = {**payload, "items": items}
+    pdf = build_gantt_pdf(payload, filter_label=" · ".join(filter_bits) if filter_bits else None)
+    safe_prog = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in (program or "gantt"))[:48]
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="gantt-{safe_prog}.pdf"'},
+    )

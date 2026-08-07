@@ -31,6 +31,7 @@
         <div class="toolbar">
           <button type="button" class="btn" id="btnSyncSites">Refresh from sites</button>
           <button type="button" class="btn btn-primary" id="btnSaveBoard">Save calendar settings</button>
+          <a class="btn btn-primary" id="btnExportPdf" href="#">Export PDF</a>
         </div>
       </div>
 
@@ -38,6 +39,18 @@
         <label>
           Program
           <select id="programSelect"></select>
+        </label>
+        <label>
+          PDF asphalt filter
+          <select id="pdfAsphaltFilter">
+            <option value="">Whole board</option>
+          </select>
+        </label>
+        <label>
+          PDF traffic filter
+          <select id="pdfTrafficFilter">
+            <option value="">Whole board</option>
+          </select>
         </label>
         <label>
           Anchor start <span class="hint">(used after reorder)</span>
@@ -75,7 +88,7 @@
 
       <section class="panel-card" style="margin-top:1rem">
         <div class="page-head" style="margin:0 0 0.75rem;padding:0">
-          <h2 style="margin:0;font-size:1.05rem">Shifts &amp; subcontractors</h2>
+          <h2 style="margin:0;font-size:1.05rem">Shifts &amp; contractors</h2>
         </div>
         <div id="ganttList"><p class="hint">Loading…</p></div>
       </section>
@@ -85,7 +98,8 @@
         <form class="form-grid" id="addItemForm">
           <label>Site <select id="addSite" required></select></label>
           <label>Shifts <input id="addShifts" type="number" min="1" value="1" required /></label>
-          <label>Subcontractor <select id="addSub"><option value="">Board calendar</option></select></label>
+          <label>Asphalt subcontractor <select id="addSub"><option value="">Board calendar</option></select></label>
+          <label>Traffic contractor <select id="addTraffic"><option value="">None</option></select></label>
           <div class="full"><button type="submit" class="btn btn-primary">Add to Gantt</button></div>
         </form>
       </section>

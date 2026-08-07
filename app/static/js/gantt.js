@@ -6,6 +6,7 @@ const state = {
   board: null,
   sites: [],
   subcontractors: [],
+  trafficContractors: [],
   dragId: null,
 };
 
@@ -50,6 +51,54 @@ function fillAddControls() {
       .filter((s) => s.active)
       .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
       .join("");
+  if ($("addTraffic")) {
+    $("addTraffic").innerHTML =
+      `<option value="">None</option>` +
+      state.trafficContractors
+        .filter((s) => s.active)
+        .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
+        .join("");
+  }
+  fillPdfFilters();
+}
+
+function fillPdfFilters() {
+  const asphalt = $("pdfAsphaltFilter");
+  const traffic = $("pdfTrafficFilter");
+  if (asphalt) {
+    const cur = asphalt.value;
+    asphalt.innerHTML =
+      `<option value="">Whole board</option>` +
+      state.subcontractors
+        .filter((s) => s.active)
+        .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
+        .join("");
+    asphalt.value = cur;
+  }
+  if (traffic) {
+    const cur = traffic.value;
+    traffic.innerHTML =
+      `<option value="">Whole board</option>` +
+      state.trafficContractors
+        .filter((s) => s.active)
+        .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
+        .join("");
+    traffic.value = cur;
+  }
+}
+
+function pdfExportHref() {
+  const params = new URLSearchParams({ program: program() });
+  const asphalt = $("pdfAsphaltFilter")?.value || "";
+  const traffic = $("pdfTrafficFilter")?.value || "";
+  if (asphalt) params.set("subcontractor_id", asphalt);
+  if (traffic) params.set("traffic_contractor_id", traffic);
+  return `/api/gantt/board/export.pdf?${params}`;
+}
+
+function syncPdfLink() {
+  const btn = $("btnExportPdf");
+  if (btn) btn.href = pdfExportHref();
 }
 
 function applyBoardForm() {
@@ -146,7 +195,8 @@ function renderItems() {
           <div class="site-title">${idx + 1}. ${escapeHtml(item.site_road_name || "Site")}</div>
           <div class="site-meta mono">${escapeHtml(item.site_number || "")}
             · ${fmtDate(item.planned_start) || "—"} → ${fmtDate(item.planned_end) || "—"}
-            ${item.subcontractor_name ? ` · ${escapeHtml(item.subcontractor_name)}` : ""}
+            ${item.subcontractor_name ? ` · asphalt ${escapeHtml(item.subcontractor_name)}` : ""}
+            ${item.traffic_contractor_name ? ` · traffic ${escapeHtml(item.traffic_contractor_name)}` : ""}
             ${item.link_mode === "fixed_start" ? " · indicative" : " · cascaded"}
             ${item.error ? ` · <span class="must-have late">${escapeHtml(item.error)}</span>` : ""}
           </div>
@@ -154,7 +204,7 @@ function renderItems() {
         <label class="gantt-shifts">Shifts
           <input type="number" min="1" value="${item.shifts_count}" data-shifts="${item.id}" />
         </label>
-        <label class="gantt-sub">Sub
+        <label class="gantt-sub">Asphalt
           <select data-sub="${item.id}">
             <option value="">Board</option>
             ${state.subcontractors
@@ -163,6 +213,20 @@ function renderItems() {
                 (s) =>
                   `<option value="${s.id}" ${
                     item.subcontractor_id === s.id ? "selected" : ""
+                  }>${escapeHtml(s.name)}</option>`
+              )
+              .join("")}
+          </select>
+        </label>
+        <label class="gantt-sub">Traffic
+          <select data-traffic="${item.id}">
+            <option value="">None</option>
+            ${state.trafficContractors
+              .filter((s) => s.active)
+              .map(
+                (s) =>
+                  `<option value="${s.id}" ${
+                    item.traffic_contractor_id === s.id ? "selected" : ""
                   }>${escapeHtml(s.name)}</option>`
               )
               .join("")}
@@ -181,6 +245,7 @@ async function loadBoard() {
   applyBoardForm();
   fillAddControls();
   renderItems();
+  syncPdfLink();
   const cascading = (state.board.items || []).some((i) => i.link_mode === "after_previous");
   $("ganttHint").textContent = cascading
     ? "Drag bars to reorder — dates cascade from the top site"
@@ -218,15 +283,19 @@ async function init() {
   await injectChrome({ active: "/gantt", mode: "ops" });
   const params = new URLSearchParams(location.search);
   const prog = params.get("program") || DEFAULT_PROGRAM;
-  const [meta, sites, subs] = await Promise.all([
+  const [meta, sites, subs, traffic] = await Promise.all([
     api("/api/meta"),
     api("/api/sites?archived=false"),
     api("/api/asphalt/subcontractors?active_only=true"),
+    api("/api/traffic-contractors?active_only=true").catch(() => []),
   ]);
   state.meta = meta;
   state.sites = sites;
   state.subcontractors = subs;
+  state.trafficContractors = Array.isArray(traffic) ? traffic : [];
   fillPrograms(prog);
+  fillPdfFilters();
+  syncPdfLink();
   await loadBoard();
 
   on("programSelect", "change", () => {
@@ -235,6 +304,8 @@ async function init() {
     history.replaceState({}, "", url);
     loadBoard().catch((e) => alert(e.message));
   });
+  on("pdfAsphaltFilter", "change", syncPdfLink);
+  on("pdfTrafficFilter", "change", syncPdfLink);
   on("btnSaveBoard", "click", () => saveBoard().catch((e) => alert(e.message)));
   on("btnSyncSites", "click", async () => {
     state.board = await api(
@@ -244,6 +315,7 @@ async function init() {
     applyBoardForm();
     fillAddControls();
     renderItems();
+    syncPdfLink();
   });
   on("addItemForm", "submit", async (e) => {
     e.preventDefault();
@@ -256,10 +328,12 @@ async function init() {
         site_id: siteId,
         shifts_count: Number($("addShifts").value || 1),
         subcontractor_id: Number($("addSub").value || 0) || null,
+        traffic_contractor_id: Number($("addTraffic")?.value || 0) || null,
       }),
     });
     fillAddControls();
     renderItems();
+    syncPdfLink();
   });
   on("ganttList", "click", async (ev) => {
     const rm = ev.target.closest("[data-rm]");
@@ -271,10 +345,12 @@ async function init() {
     );
     fillAddControls();
     renderItems();
+    syncPdfLink();
   });
   on("ganttList", "change", async (ev) => {
     const shifts = ev.target.closest("[data-shifts]");
     const sub = ev.target.closest("[data-sub]");
+    const trafficSel = ev.target.closest("[data-traffic]");
     if (shifts) {
       state.board = await api(
         `/api/gantt/board/items/${shifts.dataset.shifts}?program=${encodeURIComponent(program())}`,
@@ -294,6 +370,17 @@ async function init() {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ subcontractor_id: Number(sub.value || 0) || null }),
+        }
+      );
+      renderItems();
+    }
+    if (trafficSel) {
+      state.board = await api(
+        `/api/gantt/board/items/${trafficSel.dataset.traffic}?program=${encodeURIComponent(program())}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ traffic_contractor_id: Number(trafficSel.value || 0) || null }),
         }
       );
       renderItems();

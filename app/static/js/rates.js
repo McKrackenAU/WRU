@@ -114,15 +114,83 @@ function syncNewKind() {
   }
 }
 
+async function loadTrafficContractors() {
+  const rows = await api("/api/traffic-contractors");
+  $("trafficBody").innerHTML = rows.length
+    ? rows
+        .map(
+          (r) => `<tr data-id="${r.id}">
+      <td><input data-f="name" value="${escapeHtml(r.name)}" /></td>
+      <td><input data-f="notes" value="${escapeHtml(r.notes || "")}" /></td>
+      <td><input data-f="active" type="checkbox" ${r.active ? "checked" : ""} /></td>
+      <td>
+        <div class="row-actions">
+          <button type="button" class="btn" data-save-traffic="${r.id}">Save</button>
+          <button type="button" class="btn btn-danger" data-del-traffic="${r.id}">Deactivate</button>
+        </div>
+      </td>
+    </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="4"><span class="hint">No traffic contractors yet.</span></td></tr>`;
+}
+
 async function init() {
   injectChrome({ active: "/admin/rates", mode: "admin" });
   await loadSettings();
   await loadRates();
+  await loadTrafficContractors();
 
   $("btnSaveSettings").addEventListener("click", () =>
     saveSettings().catch((e) => alert(e.message))
   );
   $("rKind").addEventListener("change", syncNewKind);
+
+  $("btnAddTraffic").addEventListener("click", async () => {
+    try {
+      await api("/api/traffic-contractors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: $("tName").value.trim(),
+          notes: $("tNotes").value.trim() || null,
+          active: true,
+        }),
+      });
+      $("tName").value = "";
+      $("tNotes").value = "";
+      await loadTrafficContractors();
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+
+  $("trafficBody").addEventListener("click", async (ev) => {
+    const save = ev.target.closest("[data-save-traffic]");
+    const del = ev.target.closest("[data-del-traffic]");
+    try {
+      if (save) {
+        const tr = save.closest("tr");
+        await api(`/api/traffic-contractors/${save.dataset.saveTraffic}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: tr.querySelector('[data-f="name"]').value.trim(),
+            notes: tr.querySelector('[data-f="notes"]').value.trim() || null,
+            active: tr.querySelector('[data-f="active"]').checked,
+          }),
+        });
+        await loadTrafficContractors();
+      }
+      if (del) {
+        if (!confirm("Deactivate this traffic contractor?")) return;
+        await api(`/api/traffic-contractors/${del.dataset.delTraffic}`, { method: "DELETE" });
+        await loadTrafficContractors();
+      }
+    } catch (e) {
+      alert(e.message);
+    }
+  });
 
   $("btnAddRate").addEventListener("click", async () => {
     try {

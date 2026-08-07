@@ -37,6 +37,7 @@ from .routers import (
     map_layers,
     settings_admin,
     sites,
+    spend,
     stages,
     system,
     tracking,
@@ -73,6 +74,7 @@ app.include_router(map_layers.router)
 app.include_router(costs.router)
 app.include_router(asphalt.router)
 app.include_router(gantt.router)
+app.include_router(spend.router)
 app.include_router(stages.router)
 app.include_router(settings_admin.router)
 app.include_router(import_tracker.router)
@@ -292,6 +294,11 @@ def asphalt_page():
 @app.get("/gantt")
 def gantt_page():
     return _page("gantt.html")
+
+
+@app.get("/spend")
+def spend_page():
+    return _page("spend.html")
 
 
 # —— Admin console (separate shell from day-to-day tracker) ——

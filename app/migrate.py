@@ -6,6 +6,7 @@ from sqlalchemy import inspect, text
 
 from .database import Base, engine
 from .models import (  # noqa: F401 — register metadata
+    ActualSpend,
     AppSettings,
     AsphaltEstimate,
     AsphaltRate,
@@ -25,6 +26,7 @@ from .models import (  # noqa: F401 — register metadata
     Site,
     SiteCouncil,
     TrackingEvent,
+    TrafficContractor,
     User,
     WorkflowStageDef,
     WorkflowStep,
@@ -67,6 +69,11 @@ def run_migrations() -> None:
     ensure_column("sites", "job_completed_date", "job_completed_date DATE")
     ensure_column("sites", "include_in_totals", "include_in_totals BOOLEAN NOT NULL DEFAULT TRUE")
     ensure_column("sites", "register_order", "register_order INTEGER")
+    ensure_column(
+        "gantt_items",
+        "traffic_contractor_id",
+        "traffic_contractor_id INTEGER REFERENCES traffic_contractors(id) ON DELETE SET NULL",
+    )
 
     # Seed register_order from current start-date ordering when missing
     with engine.begin() as conn:

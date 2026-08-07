@@ -165,6 +165,7 @@ def recompute_board_dates(
 def _item_public(item: Any, *, schedule: list[dict[str, Any]], error: str | None = None) -> dict[str, Any]:
     site = getattr(item, "site", None)
     sub = getattr(item, "subcontractor", None)
+    traffic = getattr(item, "traffic_contractor", None)
     return {
         "id": item.id,
         "board_id": item.board_id,
@@ -175,6 +176,8 @@ def _item_public(item: Any, *, schedule: list[dict[str, Any]], error: str | None
         "fixed_start": item.fixed_start.isoformat() if item.fixed_start else None,
         "subcontractor_id": item.subcontractor_id,
         "subcontractor_name": sub.name if sub else None,
+        "traffic_contractor_id": getattr(item, "traffic_contractor_id", None),
+        "traffic_contractor_name": traffic.name if traffic else None,
         "planned_start": item.planned_start.isoformat() if item.planned_start else None,
         "planned_end": item.planned_end.isoformat() if item.planned_end else None,
         "rdo_dates": list(item.rdo_dates or []),

@@ -429,6 +429,21 @@ class CostEstimateAttachment(Base):
     estimate: Mapped[CostEstimate] = relationship(back_populates="attachments")
 
 
+class TrafficContractor(Base):
+    """Traffic management contractor / TM company."""
+
+    __tablename__ = "traffic_contractors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class AsphaltSubcontractor(Base):
     """Asphalt crew / subcontractor with optional RDO calendar."""
 
@@ -505,6 +520,44 @@ class AsphaltEstimate(Base):
     )
 
 
+class ActualSpend(Base):
+    """Recorded actual spend against a site (traffic or pavements/asphalt)."""
+
+    __tablename__ = "actual_spends"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # traffic | asphalt
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    site_id: Mapped[int] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    work_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    amount: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    traffic_contractor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("traffic_contractors.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    asphalt_subcontractor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("asphalt_subcontractors.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    invoice_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    site: Mapped[Site] = relationship(lazy="selectin")
+    traffic_contractor: Mapped[TrafficContractor | None] = relationship(lazy="selectin")
+    asphalt_subcontractor: Mapped[AsphaltSubcontractor | None] = relationship(lazy="selectin")
+
+
 class GanttBoard(Base):
     """Program-level works sequence / Gantt settings."""
 
@@ -554,6 +607,9 @@ class GanttItem(Base):
     subcontractor_id: Mapped[int | None] = mapped_column(
         ForeignKey("asphalt_subcontractors.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    traffic_contractor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("traffic_contractors.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     planned_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     planned_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Item-level date overrides (ISO strings)
@@ -565,3 +621,4 @@ class GanttItem(Base):
     board: Mapped[GanttBoard] = relationship(back_populates="items")
     site: Mapped[Site] = relationship(lazy="selectin")
     subcontractor: Mapped[AsphaltSubcontractor | None] = relationship(lazy="selectin")
+    traffic_contractor: Mapped[TrafficContractor | None] = relationship(lazy="selectin")
