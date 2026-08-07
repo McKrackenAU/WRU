@@ -102,6 +102,7 @@ def _recompute_and_save(db: Session, board: GanttBoard) -> dict:
     for item in items:
         if item.site and item.planned_start:
             item.site.indicative_site_start_date = item.planned_start
+            sync_computed_fields(item.site, db)
     db.commit()
     return _board_public(board, out)
 
