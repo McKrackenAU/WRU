@@ -160,7 +160,7 @@ def ensure_admin_user(db: Session | None = None) -> None:
             password_hash=hash_password(password),
             role=ADMIN_ROLE,
             active=True,
-            must_change_password=True,
+            must_change_password=False,
         )
         db.add(user)
         db.commit()
@@ -169,8 +169,7 @@ def ensure_admin_user(db: Session | None = None) -> None:
             BOOTSTRAP_FILE.write_text(
                 "Bootstrap admin created.\n"
                 f"username={username}\n"
-                f"password={password}\n"
-                "Change this password after first login.\n",
+                f"password={password}\n",
                 encoding="utf-8",
             )
             try:
@@ -238,16 +237,6 @@ def is_public_path(path: str) -> bool:
     if path in {"/login", "/favicon.ico", "/api/auth/login", "/api/auth/logout"}:
         return True
     return False
-
-
-def is_password_change_allowed_path(path: str) -> bool:
-    """Paths allowed while must_change_password is set on the session."""
-    return path in {
-        "/login",
-        "/api/auth/change-password",
-        "/api/auth/logout",
-        "/api/auth/me",
-    }
 
 
 def is_admin_path(path: str, method: str = "GET") -> bool:

@@ -395,10 +395,6 @@ export async function injectChrome({ active, mode } = {}) {
   try {
     const me = await api("/api/auth/me", { timeoutMs: 8000 });
     setSessionUser(me);
-    if (me?.must_change_password) {
-      location.href = "/login?change=1";
-      return;
-    }
   } catch {
     /* 401 redirects inside api() */
   }

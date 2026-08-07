@@ -16,7 +16,6 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import (
     is_admin_path,
-    is_password_change_allowed_path,
     is_public_path,
     require_admin,
     secret_key,
@@ -108,11 +107,6 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
                 return JSONResponse({"detail": "Not authenticated"}, status_code=401)
             next_q = quote(path + (("?" + request.url.query) if request.url.query else ""))
             return RedirectResponse(f"/login?next={next_q}", status_code=302)
-
-        if request.session.get("must_change_password") and not is_password_change_allowed_path(path):
-            if path.startswith("/api/"):
-                return JSONResponse({"detail": "Password change required"}, status_code=403)
-            return RedirectResponse("/login?change=1", status_code=302)
 
         if is_admin_path(path, method) and request.session.get("role") != "admin":
             if path.startswith("/api/"):

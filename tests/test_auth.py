@@ -6,7 +6,6 @@ from app.auth import (
     hash_password,
     is_admin_path,
     is_hidden_username,
-    is_password_change_allowed_path,
     is_public_path,
     verify_password,
 )
@@ -41,12 +40,6 @@ def test_admin_paths():
     assert is_admin_path("/api/costs/rates", "POST")
     assert not is_admin_path("/api/costs/rates", "GET")
     assert not is_admin_path("/api/sites")
-
-
-def test_password_change_allowed_paths():
-    assert is_password_change_allowed_path("/login")
-    assert is_password_change_allowed_path("/api/auth/change-password")
-    assert not is_password_change_allowed_path("/api/sites")
 
 
 def test_hidden_root_username():
