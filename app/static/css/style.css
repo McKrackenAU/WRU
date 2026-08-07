@@ -2445,21 +2445,46 @@ body.drawer-open {
 .gantt-sub select { max-width: 9rem; }
 
 .gantt-chart {
-  margin-top: 1rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.gantt-chart-list {
   display: grid;
   gap: 0.4rem;
 }
 
 .gantt-row-bar {
   display: grid;
-  grid-template-columns: minmax(8rem, 14rem) 1fr;
+  grid-template-columns: minmax(12rem, 18rem) 1fr;
   gap: 0.65rem;
   align-items: center;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 0.1rem);
+  cursor: grab;
+}
+
+.gantt-row-bar:hover {
+  border-color: var(--ventia-border);
+  background: color-mix(in srgb, var(--ventia-green) 6%, transparent);
+}
+
+.gantt-row-bar.dragging {
+  opacity: 0.55;
 }
 
 .gantt-row-label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.45rem;
   font-size: 0.8rem;
-  color: var(--ventia-muted);
+  color: var(--ventia-ink);
+  min-width: 0;
+}
+
+.gantt-row-label .hint {
+  grid-column: 2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

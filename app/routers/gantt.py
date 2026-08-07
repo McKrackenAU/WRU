@@ -89,7 +89,7 @@ def _load_board(db: Session, program: str) -> GanttBoard:
     return board
 
 
-def _recompute_and_save(db: Session, board: GanttBoard) -> dict:
+def _recompute_and_save(db: Session, board: GanttBoard, *, write_back_sites: bool = False) -> dict:
     items = (
         db.query(GanttItem)
         .options(selectinload(GanttItem.site), selectinload(GanttItem.subcontractor))
@@ -98,13 +98,60 @@ def _recompute_and_save(db: Session, board: GanttBoard) -> dict:
         .all()
     )
     out = recompute_board_dates(board, items, subcontractors_by_id=_subs_map(db))
-    # Keep the sites register start dates in sync with the cascade
-    for item in items:
-        if item.site and item.planned_start:
-            item.site.indicative_site_start_date = item.planned_start
-            sync_computed_fields(item.site, db)
+    # Only push cascade results back onto the sites register (not initial fixed starts)
+    if write_back_sites:
+        for item in items:
+            if item.site and item.planned_start and (item.link_mode or "") == "after_previous":
+                item.site.indicative_site_start_date = item.planned_start
+                sync_computed_fields(item.site, db)
     db.commit()
     return _board_public(board, out)
+
+
+def _auto_populate_board(db: Session, board: GanttBoard) -> int:
+    """Ensure all active program sites are on the board, seeded from indicative starts."""
+    existing_items = (
+        db.query(GanttItem)
+        .options(selectinload(GanttItem.site))
+        .filter(GanttItem.board_id == board.id)
+        .all()
+    )
+    by_site = {i.site_id: i for i in existing_items}
+    sites = (
+        db.query(Site)
+        .filter(Site.archived.is_(False), Site.program == board.program)
+        .order_by(Site.indicative_site_start_date.asc().nullslast(), Site.id.asc())
+        .all()
+    )
+    added = 0
+    # Position by indicative start so the chart reads in calendar order
+    for idx, site in enumerate(sites):
+        pos = (idx + 1) * 10
+        item = by_site.get(site.id)
+        if item is None:
+            item = GanttItem(
+                board_id=board.id,
+                site_id=site.id,
+                position=pos,
+                shifts_count=1,
+                link_mode="fixed_start" if site.indicative_site_start_date else "after_previous",
+                fixed_start=site.indicative_site_start_date,
+            )
+            db.add(item)
+            added += 1
+        else:
+            # Keep chart ordered by indicative start until the user reorders (cascade mode)
+            if (item.link_mode or "") != "after_previous":
+                item.position = pos
+                if site.indicative_site_start_date:
+                    item.link_mode = "fixed_start"
+                    item.fixed_start = site.indicative_site_start_date
+
+    starts = [s.indicative_site_start_date for s in sites if s.indicative_site_start_date]
+    if starts and board.anchor_start is None:
+        board.anchor_start = min(starts)
+    db.commit()
+    return added
 
 
 @router.get("/boards")
@@ -125,7 +172,8 @@ def list_boards(db: Session = Depends(get_db)):
 @router.get("/board")
 def get_board(program: str = Query(default=DEFAULT_GANTT_PROGRAM), db: Session = Depends(get_db)):
     board = _load_board(db, program)
-    return _recompute_and_save(db, board)
+    _auto_populate_board(db, board)
+    return _recompute_and_save(db, board, write_back_sites=False)
 
 
 @router.patch("/board")
@@ -169,13 +217,18 @@ def add_item(
         .scalar()
     )
     pos = payload.position if payload.position is not None else (max_pos or 0) + 10
+    fixed = payload.fixed_start or site.indicative_site_start_date
+    link_mode = payload.link_mode
+    if payload.fixed_start is None and site.indicative_site_start_date and link_mode == "after_previous":
+        # Prefer parking new sites on their indicative start until the chart is reordered
+        link_mode = "fixed_start"
     item = GanttItem(
         board_id=board.id,
         site_id=payload.site_id,
         position=pos,
         shifts_count=payload.shifts_count,
-        link_mode=payload.link_mode,
-        fixed_start=payload.fixed_start,
+        link_mode=link_mode,
+        fixed_start=fixed if link_mode == "fixed_start" else payload.fixed_start,
         subcontractor_id=payload.subcontractor_id,
         rdo_dates=payload.rdo_dates or [],
         exclude_dates=payload.exclude_dates or [],
@@ -184,7 +237,7 @@ def add_item(
     )
     db.add(item)
     db.commit()
-    return _recompute_and_save(db, board)
+    return _recompute_and_save(db, board, write_back_sites=False)
 
 
 @router.patch("/board/items/{item_id}")
@@ -214,19 +267,40 @@ def reorder_items(
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
     db: Session = Depends(get_db),
 ):
+    """Reorder items and switch into cascading schedule mode from the new first site."""
     board = _load_board(db, program)
     items = (
         db.query(GanttItem)
+        .options(selectinload(GanttItem.site))
         .filter(GanttItem.board_id == board.id, GanttItem.id.in_(payload.item_ids))
         .all()
     )
     by_id = {i.id: i for i in items}
     if len(by_id) != len(set(payload.item_ids)):
         raise HTTPException(status_code=400, detail="One or more items are not on this board")
+
+    first = by_id[payload.item_ids[0]]
+    # Anchor the cascade at the dragged-to-top site's current / indicative start
+    anchor = (
+        first.planned_start
+        or first.fixed_start
+        or (first.site.indicative_site_start_date if first.site else None)
+        or board.anchor_start
+    )
+    if anchor:
+        board.anchor_start = anchor
+
     for idx, item_id in enumerate(payload.item_ids):
-        by_id[item_id].position = (idx + 1) * 10
+        item = by_id[item_id]
+        item.position = (idx + 1) * 10
+        if idx == 0:
+            item.link_mode = "fixed_start"
+            item.fixed_start = anchor
+        else:
+            item.link_mode = "after_previous"
+            item.fixed_start = None
     db.commit()
-    return _recompute_and_save(db, board)
+    return _recompute_and_save(db, board, write_back_sites=True)
 
 
 @router.delete("/board/items/{item_id}", status_code=200)
@@ -249,43 +323,9 @@ def sync_program_sites(
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
     db: Session = Depends(get_db),
 ):
-    """Add missing active sites for this program onto the board (end of sequence)."""
+    """Refresh the board from active program sites and their indicative start dates."""
     board = _load_board(db, program)
-    existing = {
-        i.site_id
-        for i in db.query(GanttItem.site_id).filter(GanttItem.board_id == board.id).all()
-    }
-    sites = (
-        db.query(Site)
-        .filter(Site.archived.is_(False), Site.program == board.program)
-        .order_by(Site.indicative_site_start_date.asc().nullslast(), Site.id.asc())
-        .all()
-    )
-    max_pos = (
-        db.query(GanttItem.position)
-        .filter(GanttItem.board_id == board.id)
-        .order_by(GanttItem.position.desc())
-        .limit(1)
-        .scalar()
-        or 0
-    )
-    added = 0
-    for site in sites:
-        if site.id in existing:
-            continue
-        max_pos += 10
-        db.add(
-            GanttItem(
-                board_id=board.id,
-                site_id=site.id,
-                position=max_pos,
-                shifts_count=1,
-                link_mode="after_previous",
-                fixed_start=None,
-            )
-        )
-        added += 1
-    db.commit()
-    out = _recompute_and_save(db, board)
+    added = _auto_populate_board(db, board)
+    out = _recompute_and_save(db, board, write_back_sites=False)
     out["synced_added"] = added
     return out

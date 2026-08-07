@@ -22,9 +22,7 @@ function parseDates(raw) {
 
 function fillPrograms(selected) {
   const sel = $("programSelect");
-  const programs = state.meta?.programs?.length
-    ? state.meta.programs
-    : [DEFAULT_PROGRAM];
+  const programs = state.meta?.programs?.length ? state.meta.programs : [DEFAULT_PROGRAM];
   const set = new Set(programs);
   if (selected) set.add(selected);
   sel.innerHTML = [...set]
@@ -63,12 +61,42 @@ function applyBoardForm() {
   $("boardRdos").value = (b.rdo_dates || []).join(", ");
 }
 
+function wireReorderList(root) {
+  if (!root) return;
+  root.querySelectorAll("[data-item-id]").forEach((el) => {
+    el.addEventListener("dragstart", () => {
+      state.dragId = Number(el.dataset.itemId);
+      el.classList.add("dragging");
+    });
+    el.addEventListener("dragend", () => {
+      el.classList.remove("dragging");
+      state.dragId = null;
+    });
+    el.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+      const over = ev.currentTarget;
+      if (!state.dragId || Number(over.dataset.itemId) === state.dragId) return;
+      const items = [...root.querySelectorAll("[data-item-id]")];
+      const dragEl = items.find((i) => Number(i.dataset.itemId) === state.dragId);
+      if (!dragEl || dragEl === over) return;
+      const dragIndex = items.indexOf(dragEl);
+      const overIndex = items.indexOf(over);
+      if (dragIndex < overIndex) over.after(dragEl);
+      else over.before(dragEl);
+    });
+    el.addEventListener("drop", async (ev) => {
+      ev.preventDefault();
+      const ids = [...root.querySelectorAll("[data-item-id]")].map((i) => Number(i.dataset.itemId));
+      await reorder(ids);
+    });
+  });
+}
+
 function renderChart(items) {
   const chart = $("ganttChart");
   const dated = items.filter((i) => i.planned_start && i.planned_end);
   if (!dated.length) {
-    chart.hidden = true;
-    chart.innerHTML = "";
+    chart.innerHTML = `<p class="hint">No dated sites yet — set indicative start dates on the sites register, then refresh.</p>`;
     return;
   }
   const starts = dated.map((i) => new Date(i.planned_start + "T00:00:00"));
@@ -76,41 +104,50 @@ function renderChart(items) {
   const min = new Date(Math.min(...starts));
   const max = new Date(Math.max(...ends));
   const span = Math.max(1, Math.round((max - min) / 86400000) + 1);
-  chart.hidden = false;
-  chart.innerHTML = dated
-    .map((item) => {
-      const s = new Date(item.planned_start + "T00:00:00");
-      const e = new Date(item.planned_end + "T00:00:00");
-      const left = Math.round(((s - min) / 86400000 / span) * 1000) / 10;
-      const width = Math.max(2, Math.round((((e - s) / 86400000 + 1) / span) * 1000) / 10);
-      return `<div class="gantt-row-bar">
-        <div class="gantt-row-label">${escapeHtml(item.site_road_name || "Site")}</div>
-        <div class="gantt-track">
-          <div class="gantt-bar" style="left:${left}%;width:${width}%" title="${fmtDate(item.planned_start)} – ${fmtDate(item.planned_end)} · ${item.shifts_count} shifts"></div>
-        </div>
-      </div>`;
-    })
-    .join("");
+
+  chart.innerHTML = `<div class="gantt-chart-list" id="chartList">
+    ${dated
+      .map((item, idx) => {
+        const s = new Date(item.planned_start + "T00:00:00");
+        const e = new Date(item.planned_end + "T00:00:00");
+        const left = Math.round(((s - min) / 86400000 / span) * 1000) / 10;
+        const width = Math.max(2, Math.round((((e - s) / 86400000 + 1) / span) * 1000) / 10);
+        return `<div class="gantt-row-bar" draggable="true" data-item-id="${item.id}">
+          <div class="gantt-row-label">
+            <span class="gantt-item-handle" aria-hidden="true">⋮⋮</span>
+            <span>${idx + 1}. ${escapeHtml(item.site_road_name || "Site")}</span>
+            <span class="hint mono">${fmtDate(item.planned_start)} → ${fmtDate(item.planned_end)}</span>
+          </div>
+          <div class="gantt-track">
+            <div class="gantt-bar" style="left:${left}%;width:${width}%" title="${fmtDate(
+              item.planned_start
+            )} – ${fmtDate(item.planned_end)} · ${item.shifts_count} shifts"></div>
+          </div>
+        </div>`;
+      })
+      .join("")}
+  </div>`;
+  wireReorderList($("chartList"));
 }
 
 function renderItems() {
   const items = state.board?.items || [];
   const list = $("ganttList");
+  renderChart(items);
   if (!items.length) {
-    list.innerHTML = `<p class="hint">No sites on this Gantt yet. Sync program sites or add one below.</p>`;
-    renderChart([]);
+    list.innerHTML = `<p class="hint">No sites on this Gantt yet. Sites with this program auto-load from the register.</p>`;
     return;
   }
   list.innerHTML = `<div class="gantt-sequence" id="seqList">
     ${items
       .map(
-        (item, idx) => `<div class="gantt-item" draggable="true" data-item-id="${item.id}">
-        <div class="gantt-item-handle" title="Drag to reorder" aria-hidden="true">⋮⋮</div>
+        (item, idx) => `<div class="gantt-item" data-item-id="${item.id}">
         <div class="gantt-item-main">
           <div class="site-title">${idx + 1}. ${escapeHtml(item.site_road_name || "Site")}</div>
           <div class="site-meta mono">${escapeHtml(item.site_number || "")}
             · ${fmtDate(item.planned_start) || "—"} → ${fmtDate(item.planned_end) || "—"}
             ${item.subcontractor_name ? ` · ${escapeHtml(item.subcontractor_name)}` : ""}
+            ${item.link_mode === "fixed_start" ? " · indicative" : " · cascaded"}
             ${item.error ? ` · <span class="must-have late">${escapeHtml(item.error)}</span>` : ""}
           </div>
         </div>
@@ -131,49 +168,11 @@ function renderItems() {
               .join("")}
           </select>
         </label>
-        <button type="button" class="btn btn-sm" data-up="${item.id}" ${idx === 0 ? "disabled" : ""}>Up</button>
-        <button type="button" class="btn btn-sm" data-down="${item.id}" ${
-          idx === items.length - 1 ? "disabled" : ""
-        }>Down</button>
         <button type="button" class="btn btn-danger btn-sm" data-rm="${item.id}">Remove</button>
       </div>`
       )
       .join("")}
   </div>`;
-  renderChart(items);
-  wireDrag();
-}
-
-function wireDrag() {
-  const root = $("seqList");
-  if (!root) return;
-  root.querySelectorAll(".gantt-item").forEach((el) => {
-    el.addEventListener("dragstart", () => {
-      state.dragId = Number(el.dataset.itemId);
-      el.classList.add("dragging");
-    });
-    el.addEventListener("dragend", () => {
-      el.classList.remove("dragging");
-      state.dragId = null;
-    });
-    el.addEventListener("dragover", (ev) => {
-      ev.preventDefault();
-      const over = ev.currentTarget;
-      if (!state.dragId || Number(over.dataset.itemId) === state.dragId) return;
-      const items = [...root.querySelectorAll(".gantt-item")];
-      const dragEl = items.find((i) => Number(i.dataset.itemId) === state.dragId);
-      if (!dragEl || dragEl === over) return;
-      const dragIndex = items.indexOf(dragEl);
-      const overIndex = items.indexOf(over);
-      if (dragIndex < overIndex) over.after(dragEl);
-      else over.before(dragEl);
-    });
-    el.addEventListener("drop", async (ev) => {
-      ev.preventDefault();
-      const ids = [...root.querySelectorAll(".gantt-item")].map((i) => Number(i.dataset.itemId));
-      await reorder(ids);
-    });
-  });
 }
 
 async function loadBoard() {
@@ -182,9 +181,10 @@ async function loadBoard() {
   applyBoardForm();
   fillAddControls();
   renderItems();
-  $("ganttHint").textContent = state.board.anchor_start
-    ? "Drag rows to reorder — dates cascade from the anchor"
-    : "Set an anchor start date so the sequence can schedule";
+  const cascading = (state.board.items || []).some((i) => i.link_mode === "after_previous");
+  $("ganttHint").textContent = cascading
+    ? "Drag bars to reorder — dates cascade from the top site"
+    : "Bars use each site’s indicative start — drag to reorder and cascade";
 }
 
 async function saveBoard() {
@@ -209,17 +209,9 @@ async function reorder(itemIds) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ item_ids: itemIds }),
   });
+  applyBoardForm();
   fillAddControls();
   renderItems();
-}
-
-async function move(itemId, dir) {
-  const ids = (state.board.items || []).map((i) => i.id);
-  const idx = ids.indexOf(itemId);
-  const swap = idx + dir;
-  if (idx < 0 || swap < 0 || swap >= ids.length) return;
-  [ids[idx], ids[swap]] = [ids[swap], ids[idx]];
-  await reorder(ids);
 }
 
 async function init() {
@@ -249,6 +241,7 @@ async function init() {
       `/api/gantt/board/sync-program-sites?program=${encodeURIComponent(program())}`,
       { method: "POST" }
     );
+    applyBoardForm();
     fillAddControls();
     renderItems();
   });
@@ -269,20 +262,15 @@ async function init() {
     renderItems();
   });
   on("ganttList", "click", async (ev) => {
-    const up = ev.target.closest("[data-up]");
-    const down = ev.target.closest("[data-down]");
     const rm = ev.target.closest("[data-rm]");
-    if (up) return move(Number(up.dataset.up), -1).catch((e) => alert(e.message));
-    if (down) return move(Number(down.dataset.down), 1).catch((e) => alert(e.message));
-    if (rm) {
-      if (!confirm("Remove this site from the Gantt?")) return;
-      state.board = await api(
-        `/api/gantt/board/items/${rm.dataset.rm}?program=${encodeURIComponent(program())}`,
-        { method: "DELETE" }
-      );
-      fillAddControls();
-      renderItems();
-    }
+    if (!rm) return;
+    if (!confirm("Remove this site from the Gantt?")) return;
+    state.board = await api(
+      `/api/gantt/board/items/${rm.dataset.rm}?program=${encodeURIComponent(program())}`,
+      { method: "DELETE" }
+    );
+    fillAddControls();
+    renderItems();
   });
   on("ganttList", "change", async (ev) => {
     const shifts = ev.target.closest("[data-shifts]");
@@ -296,6 +284,7 @@ async function init() {
           body: JSON.stringify({ shifts_count: Number(shifts.value || 1) }),
         }
       );
+      applyBoardForm();
       renderItems();
     }
     if (sub) {
@@ -312,4 +301,4 @@ async function init() {
   });
 }
 
-init().catch((e) => showPageError("ganttList", e, "Could not load Gantt"));
+init().catch((e) => showPageError("ganttChart", e, "Could not load Gantt"));

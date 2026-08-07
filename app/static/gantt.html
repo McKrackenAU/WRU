@@ -26,11 +26,11 @@
       <div class="page-head">
         <div>
           <h1>Works Gantt</h1>
-          <p>Reorder sites to cascade start dates reactively — public holidays and subcontractor RDOs are applied automatically.</p>
+          <p>Sites load from their indicative start dates. Drag bars on the chart to reorder — later sites cascade after earlier ones (PH / RDOs applied).</p>
         </div>
         <div class="toolbar">
-          <button type="button" class="btn" id="btnSyncSites">Sync program sites</button>
-          <button type="button" class="btn btn-primary" id="btnSaveBoard">Save board settings</button>
+          <button type="button" class="btn" id="btnSyncSites">Refresh from sites</button>
+          <button type="button" class="btn btn-primary" id="btnSaveBoard">Save calendar settings</button>
         </div>
       </div>
 
@@ -40,7 +40,7 @@
           <select id="programSelect"></select>
         </label>
         <label>
-          Anchor start
+          Anchor start <span class="hint">(used after reorder)</span>
           <input id="anchorStart" type="date" />
         </label>
         <label>
@@ -65,11 +65,19 @@
 
       <section class="panel-card" style="margin-top:1rem">
         <div class="page-head" style="margin:0 0 0.75rem;padding:0">
-          <h2 style="margin:0;font-size:1.05rem">Sequence</h2>
-          <span class="hint" id="ganttHint">Drag rows to reorder</span>
+          <h2 style="margin:0;font-size:1.05rem">Gantt</h2>
+          <span class="hint" id="ganttHint">Drag bars up/down to reorder</span>
+        </div>
+        <div class="gantt-chart" id="ganttChart">
+          <p class="hint">Loading…</p>
+        </div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <div class="page-head" style="margin:0 0 0.75rem;padding:0">
+          <h2 style="margin:0;font-size:1.05rem">Shifts &amp; subcontractors</h2>
         </div>
         <div id="ganttList"><p class="hint">Loading…</p></div>
-        <div class="gantt-chart" id="ganttChart" hidden></div>
       </section>
 
       <section class="panel-card" style="margin-top:1rem">
