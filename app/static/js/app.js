@@ -199,7 +199,7 @@ function siteRowHtml(site) {
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
     <td>
-      <div class="site-title"><span class="drag-grip" title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — Site number ${escapeHtml(site.site_number)}` : ""}</div>
+      <div class="site-title"><span class="drag-grip" title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
       <div class="site-meta">
         ${councils ? `${escapeHtml(councils)}${escapeHtml(more)}` : ""}
       </div>
