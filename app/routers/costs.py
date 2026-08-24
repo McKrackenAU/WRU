@@ -22,7 +22,7 @@ from ..cost_engine import (
 from ..cost_export import build_cost_pdf, build_cost_workbook
 from ..database import UPLOAD_DIR, get_db
 from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, Site, User
-from ..public_holidays import holidays_between
+from ..rate_import import build_traffic_template, import_traffic_rates
 
 router = APIRouter(prefix="/api/costs", tags=["costs"])
 
@@ -419,6 +419,32 @@ def delete_rate(
     db.delete(row)
     db.commit()
     return None
+
+
+@router.get("/rates/template.xlsx")
+def download_traffic_template(_: User = Depends(require_admin)):
+    data = build_traffic_template()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="traffic-rates-template.xlsx"'},
+    )
+
+
+@router.post("/rates/import")
+async def import_traffic_rate_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    name = (file.filename or "").lower()
+    if not name.endswith((".csv", ".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="Upload a .csv or .xlsx rate card")
+    content = await file.read()
+    try:
+        return import_traffic_rates(db, content, file.filename or "rates.xlsx")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/public-holidays")

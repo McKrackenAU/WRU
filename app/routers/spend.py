@@ -128,6 +128,7 @@ def _hydrate_asphalt_lines(db: Session, lines: list[dict[str, Any]], subcontract
                 raise HTTPException(status_code=400, detail="Rate does not belong to selected subcontractor")
             line.setdefault("name", rate.name)
             line.setdefault("unit", rate.unit)
+            line["rate_type"] = getattr(rate, "rate_type", None) or "unit"
             line["day_rate"] = rate.day_rate
             line["night_rate"] = rate.night_rate
             line["saturday_rate"] = rate.saturday_rate

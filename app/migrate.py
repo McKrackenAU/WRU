@@ -77,6 +77,23 @@ def run_migrations() -> None:
     ensure_column("actual_spends", "source", "source VARCHAR(16) NOT NULL DEFAULT 'manual'")
     ensure_column("actual_spends", "inputs", "inputs JSONB NOT NULL DEFAULT '{}'::jsonb")
     ensure_column("actual_spends", "results", "results JSONB NOT NULL DEFAULT '{}'::jsonb")
+    ensure_column("asphalt_rates", "rate_type", "rate_type VARCHAR(16) NOT NULL DEFAULT 'unit'")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE asphalt_rates
+                SET rate_type = 'shift'
+                WHERE rate_type = 'unit'
+                  AND (
+                    lower(unit) IN ('shift', 'day', 'crew', 'mob', 'mobilisation', 'mobilization')
+                    OR lower(name) LIKE '%mobilis%'
+                    OR lower(name) LIKE '%mobiliz%'
+                    OR lower(name) LIKE '%crew%'
+                  )
+                """
+            )
+        )
 
     # Seed register_order from current start-date ordering when missing
     with engine.begin() as conn:

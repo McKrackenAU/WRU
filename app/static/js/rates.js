@@ -63,10 +63,8 @@ async function loadRates() {
       <td><input data-f="day_overtime" type="number" min="0" step="0.01" value="${r.day_overtime}" /></td>
       <td><input data-f="night_ordinary" type="number" min="0" step="0.01" value="${r.night_ordinary}" /></td>
       <td><input data-f="night_overtime" type="number" min="0" step="0.01" value="${r.night_overtime}" /></td>
-      <td><input data-f="saturday_ordinary" type="number" min="0" step="0.01" value="${r.saturday_ordinary ?? 0}" /></td>
-      <td><input data-f="saturday_overtime" type="number" min="0" step="0.01" value="${r.saturday_overtime ?? 0}" /></td>
-      <td><input data-f="sunday_ordinary" type="number" min="0" step="0.01" value="${r.sunday_ordinary ?? 0}" /></td>
-      <td><input data-f="sunday_overtime" type="number" min="0" step="0.01" value="${r.sunday_overtime ?? 0}" /></td>
+      <td><input data-f="weekend_ordinary" type="number" min="0" step="0.01" value="${r.sunday_ordinary || r.saturday_ordinary || 0}" /></td>
+      <td><input data-f="weekend_overtime" type="number" min="0" step="0.01" value="${r.sunday_overtime || r.saturday_overtime || 0}" /></td>
       <td><input data-f="public_holiday_ordinary" type="number" min="0" step="0.01" value="${r.public_holiday_ordinary ?? 0}" /></td>
       <td><input data-f="public_holiday_overtime" type="number" min="0" step="0.01" value="${r.public_holiday_overtime ?? 0}" /></td>
       <td><input data-f="active" type="checkbox" ${r.active ? "checked" : ""} /></td>
@@ -91,10 +89,10 @@ function rowPayload(tr) {
     day_overtime: Number(tr.querySelector('[data-f="day_overtime"]').value),
     night_ordinary: Number(tr.querySelector('[data-f="night_ordinary"]').value),
     night_overtime: Number(tr.querySelector('[data-f="night_overtime"]').value),
-    saturday_ordinary: Number(tr.querySelector('[data-f="saturday_ordinary"]').value),
-    saturday_overtime: Number(tr.querySelector('[data-f="saturday_overtime"]').value),
-    sunday_ordinary: Number(tr.querySelector('[data-f="sunday_ordinary"]').value),
-    sunday_overtime: Number(tr.querySelector('[data-f="sunday_overtime"]').value),
+    saturday_ordinary: Number(tr.querySelector('[data-f="weekend_ordinary"]').value),
+    saturday_overtime: Number(tr.querySelector('[data-f="weekend_overtime"]').value),
+    sunday_ordinary: Number(tr.querySelector('[data-f="weekend_ordinary"]').value),
+    sunday_overtime: Number(tr.querySelector('[data-f="weekend_overtime"]').value),
     public_holiday_ordinary: Number(tr.querySelector('[data-f="public_holiday_ordinary"]').value),
     public_holiday_overtime: Number(tr.querySelector('[data-f="public_holiday_overtime"]').value),
     active: tr.querySelector('[data-f="active"]').checked,
@@ -207,12 +205,39 @@ async function init() {
           day_overtime: Number($("rDayOt").value),
           night_ordinary: Number($("rNightO").value),
           night_overtime: Number($("rNightOt").value),
+          saturday_ordinary: Number($("rWkndO").value || 0),
+          saturday_overtime: Number($("rWkndOt").value || 0),
+          sunday_ordinary: Number($("rWkndO").value || 0),
+          sunday_overtime: Number($("rWkndOt").value || 0),
+          public_holiday_ordinary: Number($("rPhO").value || 0),
+          public_holiday_overtime: Number($("rPhOt").value || 0),
           active: true,
         }),
       });
       $("rName").value = "";
       await loadRates();
     } catch (e) {
+      alertDialog(e.message);
+    }
+  });
+
+  $("btnImportTrafficRates")?.addEventListener("click", async () => {
+    const file = $("trafficRateFile")?.files?.[0];
+    if (!file) {
+      alertDialog("Choose a CSV or Excel rate card");
+      return;
+    }
+    const fd = new FormData();
+    fd.append("file", file);
+    $("trafficImportStatus").textContent = "Importing…";
+    try {
+      const res = await fetch("/api/costs/rates/import", { method: "POST", body: fd });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || "Import failed");
+      $("trafficImportStatus").textContent = `Imported · ${body.created} new, ${body.updated} updated`;
+      await loadRates();
+    } catch (e) {
+      $("trafficImportStatus").textContent = "";
       alertDialog(e.message);
     }
   });

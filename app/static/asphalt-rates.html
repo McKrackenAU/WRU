@@ -26,16 +26,30 @@
       <div class="page-head">
         <div>
           <h1>Asphalt subcontractors &amp; rates</h1>
-          <p>Unit rates and RDO calendars used by asphalt costing and the works Gantt.</p>
+          <p>Shared treatments (e.g. 50mm HP Mill &amp; Resheet) with each subbie’s own rates. Unit items use a single $/qty; mobilisation and crew items use day / night / weekend / PH.</p>
+        </div>
+        <div class="toolbar">
+          <a class="btn" href="/asphalt">Cost a job</a>
+          <a class="btn" href="/api/asphalt/rates/template.xlsx">Download template</a>
         </div>
       </div>
 
       <section class="panel-card">
+        <h2>Bulk upload rate card</h2>
+        <p class="hint">CSV or Excel. Columns: subcontractor, name, unit, rate_type (unit/shift), unit_rate <em>or</em> day/night/weekend/PH. Matching names are treated as the same treatment across subcontractors. Existing name+subbie rows update.</p>
+        <div class="filters" style="flex-wrap:wrap;gap:0.5rem">
+          <input id="rateFile" type="file" accept=".csv,.xlsx,.xlsm" />
+          <button type="button" class="btn btn-primary" id="btnImportRates">Import rates</button>
+          <span class="hint" id="importStatus"></span>
+        </div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
         <h2>Add subcontractor</h2>
-        <form class="form-grid" id="subForm">
+        <form class="form-grid compact" id="subForm">
           <label>Name <input id="subName" required maxlength="128" /></label>
           <label>Notes <input id="subNotes" maxlength="255" /></label>
-          <label class="full">RDO dates <span class="hint">(ISO dates, comma-separated)</span>
+          <label class="full">RDO dates <span class="hint">(ISO, comma-separated)</span>
             <input id="subRdos" placeholder="2026-08-04, 2026-09-01" />
           </label>
           <div class="full"><button class="btn btn-primary" type="submit">Add subcontractor</button></div>
@@ -49,32 +63,61 @@
 
       <section class="panel-card" style="margin-top:1rem">
         <h2>Add rate</h2>
-        <form class="form-grid" id="rateForm">
+        <form class="form-grid compact" id="rateForm">
           <label>Subcontractor
             <select id="rateSub" required></select>
           </label>
-          <label>Name <input id="rateName" required maxlength="128" /></label>
+          <label>Treatment / mix
+            <input id="rateName" required maxlength="128" list="treatmentNames" placeholder="e.g. 50mm HP Mill &amp; Resheet" />
+            <datalist id="treatmentNames"></datalist>
+          </label>
           <label>Unit
             <select id="rateUnit">
-              <option value="m2">m²</option>
-              <option value="tonne">tonne</option>
-              <option value="lm">lm</option>
-              <option value="shift">shift</option>
-              <option value="day">day</option>
+              <option value="m2">m² (unit rate)</option>
+              <option value="tonne">tonne (unit rate)</option>
+              <option value="lm">lm (unit rate)</option>
+              <option value="shift">shift (day/night/weekend)</option>
+              <option value="day">day (day/night/weekend)</option>
               <option value="lump">lump</option>
             </select>
           </label>
-          <label>Day rate <input id="rateDay" type="number" min="0" step="0.01" value="0" /></label>
-          <label>Night rate <input id="rateNight" type="number" min="0" step="0.01" value="0" /></label>
-          <label>Saturday <input id="rateSat" type="number" min="0" step="0.01" value="0" /></label>
-          <label>Sunday <input id="rateSun" type="number" min="0" step="0.01" value="0" /></label>
-          <label>Public holiday <input id="ratePh" type="number" min="0" step="0.01" value="0" /></label>
+          <label>Rate type
+            <select id="rateType">
+              <option value="unit">Unit rate ($ / qty)</option>
+              <option value="shift">Shift (day / night / weekend / PH)</option>
+            </select>
+          </label>
+          <label id="unitRateWrap">Unit rate ($)
+            <input id="rateUnitAmt" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <div id="shiftRateWrap" class="full form-grid compact" hidden style="margin:0">
+            <label>Day <input id="rateDay" type="number" min="0" step="0.01" value="0" /></label>
+            <label>Night <input id="rateNight" type="number" min="0" step="0.01" value="0" /></label>
+            <label>Weekend <input id="rateWeekend" type="number" min="0" step="0.01" value="0" /></label>
+            <label>Public holiday <input id="ratePh" type="number" min="0" step="0.01" value="0" /></label>
+          </div>
           <div class="full"><button class="btn btn-primary" type="submit">Add rate</button></div>
         </form>
       </section>
 
       <section class="panel-card" style="margin-top:1rem">
-        <h2>Rates</h2>
+        <div class="page-head" style="margin:0 0 0.75rem;padding:0">
+          <h2 style="margin:0;font-size:1.05rem">Rate card comparison</h2>
+          <label style="min-width:10rem">Tier
+            <select id="matrixTier">
+              <option value="weekday">Weekday</option>
+              <option value="night">Night</option>
+              <option value="weekend">Weekend</option>
+              <option value="public_holiday">Public holiday</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">Same treatment name is one row. Green cell is the cheapest subbie for that item.</p>
+        <div id="matrixWrap"><p class="hint">Loading…</p></div>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <h2>All rates</h2>
         <div id="rateList"><p class="hint">Loading…</p></div>
       </section>
     </main>

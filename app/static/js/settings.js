@@ -86,8 +86,10 @@ async function runImport(dryRun) {
     return;
   }
   $("importStatus").textContent = dryRun
-    ? `Preview: ${body.parsed} rows`
-    : `Imported · created ${body.created}, updated ${body.updated}, archived ${body.archived}`;
+    ? `Preview: ${body.parsed} rows${body.unmatched_statuses?.length ? ` · unmatched statuses: ${body.unmatched_statuses.join(", ")}` : ""}`
+    : `Imported · created ${body.created}, updated ${body.updated}, archived ${body.archived}${
+        body.unmatched_statuses?.length ? ` · unmatched statuses listed below` : ""
+      }`;
   $("importLog").hidden = false;
   $("importLog").textContent = JSON.stringify(body, null, 2);
 }

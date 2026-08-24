@@ -1352,6 +1352,57 @@ dialog::backdrop {
 
 .form-grid .full { grid-column: 1 / -1; }
 
+.form-grid.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem 0.65rem;
+}
+
+.form-grid.compact label {
+  gap: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.compact-panel h2 {
+  margin-bottom: 0.55rem;
+  font-size: 1.05rem;
+}
+
+.compact-panel .cost-subhead {
+  margin: 0.7rem 0 0.35rem;
+  font-size: 0.85rem;
+}
+
+.cost-details {
+  margin: 0.55rem 0 0.15rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.cost-details summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--ventia-ink);
+}
+
+.best-rate {
+  background: color-mix(in srgb, var(--ventia-green, #004825) 14%, transparent);
+  font-weight: 650;
+}
+
+.best-badge {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--ventia-green, #004825);
+  color: #fff;
+  font-size: 0.65rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .workflow-edit {
   border: 1px solid var(--ventia-border);
   border-radius: var(--radius);
@@ -2531,6 +2582,7 @@ body.drawer-open {
 @media (max-width: 900px) {
   .detail-split { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+  .form-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .split-2 { grid-template-columns: 1fr; }
   .compare-grid { grid-template-columns: 1fr; }
   .map-layout {

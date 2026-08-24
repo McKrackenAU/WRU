@@ -480,6 +480,8 @@ class AsphaltRate(Base):
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     unit: Mapped[str] = mapped_column(String(32), nullable=False, default="m2")  # m2|tonne|lm|shift|day|lump
+    # unit = single $/qty; shift = day/night/weekend/PH (mobilisation, crew, etc.)
+    rate_type: Mapped[str] = mapped_column(String(16), nullable=False, default="unit")
     day_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     night_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     saturday_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

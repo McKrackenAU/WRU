@@ -53,17 +53,16 @@ function fillSubs(selected) {
       .join("");
 }
 
-function rateOptions(selectedRateId) {
-  const subId = Number($("subSelect").value || 0);
-  const rates = state.rates.filter((r) => r.active && (!subId || r.subcontractor_id === subId));
+function rateOptions(selectedName) {
+  const names = [...new Set(state.rates.filter((r) => r.active).map((r) => r.name))].sort((a, b) =>
+    a.localeCompare(b)
+  );
   return (
-    `<option value="">Custom…</option>` +
-    rates
+    `<option value="">Select treatment…</option>` +
+    names
       .map(
-        (r) =>
-          `<option value="${r.id}" ${String(selectedRateId) === String(r.id) ? "selected" : ""}>${escapeHtml(
-            r.name
-          )} (${escapeHtml(r.unit)})</option>`
+        (n) =>
+          `<option value="${escapeHtml(n)}" ${n === selectedName ? "selected" : ""}>${escapeHtml(n)}</option>`
       )
       .join("")
   );
@@ -72,18 +71,17 @@ function rateOptions(selectedRateId) {
 function renderLines() {
   const wrap = $("linesWrap");
   if (!state.lines.length) {
-    wrap.innerHTML = `<p class="hint">No lines yet — add mill / pave / supply items from the subcontractor rate card.</p>`;
+    wrap.innerHTML = `<p class="hint">Add mill / pave / supply / mobilisation lines. Treatments are shared; each subbie has their own rate.</p>`;
     return;
   }
   wrap.innerHTML = `<div class="table-scroll"><table class="data-table">
-    <thead><tr><th>Rate</th><th>Name</th><th>Unit</th><th>Qty</th><th></th></tr></thead>
+    <thead><tr><th>Treatment</th><th>Unit</th><th>Qty</th><th></th></tr></thead>
     <tbody>
       ${state.lines
         .map(
           (line, idx) => `<tr>
-        <td><select data-line-rate="${idx}">${rateOptions(line.rate_id)}</select></td>
-        <td><input data-line-name="${idx}" value="${escapeHtml(line.name || "")}" /></td>
-        <td><input data-line-unit="${idx}" value="${escapeHtml(line.unit || "m2")}" style="width:5rem" /></td>
+        <td><select data-line-name="${idx}">${rateOptions(line.name)}</select></td>
+        <td class="hint">${escapeHtml(line.unit || "m2")}${line.rate_type === "shift" ? " · shift" : ""}</td>
         <td><input data-line-qty="${idx}" type="number" min="0" step="0.01" value="${line.quantity ?? 0}" style="width:7rem" /></td>
         <td><button type="button" class="btn btn-danger btn-sm" data-rm-line="${idx}">Remove</button></td>
       </tr>`
@@ -93,46 +91,45 @@ function renderLines() {
   </table></div>`;
 }
 
-function applyRateToLine(idx, rateId) {
-  const rate = state.rates.find((r) => r.id === Number(rateId));
-  if (!rate) {
-    state.lines[idx].rate_id = null;
+function applyTreatmentToLine(idx, name) {
+  const subId = Number($("subSelect").value || 0);
+  const match =
+    state.rates.find((r) => r.active && r.name === name && (!subId || r.subcontractor_id === subId)) ||
+    state.rates.find((r) => r.active && r.name === name);
+  if (!match) {
+    state.lines[idx].name = name;
     return;
   }
   state.lines[idx] = {
     ...state.lines[idx],
-    rate_id: rate.id,
-    name: rate.name,
-    unit: rate.unit,
-    day_rate: rate.day_rate,
-    night_rate: rate.night_rate,
-    saturday_rate: rate.saturday_rate,
-    sunday_rate: rate.sunday_rate,
-    public_holiday_rate: rate.public_holiday_rate,
+    rate_id: match.id,
+    name: match.name,
+    unit: match.unit,
+    rate_type: match.rate_type,
+    day_rate: match.day_rate,
+    night_rate: match.night_rate,
+    saturday_rate: match.saturday_rate,
+    sunday_rate: match.sunday_rate,
+    weekend_rate: match.weekend_rate,
+    public_holiday_rate: match.public_holiday_rate,
   };
 }
 
 function collectLinesFromDom() {
   state.lines = state.lines.map((line, idx) => {
     const name = document.querySelector(`[data-line-name="${idx}"]`)?.value ?? line.name;
-    const unit = document.querySelector(`[data-line-unit="${idx}"]`)?.value ?? line.unit;
     const qty = Number(document.querySelector(`[data-line-qty="${idx}"]`)?.value ?? line.quantity);
-    const rateId = document.querySelector(`[data-line-rate="${idx}"]`)?.value || "";
-    const next = { ...line, name, unit, quantity: qty, rate_id: rateId ? Number(rateId) : null };
-    if (rateId) {
-      const rate = state.rates.find((r) => r.id === Number(rateId));
-      if (rate) {
-        next.day_rate = rate.day_rate;
-        next.night_rate = rate.night_rate;
-        next.saturday_rate = rate.saturday_rate;
-        next.sunday_rate = rate.sunday_rate;
-        next.public_holiday_rate = rate.public_holiday_rate;
-        next.name = name || rate.name;
-        next.unit = unit || rate.unit;
-      }
-    }
-    return next;
+    const next = { ...line, name, quantity: qty };
+    applyTreatmentToLine(idx, name);
+    return { ...state.lines[idx], quantity: qty };
   });
+}
+
+function shiftPayload() {
+  const sel = $("shiftType").value;
+  const shift_type = sel === "night" ? "night" : "day";
+  const rate_tier = ["weekend", "public_holiday", "night"].includes(sel) ? sel : "weekday";
+  return { shift_type, rate_tier };
 }
 
 async function loadHistory() {
@@ -159,9 +156,11 @@ async function loadHistory() {
 async function calculate() {
   collectLinesFromDom();
   const subId = Number($("subSelect").value || 0) || null;
+  const { shift_type, rate_tier } = shiftPayload();
   const payload = {
     subcontractor_id: subId,
-    shift_type: $("shiftType").value,
+    shift_type,
+    rate_tier,
     contingency_pct: Number($("contingency").value || 0),
     lines: state.lines,
   };
@@ -198,6 +197,62 @@ async function calculate() {
     const site = state.sites.find((s) => String(s.id) === $("siteSelect").value);
     $("estimateName").value = site ? `${site.road_name} asphalt` : "Asphalt estimate";
   }
+}
+
+async function compareAll() {
+  collectLinesFromDom();
+  const { shift_type, rate_tier } = shiftPayload();
+  const result = await api("/api/asphalt/compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      shift_type,
+      rate_tier,
+      contingency_pct: Number($("contingency").value || 0),
+      lines: state.lines.map((l) => ({ name: l.name, unit: l.unit, quantity: l.quantity })),
+    }),
+  });
+  const box = $("compareBox");
+  box.hidden = false;
+  const pkgs = result.packages || [];
+  box.innerHTML = `
+    <h3 style="margin:0 0 0.5rem">Subcontractor comparison</h3>
+    <p class="hint">Best complete card: <strong>${escapeHtml(result.best_subcontractor_name || "—")}</strong>
+      · ${money(result.best_total)}
+      · Mixed-best (cheapest sub per line) ${money(result.mixed_best?.total)}</p>
+    <div class="table-scroll"><table class="data-table">
+      <thead><tr><th>Subcontractor</th><th>Complete?</th><th>Missing</th><th>Total</th></tr></thead>
+      <tbody>
+        ${pkgs
+          .map(
+            (p) => `<tr class="${p.best ? "best-rate" : ""}">
+            <td>${escapeHtml(p.subcontractor_name)}${p.best ? ` <span class="best-badge">best</span>` : ""}</td>
+            <td>${p.complete ? "Yes" : "No"}</td>
+            <td class="hint">${escapeHtml((p.missing || []).join(", ") || "—")}</td>
+            <td>${money(p.total)}</td>
+          </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table></div>
+    <h3 style="margin:1rem 0 0.5rem">Mixed best (line by line)</h3>
+    <div class="table-scroll"><table class="data-table">
+      <thead><tr><th>Treatment</th><th>Qty</th><th>Cheapest sub</th><th>Rate</th><th>Total</th></tr></thead>
+      <tbody>
+        ${(result.mixed_best?.lines || [])
+          .map((l) => {
+            const b = l.best;
+            return `<tr>
+              <td>${escapeHtml(l.name)}</td>
+              <td>${l.quantity}</td>
+              <td>${b ? escapeHtml(b.subcontractor_name) : "—"}</td>
+              <td>${b ? money(b.unit_rate) : "—"}</td>
+              <td>${b ? money(b.line_total) : "—"}</td>
+            </tr>`;
+          })
+          .join("")}
+      </tbody>
+    </table></div>`;
 }
 
 async function saveEstimate() {
@@ -248,12 +303,8 @@ async function init() {
       rate_id: null,
       name: "",
       unit: "m2",
+      rate_type: "unit",
       quantity: 0,
-      day_rate: 0,
-      night_rate: 0,
-      saturday_rate: 0,
-      sunday_rate: 0,
-      public_holiday_rate: 0,
     });
     renderLines();
   });
@@ -264,15 +315,21 @@ async function init() {
     renderLines();
   });
   on("linesWrap", "change", (ev) => {
-    const sel = ev.target.closest("[data-line-rate]");
+    const sel = ev.target.closest("[data-line-name]");
     if (!sel) return;
-    const idx = Number(sel.getAttribute("data-line-rate"));
-    applyRateToLine(idx, sel.value);
+    const idx = Number(sel.getAttribute("data-line-name"));
+    applyTreatmentToLine(idx, sel.value);
     renderLines();
   });
-  on("subSelect", "change", () => renderLines());
+  on("subSelect", "change", () => {
+    state.lines.forEach((line, idx) => {
+      if (line.name) applyTreatmentToLine(idx, line.name);
+    });
+    renderLines();
+  });
   on("siteSelect", "change", () => loadHistory().catch((e) => { alertDialog(e.message); }));
   on("btnCalculate", "click", () => calculate().catch((e) => { alertDialog(e.message); }));
+  on("btnCompare", "click", () => compareAll().catch((e) => { alertDialog(e.message); }));
   on("btnSave", "click", () => saveEstimate().catch((e) => { alertDialog(e.message); }));
   on("historyList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-est]");

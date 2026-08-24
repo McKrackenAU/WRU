@@ -26,10 +26,10 @@
       <div class="page-head">
         <div>
           <h1>Asphalt costs</h1>
-          <p>Build asphalt estimates from subcontractor rate cards — separate from traffic management costing.</p>
+          <p>Build a package from shared treatments, compare every subbie, and pick the cheapest complete card or a mixed-best mix.</p>
         </div>
         <div class="toolbar">
-          <a class="btn" href="/admin/asphalt">Edit subcontractors / rates</a>
+          <a class="btn" href="/admin/asphalt">Rate cards &amp; comparison</a>
           <a class="btn" href="/costs">Traffic costs</a>
         </div>
       </div>
@@ -46,8 +46,10 @@
         <label>
           Shift / rate tier
           <select id="shiftType">
-            <option value="day">Day</option>
+            <option value="day">Day (weekday)</option>
             <option value="night">Night</option>
+            <option value="weekend">Weekend</option>
+            <option value="public_holiday">Public holiday</option>
           </select>
         </label>
         <label>
@@ -67,9 +69,11 @@
         </div>
         <div id="linesWrap"></div>
         <div class="toolbar" style="margin-top:0.85rem">
-          <button type="button" class="btn btn-primary" id="btnCalculate">Calculate</button>
+          <button type="button" class="btn btn-primary" id="btnCalculate">Calculate selected</button>
+          <button type="button" class="btn" id="btnCompare">Compare all subcontractors</button>
           <button type="button" class="btn" id="btnSave" disabled>Save estimate</button>
         </div>
+        <div id="compareBox" class="asphalt-result" hidden></div>
         <div id="resultBox" class="asphalt-result" hidden></div>
       </section>
 

@@ -76,7 +76,7 @@
         <h2>TC packs, TMA &amp; spotter rates</h2>
         <p class="hint">
           Configure each sellable TC pack (1–4 TCs, with or without a vehicle), plus TMA (driver included)
-          and Spotter rates. Leave Sat/Sun/PH at 0 to fall back to night (Sat) / night OT (Sun &amp; PH) until you fill them in.
+          and Spotter rates. Weekend (Sat+Sun) uses one rate — enter the Sunday figure. Leave Weekend/PH at 0 to fall back to night.
         </p>
         <div class="table-card" style="box-shadow:none">
           <div class="table-scroll" style="max-height:none">
@@ -91,10 +91,8 @@
                   <th>Day OT</th>
                   <th>Night ord</th>
                   <th>Night OT</th>
-                  <th>Sat ord</th>
-                  <th>Sat OT</th>
-                  <th>Sun ord</th>
-                  <th>Sun OT</th>
+                  <th>Weekend ord</th>
+                  <th>Weekend OT</th>
                   <th>PH ord</th>
                   <th>PH OT</th>
                   <th>Active</th>
@@ -121,9 +119,17 @@
           <label>Day overtime<input id="rDayOt" type="number" min="0" step="0.01" value="75" /></label>
           <label>Night ordinary<input id="rNightO" type="number" min="0" step="0.01" value="70" /></label>
           <label>Night overtime<input id="rNightOt" type="number" min="0" step="0.01" value="95" /></label>
+          <label>Weekend ordinary<input id="rWkndO" type="number" min="0" step="0.01" value="0" /></label>
+          <label>Weekend overtime<input id="rWkndOt" type="number" min="0" step="0.01" value="0" /></label>
+          <label>PH ordinary<input id="rPhO" type="number" min="0" step="0.01" value="0" /></label>
+          <label>PH overtime<input id="rPhOt" type="number" min="0" step="0.01" value="0" /></label>
         </div>
         <div class="toolbar" style="margin-top:0.85rem">
           <button type="button" class="btn btn-primary" id="btnAddRate">Add rate</button>
+          <a class="btn" href="/api/costs/rates/template.xlsx">Download template</a>
+          <input id="trafficRateFile" type="file" accept=".csv,.xlsx,.xlsm" />
+          <button type="button" class="btn" id="btnImportTrafficRates">Bulk upload</button>
+          <span class="hint" id="trafficImportStatus"></span>
         </div>
       </section>
 

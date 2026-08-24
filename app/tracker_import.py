@@ -15,81 +15,89 @@ from .services import apply_workflow, ensure_workflow_steps, set_councils, sync_
 from .stage_registry import active_programs
 
 # Spreadsheet status text → cumulative completed stages
-STATUS_MAP: list[tuple[str, list[str]]] = [
-    ("not yet started", []),
-    ("tgs markup complete", ["tgs_markup_completed"]),
-    ("submitted to tmd", ["tgs_markup_completed", "submitted_to_tmd"]),
-    (
-        "plan received",
-        ["tgs_markup_completed", "submitted_to_tmd", "plan_received"],
-    ),
-    (
-        "ready to submit moa",
-        [
-            "tgs_markup_completed",
-            "submitted_to_tmd",
-            "plan_received",
-            "ready_to_submit_moa",
-        ],
-    ),
-    (
-        "moa submitted",
-        [
-            "tgs_markup_completed",
-            "submitted_to_tmd",
-            "plan_received",
-            "ready_to_submit_moa",
-            "moa_submitted",
-        ],
-    ),
-    (
-        "moa with trims",
-        [
-            "tgs_markup_completed",
-            "submitted_to_tmd",
-            "plan_received",
-            "ready_to_submit_moa",
-            "moa_submitted",
-            "moa_with_trims",
-        ],
-    ),
-    (
-        "revision needed",
-        [
-            "tgs_markup_completed",
-            "submitted_to_tmd",
-            "plan_received",
-            "ready_to_submit_moa",
-            "moa_submitted",
-            "revision_needed",
-        ],
-    ),
-    (
-        "moa received",
-        [
-            "tgs_markup_completed",
-            "submitted_to_tmd",
-            "plan_received",
-            "ready_to_submit_moa",
-            "moa_submitted",
-            "moa_with_trims",
-            "moa_received",
-        ],
-    ),
-    (
-        "ready for works",
-        [
-            "tgs_markup_completed",
-            "submitted_to_tmd",
-            "plan_received",
-            "ready_to_submit_moa",
-            "moa_submitted",
-            "moa_with_trims",
-            "moa_received",
-            "ready_for_works",
-        ],
-    ),
-]
+STATUS_STAGES: dict[str, list[str]] = {
+    "not yet started": [],
+    "tgs markup complete": ["tgs_markup_completed"],
+    "submitted to tmd": ["tgs_markup_completed", "submitted_to_tmd"],
+    "plan received": ["tgs_markup_completed", "submitted_to_tmd", "plan_received"],
+    "ready to submit moa": [
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "plan_received",
+        "ready_to_submit_moa",
+    ],
+    "moa submitted": [
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "plan_received",
+        "ready_to_submit_moa",
+        "moa_submitted",
+    ],
+    "moa with trims": [
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "plan_received",
+        "ready_to_submit_moa",
+        "moa_submitted",
+        "moa_with_trims",
+    ],
+    "revision needed": [
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "plan_received",
+        "ready_to_submit_moa",
+        "moa_submitted",
+        "moa_with_trims",
+        "revision_needed",
+    ],
+    "moa received": [
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "plan_received",
+        "ready_to_submit_moa",
+        "moa_submitted",
+        "moa_with_trims",
+        "moa_received",
+    ],
+    "ready for works": [
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "plan_received",
+        "ready_to_submit_moa",
+        "moa_submitted",
+        "moa_with_trims",
+        "moa_received",
+        "ready_for_works",
+    ],
+}
+
+# Spreadsheet dropdown / formula casing variants → canonical STATUS_STAGES key
+STATUS_ALIASES: dict[str, str] = {
+    "not yet started": "not yet started",
+    "not started": "not yet started",
+    "tgs markup completed": "tgs markup complete",
+    "tgs markup complete": "tgs markup complete",
+    "submitted to tmd": "submitted to tmd",
+    "submitted to tm": "submitted to tmd",
+    "submitted to traffic management": "submitted to tmd",
+    "submitted to traffic management designer": "submitted to tmd",
+    "plan received": "plan received",
+    "ready to submit moa": "ready to submit moa",
+    "ready for submit moa": "ready to submit moa",
+    "moa submitted": "moa submitted",
+    "moa with trims": "moa with trims",
+    'moa "with trims"': "moa with trims",
+    "moa with trims - (remove from permits priority list)": "moa with trims",
+    "revision needed": "revision needed",
+    "revision required": "revision needed",
+    "moa received": "moa received",
+    "ready for works": "ready for works",
+    "ready to works": "ready for works",
+    "ventia review": "plan received",
+}
+
+# Back-compat name used by tests / callers
+STATUS_MAP: list[tuple[str, list[str]]] = [(k, v) for k, v in STATUS_STAGES.items()]
 
 # Column A section headers in the V6 workbook
 SECTION_HINTS = [
@@ -146,23 +154,33 @@ def _as_date(value: Any) -> date | None:
     return None
 
 
-def _status_workflow(status: str) -> dict[str, bool] | None:
+def _status_workflow(status: str) -> tuple[dict[str, bool], str | None]:
+    """Return (workflow flags, unmatched original text if we fell back)."""
     key = _norm(status).lower()
-    if not key or key in ("yes", "no", "n/a", "na"):
-        # Structures / generics legacy Yes-No lamps — treat Yes as ready for works
-        if key == "yes":
-            key = "ready for works"
+    unmatched: str | None = None
+    if not key or key in ("n/a", "na", "-", "0"):
+        key = "not yet started"
+    elif key in ("yes", "y"):
+        # Structures / generics Yes-No lamps
+        key = "ready for works"
+    elif key in ("no", "n"):
+        key = "not yet started"
+    elif key.isdigit():
+        key = "not yet started"
+        unmatched = status
+    else:
+        canonical = STATUS_ALIASES.get(key)
+        if canonical is None:
+            for alias, target in STATUS_ALIASES.items():
+                if alias in key or key in alias:
+                    canonical = target
+                    break
+        if canonical is None:
+            unmatched = status
+            key = "not yet started"
         else:
-            return None
-    if key.isdigit():
-        return None
-    matched: list[str] | None = None
-    for label, stages in STATUS_MAP:
-        if label == key or label in key:
-            matched = stages
-            break
-    if matched is None:
-        return None
+            key = canonical
+    stages = STATUS_STAGES.get(key, [])
     all_keys = [
         "tgs_markup_completed",
         "submitted_to_tmd",
@@ -174,7 +192,7 @@ def _status_workflow(status: str) -> dict[str, bool] | None:
         "moa_received",
         "ready_for_works",
     ]
-    return {k: k in matched for k in all_keys}
+    return {k: k in stages for k in all_keys}, unmatched
 
 
 def _section_from_a(value: Any) -> str | None:
@@ -198,10 +216,12 @@ def _find_tracker_sheet(wb):
     return wb[wb.sheetnames[0]]
 
 
-def parse_tracker_workbook(content: bytes) -> list[dict[str, Any]]:
+def parse_tracker_workbook(content: bytes) -> dict[str, Any]:
     wb = load_workbook(BytesIO(content), data_only=True, read_only=True)
     ws = _find_tracker_sheet(wb)
     rows_out: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    unmatched_statuses: list[str] = []
     current_program = "LCP-FMRP"
 
     for r in range(1, (ws.max_row or 0) + 1):
@@ -217,22 +237,31 @@ def parse_tracker_workbook(content: bytes) -> list[dict[str, Any]]:
             continue
         if not b:
             continue
-        # Placeholder empty template rows
         if b.lower() == "none":
+            skipped.append({"row": r, "road_name": b, "reason": "placeholder"})
             continue
 
         status = _norm(ws.cell(r, 7).value)
-        workflow = _status_workflow(status)
-        if workflow is None:
-            continue
+        workflow, unmatched = _status_workflow(status)
+        if unmatched:
+            unmatched_statuses.append(_norm(unmatched))
 
-        # Site number optional for structures; synthesize from road slug
         site_number = c or re.sub(r"[^A-Za-z0-9]+", "-", b)[:48].strip("-") or f"ROW-{r}"
 
         comments = _norm(ws.cell(r, 16).value) or None
         moa_number = _norm(ws.cell(r, 18).value) or None
         councils_raw = _norm(ws.cell(r, 24).value)
-        councils = [x.strip() for x in re.split(r"[,;/]", councils_raw) if x.strip()]
+        council_names = [x.strip() for x in re.split(r"[,;/]", councils_raw) if x.strip()]
+        council_sub = _as_date(ws.cell(r, 25).value)
+        council_obj = _as_date(ws.cell(r, 26).value)
+        councils = [
+            {
+                "council_name": name,
+                "submitted_to_council_date": council_sub,
+                "no_objection_date": council_obj,
+            }
+            for name in council_names
+        ]
         ext = _norm(ws.cell(r, 28).value) or "No"
         if ext.lower() not in ("yes", "no", "n/a", "na"):
             ext = "No"
@@ -272,11 +301,20 @@ def parse_tracker_workbook(content: bytes) -> list[dict[str, Any]]:
                 "include_in_totals": include_in_totals,
                 "workflow": workflow,
                 "status_text": status,
+                "status_unmatched": unmatched,
                 "archive": job_done in ("yes", "y", "true", "1"),
             }
         )
+    sheet_name = ws.title
     wb.close()
-    return rows_out
+    unique_unmatched = sorted({s for s in unmatched_statuses if s})
+    return {
+        "rows": rows_out,
+        "skipped": skipped[:80],
+        "unmatched_statuses": unique_unmatched,
+        "sheet_name": sheet_name,
+        "parsed": len(rows_out),
+    }
 
 
 def import_tracker_rows(

@@ -67,29 +67,25 @@ def rate_unit_rates(
 ) -> tuple[float, float]:
     """Ordinary / OT unit rates for a calendar tier.
 
-    Weekend / PH columns fall back to night (then day OT) when unset so existing
-    rate cards keep working until Sat/Sun/PH figures are filled in.
+    Weekend (Sat+Sun) uses the Sunday / weekend column. PH falls back to weekend,
+    then night, so existing cards keep working until those columns are filled in.
     """
-    if rate_tier == "saturday":
-        o = float(getattr(rate, "saturday_ordinary", 0) or 0)
-        t = float(getattr(rate, "saturday_overtime", 0) or 0)
+    if rate_tier in ("saturday", "sunday", "weekend"):
+        # Weekend is a single card: Sunday is the source of truth, Saturday copies it.
+        o = float(getattr(rate, "sunday_ordinary", 0) or 0) or float(getattr(rate, "saturday_ordinary", 0) or 0)
+        t = float(getattr(rate, "sunday_overtime", 0) or 0) or float(getattr(rate, "saturday_overtime", 0) or 0)
         if o > 0 or t > 0:
             return (o if o > 0 else t), (t if t > 0 else o)
         return float(rate.night_ordinary), float(rate.night_overtime)
 
-    if rate_tier in ("sunday", "public_holiday"):
-        if rate_tier == "public_holiday":
-            o = float(getattr(rate, "public_holiday_ordinary", 0) or 0)
-            t = float(getattr(rate, "public_holiday_overtime", 0) or 0)
-            if o <= 0 and t <= 0:
-                o = float(getattr(rate, "sunday_ordinary", 0) or 0)
-                t = float(getattr(rate, "sunday_overtime", 0) or 0)
-        else:
-            o = float(getattr(rate, "sunday_ordinary", 0) or 0)
-            t = float(getattr(rate, "sunday_overtime", 0) or 0)
+    if rate_tier == "public_holiday":
+        o = float(getattr(rate, "public_holiday_ordinary", 0) or 0)
+        t = float(getattr(rate, "public_holiday_overtime", 0) or 0)
+        if o <= 0 and t <= 0:
+            o = float(getattr(rate, "sunday_ordinary", 0) or 0) or float(getattr(rate, "saturday_ordinary", 0) or 0)
+            t = float(getattr(rate, "sunday_overtime", 0) or 0) or float(getattr(rate, "saturday_overtime", 0) or 0)
         if o > 0 or t > 0:
             return (o if o > 0 else t), (t if t > 0 else o)
-        # Highest fallback available on the card
         return float(rate.night_overtime), float(rate.night_overtime)
 
     if shift_type == "night":
