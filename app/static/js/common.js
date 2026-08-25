@@ -527,6 +527,127 @@ export async function injectChrome({ active, mode } = {}) {
   $("logoutBtn")?.addEventListener("click", () => {
     logout();
   });
+  enhanceNumberInputs(document);
+  watchNumberInputs();
+}
+
+const CHEVRON_UP = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 4.2 2.6 9.6l1.5 1.5L8 7.2l3.9 3.9 1.5-1.5z"/></svg>`;
+const CHEVRON_DOWN = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 11.8 2.6 6.4l1.5-1.5L8 8.8l3.9-3.9 1.5 1.5z"/></svg>`;
+
+function stepperDecimals(step) {
+  const raw = String(step ?? "1");
+  if (raw.includes("e-") || raw.includes("E-")) {
+    const n = Number(raw.split(/e-/i)[1] || 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+  const i = raw.indexOf(".");
+  return i === -1 ? 0 : raw.length - i - 1;
+}
+
+function stepperNudge(input, dir) {
+  if (!input || input.readOnly || input.disabled) return;
+  const step = Number(input.step) || 1;
+  const min = input.min === "" ? null : Number(input.min);
+  const max = input.max === "" ? null : Number(input.max);
+  const current = input.value === "" ? 0 : Number(input.value);
+  if (!Number.isFinite(current)) return;
+  let next = current + dir * step;
+  if (min != null && Number.isFinite(min) && next < min) next = min;
+  if (max != null && Number.isFinite(max) && next > max) next = max;
+  const places = stepperDecimals(input.step || step);
+  input.value = places ? next.toFixed(places) : String(Math.round(next));
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function attachStepperRepeat(btn, fn) {
+  let timer = 0;
+  const stop = () => {
+    if (timer) window.clearTimeout(timer);
+    timer = 0;
+  };
+  const start = (ev) => {
+    if (ev.pointerType === "mouse" && ev.button !== 0) return;
+    ev.preventDefault();
+    fn();
+    let delay = 380;
+    const tick = () => {
+      fn();
+      delay = Math.max(55, delay * 0.72);
+      timer = window.setTimeout(tick, delay);
+    };
+    timer = window.setTimeout(tick, delay);
+  };
+  btn.addEventListener("pointerdown", start);
+  btn.addEventListener("pointerup", stop);
+  btn.addEventListener("pointerleave", stop);
+  btn.addEventListener("pointercancel", stop);
+}
+
+function shouldSkipStepper(input) {
+  if (!input || input.dataset.stepper === "1") return true;
+  if (input.type !== "number") return true;
+  if (input.closest(".num-stepper")) return true;
+  if (input.dataset.noStepper === "1") return true;
+  const table = input.closest("table");
+  if (table && table.querySelectorAll("thead th").length > 8) return true;
+  return false;
+}
+
+export function wrapNumberInput(input) {
+  if (shouldSkipStepper(input)) return;
+  input.dataset.stepper = "1";
+  const wrap = document.createElement("div");
+  wrap.className = "num-stepper";
+  if (input.readOnly || input.disabled) wrap.classList.add("num-stepper--readonly");
+  input.classList.add("num-stepper-input");
+  if (!input.getAttribute("inputmode")) {
+    const step = String(input.step || "1");
+    input.setAttribute("inputmode", step.includes(".") ? "decimal" : "numeric");
+  }
+  input.parentNode.insertBefore(wrap, input);
+  wrap.appendChild(input);
+  if (input.readOnly || input.disabled) return;
+
+  const name = input.closest("label")?.childNodes[0]?.textContent?.trim() || input.getAttribute("aria-label") || "value";
+  const btns = document.createElement("div");
+  btns.className = "num-stepper-btns";
+  const up = document.createElement("button");
+  up.type = "button";
+  up.className = "num-stepper-btn";
+  up.setAttribute("tabindex", "-1");
+  up.setAttribute("aria-label", `Increase ${name}`);
+  up.innerHTML = CHEVRON_UP;
+  const down = document.createElement("button");
+  down.type = "button";
+  down.className = "num-stepper-btn";
+  down.setAttribute("tabindex", "-1");
+  down.setAttribute("aria-label", `Decrease ${name}`);
+  down.innerHTML = CHEVRON_DOWN;
+  btns.append(up, down);
+  wrap.appendChild(btns);
+  attachStepperRepeat(up, () => stepperNudge(input, 1));
+  attachStepperRepeat(down, () => stepperNudge(input, -1));
+}
+
+export function enhanceNumberInputs(root = document) {
+  if (!root) return;
+  if (root.matches?.('input[type="number"]')) wrapNumberInput(root);
+  root.querySelectorAll?.('input[type="number"]').forEach(wrapNumberInput);
+}
+
+let _stepperObserver = null;
+function watchNumberInputs() {
+  if (_stepperObserver || typeof MutationObserver === "undefined" || !document.body) return;
+  _stepperObserver = new MutationObserver((muts) => {
+    for (const m of muts) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        enhanceNumberInputs(node);
+      }
+    }
+  });
+  _stepperObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 export function stageLabel(meta, key) {

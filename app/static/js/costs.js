@@ -7,6 +7,7 @@ import {
   confirmDialog,
   promptDialog,
   userName,
+  enhanceNumberInputs,
 } from "./common.js";
 
 let settings = null;
@@ -284,7 +285,7 @@ function extrasPayload() {
 
 function renderExtraLines() {
   const html = extraLines.length
-    ? `<div class="table-scroll"><table class="data-table">
+    ? `<div class="table-scroll"><table class="data-table extras-table">
         <thead><tr><th>Item</th><th>Name</th><th>Qty</th><th>$ / shift</th><th></th></tr></thead>
         <tbody>
           ${extraLines
@@ -292,8 +293,8 @@ function renderExtraLines() {
               (line, idx) => `<tr>
             <td><select data-extra-cat="${idx}">${extraOptions(line.extra_id)}</select></td>
             <td><input data-extra-name="${idx}" value="${escapeHtml(line.name || "")}" /></td>
-            <td><input data-extra-qty="${idx}" type="number" min="0" step="1" value="${line.quantity ?? 0}" style="width:4.5rem" /></td>
-            <td><input data-extra-rate="${idx}" type="number" min="0" step="0.01" value="${line.unit_rate ?? 0}" style="width:6rem" /></td>
+            <td><input data-extra-qty="${idx}" type="number" min="0" step="1" value="${line.quantity ?? 0}" aria-label="Extra quantity" /></td>
+            <td><input data-extra-rate="${idx}" type="number" min="0" step="0.01" value="${line.unit_rate ?? 0}" aria-label="Rate per shift" /></td>
             <td><button type="button" class="btn btn-danger btn-sm" data-rm-extra="${idx}">Remove</button></td>
           </tr>`
             )
@@ -303,6 +304,8 @@ function renderExtraLines() {
     : `<p class="hint">No extras yet — add Arrowboard or another per-shift item.</p>`;
   if ($("sExtrasWrap")) $("sExtrasWrap").innerHTML = html;
   if ($("cExtrasWrap")) $("cExtrasWrap").innerHTML = html;
+  enhanceNumberInputs($("sExtrasWrap"));
+  enhanceNumberInputs($("cExtrasWrap"));
 }
 
 function addExtraLine(preset) {

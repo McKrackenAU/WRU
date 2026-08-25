@@ -1362,6 +1362,174 @@ dialog::backdrop {
   font-size: 0.75rem;
 }
 
+/* Traffic calculator: roomier fields, easier to hit */
+.calc-form .form-grid.compact {
+  grid-template-columns: repeat(2, minmax(12rem, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.calc-form .form-grid.compact.resources {
+  grid-template-columns: repeat(3, minmax(9rem, 1fr));
+}
+
+.calc-form .form-grid.compact label {
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--ventia-ink);
+}
+
+.calc-form .form-grid input,
+.calc-form .form-grid select,
+.calc-form .num-stepper-input {
+  min-height: 3rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding: 0.55rem 0.7rem;
+}
+
+.calc-form input[readonly],
+.calc-form .field-output {
+  background: color-mix(in srgb, var(--ventia-border) 28%, var(--field-bg));
+  color: var(--ventia-muted);
+  cursor: default;
+}
+
+.extras-table {
+  width: 100%;
+  min-width: 0;
+}
+
+.extras-table th,
+.extras-table td {
+  white-space: normal;
+  vertical-align: middle;
+  padding: 0.55rem 0.45rem;
+}
+
+.extras-table .num-stepper {
+  min-width: 8.25rem;
+}
+
+.extras-table select,
+.extras-table input[type="text"] {
+  min-height: 3rem;
+  width: 100%;
+  min-width: 8rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ventia-ink);
+  background: var(--field-bg);
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.6rem;
+}
+
+/* Always-visible number steppers (native arrows are tiny / hover-only) */
+input[type="number"].num-stepper-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type="number"].num-stepper-input::-webkit-outer-spin-button,
+input[type="number"].num-stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.num-stepper {
+  display: grid;
+  grid-template-columns: 1fr 2.65rem;
+  align-items: stretch;
+  width: 100%;
+  min-width: 7.5rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  background: var(--field-bg);
+  overflow: hidden;
+}
+
+.num-stepper:focus-within {
+  outline: 2px solid var(--ventia-green-mid);
+  outline-offset: 1px;
+}
+
+.num-stepper-input,
+.form-grid .num-stepper-input,
+.toolbar .num-stepper-input,
+.calc-form .form-grid .num-stepper-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  min-height: 3rem;
+  padding-right: 0.4rem;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.num-stepper-input:focus,
+.form-grid .num-stepper-input:focus,
+.toolbar .num-stepper-input:focus,
+.calc-form .form-grid .num-stepper-input:focus {
+  outline: none;
+}
+
+.num-stepper-btns {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  border-left: 1px solid var(--ventia-border);
+  background: color-mix(in srgb, var(--ventia-border) 35%, var(--field-bg));
+}
+
+.num-stepper-btn {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  min-height: 1.5rem;
+  background: transparent;
+  color: var(--ventia-ink);
+  cursor: pointer;
+  line-height: 1;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.num-stepper-btn + .num-stepper-btn {
+  border-top: 1px solid var(--ventia-border);
+}
+
+.num-stepper-btn:hover,
+.num-stepper-btn:focus-visible {
+  background: color-mix(in srgb, var(--ventia-green) 22%, var(--field-bg));
+  color: var(--ventia-green);
+  outline: none;
+}
+
+.num-stepper-btn:active {
+  background: var(--ventia-green);
+  color: #fff;
+}
+
+.num-stepper-btn svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  display: block;
+}
+
+.num-stepper--readonly {
+  grid-template-columns: 1fr;
+  opacity: 0.92;
+}
+
+.num-stepper--readonly .num-stepper-btns {
+  display: none;
+}
+
 .compact-panel h2 {
   margin-bottom: 0.55rem;
   font-size: 1.05rem;
@@ -1748,27 +1916,37 @@ body.admin-mode .shell-sidebar {
 .dow-checks {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.25rem 0 0.5rem;
+  gap: 0.45rem;
+  margin: 0.45rem 0 0.55rem;
 }
 
 .dow-check,
 .inline-check {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.65rem;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  min-height: 2.6rem;
   border-radius: 0.5rem;
   border: 1px solid var(--ventia-border);
   background: var(--field-bg);
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 650;
   cursor: pointer;
+}
+
+.dow-check:has(input:checked),
+.inline-check:has(input:checked) {
+  border-color: var(--ventia-green-mid);
+  background: color-mix(in srgb, var(--ventia-green) 14%, var(--field-bg));
 }
 
 .dow-check input,
 .inline-check input {
   margin: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--ventia-green-mid);
 }
 
 .schedule-options {
@@ -2583,6 +2761,10 @@ body.drawer-open {
   .detail-split { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .form-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calc-form .form-grid.compact,
+  .calc-form .form-grid.compact.resources {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .split-2 { grid-template-columns: 1fr; }
   .compare-grid { grid-template-columns: 1fr; }
   .map-layout {
@@ -2614,6 +2796,13 @@ body.drawer-open {
   }
   .register-table {
     min-width: 48rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .calc-form .form-grid.compact,
+  .calc-form .form-grid.compact.resources {
+    grid-template-columns: 1fr;
   }
 }
 

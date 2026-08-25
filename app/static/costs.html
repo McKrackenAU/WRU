@@ -52,7 +52,7 @@
       <!-- STANDARD -->
       <section id="panel-standard">
         <div class="split-2">
-          <div class="panel-card compact-panel">
+          <div class="panel-card compact-panel calc-form">
             <h2>Job inputs</h2>
             <div class="form-grid compact">
               <label>Start date<input id="sStart" type="date" /></label>
@@ -68,7 +68,7 @@
               </label>
               <label>Shifts / day<input id="sPerDay" type="number" min="1" step="1" value="1" /></label>
               <label>Total shifts<input id="sShifts" type="number" min="1" step="1" value="5" readonly /></label>
-              <label>Works end<input id="sEnd" type="date" readonly /></label>
+              <label>Works end<input id="sEnd" type="date" readonly class="field-output" /></label>
               <label>OT after (h)<input id="sOt" type="number" min="1" max="24" step="0.5" /></label>
             </div>
 
@@ -100,7 +100,7 @@
             </details>
 
             <h3 class="cost-subhead">Resources / VMS</h3>
-            <div class="form-grid compact">
+            <div class="form-grid compact resources">
               <label>TCs<input id="sPeople" type="number" min="0" step="1" value="20" /></label>
               <label>Vehicles<input id="sVehicles" type="number" min="0" step="1" value="10" /></label>
               <label>TMAs<input id="sTmas" type="number" min="0" step="1" value="2" /></label>
@@ -111,7 +111,7 @@
             <h3 class="cost-subhead">Per-shift extras</h3>
             <p class="hint">Arrowboard and similar plant: quantity × rate × total shifts. No pickup or delivery.</p>
             <div id="sExtrasWrap"></div>
-            <button type="button" class="btn btn-sm" id="btnAddSExtra" style="margin-top:0.35rem">Add extra</button>
+            <button type="button" class="btn" id="btnAddSExtra" style="margin-top:0.5rem">Add extra</button>
             <div class="toolbar" style="margin-top:0.65rem">
               <button type="button" class="btn btn-primary" id="btnCalcStandard">Calculate</button>
               <button type="button" class="btn" id="btnSaveStandard">Save</button>
@@ -129,11 +129,11 @@
       <!-- 24H CLOSURE -->
       <section id="panel-closure" hidden>
         <div class="split-2">
-          <div class="panel-card compact-panel">
+          <div class="panel-card compact-panel calc-form">
             <h2>Closure window</h2>
             <div class="form-grid compact">
-              <label>Start<input id="cStart" type="datetime-local" /></label>
-              <label>End<input id="cEnd" type="datetime-local" /></label>
+              <label class="full">Start<input id="cStart" type="datetime-local" /></label>
+              <label class="full">End<input id="cEnd" type="datetime-local" /></label>
               <label>OT after (h)<input id="cOt" type="number" min="1" max="24" step="0.5" /></label>
               <label>TCs<input id="cPeople" type="number" min="0" step="1" value="20" /></label>
               <label>Vehicles<input id="cVehicles" type="number" min="0" step="1" value="10" /></label>
@@ -145,7 +145,7 @@
             <h3 class="cost-subhead">Per-shift extras</h3>
             <p class="hint">Same extras as standard: qty × rate × shifts in each 8h / 12h option.</p>
             <div id="cExtrasWrap"></div>
-            <button type="button" class="btn btn-sm" id="btnAddCExtra" style="margin-top:0.35rem">Add extra</button>
+            <button type="button" class="btn" id="btnAddCExtra" style="margin-top:0.5rem">Add extra</button>
             <p class="hint">Compares 3×8h vs 2×12h for the window. Weekend hours use the Weekend rate.</p>
             <div class="toolbar" style="margin-top:0.65rem">
               <button type="button" class="btn btn-primary" id="btnCalcClosure">Compare options</button>
