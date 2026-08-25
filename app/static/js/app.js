@@ -31,7 +31,39 @@ const state = {
   dragSiteIds: [],
   suppressRowOpen: false,
   dndCommitted: false,
+  compact: true,
+  collapsedPrograms: new Set(),
 };
+
+const DENSITY_KEY = "wru-register-density";
+const COLLAPSED_KEY = "wru-register-collapsed";
+
+function loadRegisterPrefs() {
+  try {
+    state.compact = localStorage.getItem(DENSITY_KEY) !== "comfortable";
+    const raw = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "[]");
+    state.collapsedPrograms = new Set(Array.isArray(raw) ? raw.map(String) : []);
+  } catch {
+    state.compact = true;
+    state.collapsedPrograms = new Set();
+  }
+}
+
+function saveCollapsedPrograms() {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...state.collapsedPrograms]));
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveDensityPref() {
+  try {
+    localStorage.setItem(DENSITY_KEY, state.compact ? "compact" : "comfortable");
+  } catch {
+    /* ignore */
+  }
+}
 
 const GANTT_DEFAULT_PROGRAM = "Lifecycle pavements";
 
@@ -184,6 +216,13 @@ function syncBulkBar() {
   }
 }
 
+function commentSnippet(text) {
+  const compact = String(text || "").replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  const shown = compact.length > 90 ? `${compact.slice(0, 90)}…` : compact;
+  return `<div class="site-comment">${escapeHtml(shown)}</div>`;
+}
+
 function siteRowHtml(site) {
   const m = site.metrics || {};
   const must = m.must_have_status || {};
@@ -197,14 +236,18 @@ function siteRowHtml(site) {
   const councils = (site.councils || []).slice(0, 2).join(", ");
   const more = (site.councils || []).length > 2 ? ` +${site.councils.length - 2}` : "";
   const checked = state.selectedIds.has(site.id) ? "checked" : "";
-  return `<tr class="register-row ${highlight}" draggable="true" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}">
+  const metaBits = [councils ? `${escapeHtml(councils)}${escapeHtml(more)}` : ""]
+    .filter(Boolean)
+    .join("");
+  return `<tr class="register-row ${highlight}" draggable="true" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
     <td class="select-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
     <td>
       <div class="site-title" title="${escapeHtml(site.comments || "")}"><span class="drag-grip" title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
       <div class="site-meta">
-        ${councils ? `${escapeHtml(councils)}${escapeHtml(more)}` : ""}
+        ${metaBits}
+        ${commentSnippet(site.comments)}
       </div>
     </td>
     <td class="status-col" onclick="event.stopPropagation()">
@@ -221,8 +264,8 @@ function siteRowHtml(site) {
     <td class="actions-col" onclick="event.stopPropagation()">
       <div class="register-actions">
         <button type="button" class="btn btn-primary btn-sm" data-action="open" data-id="${site.id}">Open</button>
-        <a class="btn btn-sm" href="/costs?site_id=${site.id}">Traffic</a>
-        <a class="btn btn-sm" href="/asphalt?site_id=${site.id}">Asphalt</a>
+        <a class="btn btn-sm register-extra-action" href="/costs?site_id=${site.id}">Traffic</a>
+        <a class="btn btn-sm register-extra-action" href="/asphalt?site_id=${site.id}">Asphalt</a>
       </div>
     </td>
   </tr>`;
@@ -230,6 +273,108 @@ function siteRowHtml(site) {
 
 function programKey(value) {
   return (value || "").trim() || "Unassigned";
+}
+
+function programStats(rows) {
+  let p1 = 0;
+  let permits = 0;
+  let trims = 0;
+  for (const site of rows) {
+    if (Number(site.today_priority) === 1) p1 += 1;
+    const list = site.metrics?.client_list;
+    if (list === "permits") permits += 1;
+    if (list === "trims") trims += 1;
+  }
+  const bits = [];
+  if (p1) bits.push(`${p1} P1`);
+  if (permits) bits.push(`${permits} Permits`);
+  if (trims) bits.push(`${trims} TRIMS`);
+  return bits.join(" · ");
+}
+
+function isProgramCollapsed(program, { searching = false, forceOpen = false } = {}) {
+  if (searching || forceOpen) return false;
+  return state.collapsedPrograms.has(programKey(program));
+}
+
+function setProgramCollapsed(program, collapsed) {
+  const key = programKey(program);
+  if (collapsed) state.collapsedPrograms.add(key);
+  else state.collapsedPrograms.delete(key);
+  saveCollapsedPrograms();
+}
+
+function applyProgramCollapsed(section, collapsed) {
+  if (!section) return;
+  section.classList.toggle("is-collapsed", collapsed);
+  const btn = section.querySelector("[data-toggle-program]");
+  if (btn) {
+    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    const label = collapsed ? "Expand" : "Collapse";
+    const name = section.getAttribute("data-program") || "program";
+    btn.setAttribute("aria-label", `${label} ${name}`);
+  }
+}
+
+function findProgramSection(program) {
+  const key = programKey(program);
+  return [...document.querySelectorAll("section.register-program")].find(
+    (el) => programKey(el.getAttribute("data-program")) === key
+  );
+}
+
+function syncDensityButton() {
+  const btn = $("btnDensity");
+  if (btn) {
+    btn.setAttribute("aria-pressed", state.compact ? "true" : "false");
+    btn.textContent = state.compact ? "Compact on" : "Comfortable";
+  }
+  $("registerList")?.classList.toggle("is-compact", state.compact);
+}
+
+function syncRegisterSticky() {
+  const topbar = document.querySelector(".topbar");
+  const controls = $("registerControls");
+  const top = topbar ? topbar.offsetHeight : 0;
+  document.documentElement.style.setProperty("--sticky-offset", `${top}px`);
+  const extra = controls ? controls.offsetHeight : 0;
+  document.documentElement.style.setProperty("--register-sticky-top", `${top + extra}px`);
+}
+
+function groupedSites() {
+  const groups = new Map();
+  for (const site of state.sites) {
+    const key = programKey(site.program);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(site);
+  }
+  const order = [];
+  for (const p of state.meta.programs || []) {
+    if (groups.has(p) && !order.includes(p)) order.push(p);
+  }
+  for (const k of groups.keys()) {
+    if (!order.includes(k)) order.push(k);
+  }
+  return { groups, order };
+}
+
+function renderJumpNav(order, groups) {
+  const nav = $("registerJump");
+  if (!nav) return;
+  if (order.length < 2) {
+    nav.hidden = true;
+    nav.innerHTML = "";
+    return;
+  }
+  nav.hidden = false;
+  nav.innerHTML = order
+    .map((program) => {
+      const n = (groups.get(program) || []).length;
+      return `<button type="button" class="register-jump-chip" data-jump-program="${escapeHtml(
+        program
+      )}">${escapeHtml(program)} <span>${n}</span></button>`;
+    })
+    .join("");
 }
 
 function draggedRowEls(root) {
@@ -423,6 +568,9 @@ function wireProgramDragDrop() {
     if (!section || !root.contains(section)) return;
     ev.preventDefault();
     ev.dataTransfer.dropEffect = "move";
+    if (section.classList.contains("is-collapsed")) {
+      applyProgramCollapsed(section, false);
+    }
     root.querySelectorAll(".register-program.drag-over, .register-create-program.drag-over").forEach((el) => {
       if (el !== section) el.classList.remove("drag-over");
     });
@@ -491,25 +639,18 @@ function wireProgramDragDrop() {
 function renderRegister() {
   const root = $("registerList");
   if (!root) return;
+  root.classList.toggle("is-compact", state.compact);
+  syncDensityButton();
   if (!state.sites.length) {
     root.innerHTML = `<div class="register-empty">No active sites match these filters.</div>`;
+    renderJumpNav([], new Map());
+    syncRegisterSticky();
     return;
   }
 
-  // Only show programs that currently have sites. Empty seeded categories stay out of the way.
-  const groups = new Map();
-  for (const site of state.sites) {
-    const key = programKey(site.program);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(site);
-  }
-  const order = [];
-  for (const p of state.meta.programs || []) {
-    if (groups.has(p) && !order.includes(p)) order.push(p);
-  }
-  for (const k of groups.keys()) {
-    if (!order.includes(k)) order.push(k);
-  }
+  const { groups, order } = groupedSites();
+  const searching = Boolean($("search")?.value?.trim());
+  renderJumpNav(order, groups);
 
   const head = `
     <thead>
@@ -533,10 +674,30 @@ function renderRegister() {
         program === GANTT_DEFAULT_PROGRAM || program.toLowerCase().includes("lifecycle")
           ? `<a class="btn btn-sm" href="/gantt?program=${encodeURIComponent(program)}">Gantt</a>`
           : `<a class="btn btn-sm btn-quiet" href="/gantt?program=${encodeURIComponent(program)}">Enable Gantt</a>`;
+      const forceOpen = Boolean(state.highlightId && rows.some((s) => s.id === state.highlightId));
+      const collapsed = isProgramCollapsed(program, { searching, forceOpen });
+      const stats = programStats(rows);
+      const selectedInProgram = rows.filter((s) => state.selectedIds.has(s.id)).length;
+      const allSelected = rows.length > 0 && selectedInProgram === rows.length;
+      const someSelected = selectedInProgram > 0 && !allSelected;
       const body = rows.map(siteRowHtml).join("");
-      return `<section class="register-program" data-program="${escapeHtml(program)}">
+      return `<section class="register-program${collapsed ? " is-collapsed" : ""}" data-program="${escapeHtml(program)}">
         <div class="register-program-head">
-          <h2 class="register-program-title">${escapeHtml(program)} <span class="hint">${rows.length}</span></h2>
+          <label class="register-select-program" onclick="event.stopPropagation()">
+            <input type="checkbox" data-select-program="${escapeHtml(program)}" ${allSelected ? "checked" : ""} ${
+        someSelected ? "data-indeterminate=\"1\"" : ""
+      } aria-label="Select all in ${escapeHtml(program)}" />
+          </label>
+          <button type="button" class="register-collapse-btn" data-toggle-program aria-expanded="${
+            collapsed ? "false" : "true"
+          }" aria-label="${collapsed ? "Expand" : "Collapse"} ${escapeHtml(program)}">▾</button>
+          <h2 class="register-program-title">
+            <button type="button" class="register-program-name" data-toggle-program>
+              ${escapeHtml(program)}
+              <span class="hint">${rows.length}</span>
+            </button>
+            ${stats ? `<span class="register-program-stats">${escapeHtml(stats)}</span>` : ""}
+          </h2>
           <div class="register-program-actions">${ganttLink}</div>
         </div>
         <div class="register-table-wrap">
@@ -554,8 +715,12 @@ function renderRegister() {
     `<section class="register-create-program" data-create-program="1" aria-label="Create new program">
       <div class="register-create-program-inner">Create new</div>
     </section>`;
+  root.querySelectorAll("input[data-select-program][data-indeterminate='1']").forEach((el) => {
+    el.indeterminate = true;
+  });
   syncBulkBar();
   wireProgramDragDrop();
+  syncRegisterSticky();
 }
 
 async function loadAll() {
@@ -608,11 +773,15 @@ function fillRoadList() {
 
 function maybeScrollHighlight() {
   if (!state.highlightId || state.highlightHandled) return;
+  const site = state.sites.find((s) => s.id === state.highlightId);
+  if (site) {
+    setProgramCollapsed(programKey(site.program), false);
+    applyProgramCollapsed(findProgramSection(site.program), false);
+  }
   const row = document.querySelector(`tr[data-site-id="${state.highlightId}"]`);
   if (!row) return;
   state.highlightHandled = true;
   row.scrollIntoView({ block: "center", behavior: "smooth" });
-  const site = state.sites.find((s) => s.id === state.highlightId);
   if (site) setTimeout(() => openSiteDrawer(site), 300);
 }
 
@@ -1198,8 +1367,19 @@ function bindEvents() {
   on("siteForm", "change", scheduleAutosave);
 
   on("registerList", "click", (ev) => {
+    const toggle = ev.target.closest("[data-toggle-program]");
+    if (toggle) {
+      ev.preventDefault();
+      const section = toggle.closest("section.register-program");
+      if (!section) return;
+      const program = section.getAttribute("data-program") || "";
+      const next = !section.classList.contains("is-collapsed");
+      setProgramCollapsed(program, next);
+      applyProgramCollapsed(section, next);
+      return;
+    }
     if (state.suppressRowOpen) return;
-    if (ev.target.closest("[data-status-select], .status-col, .select-col, .actions-col, a.btn, .drag-grip"))
+    if (ev.target.closest("[data-status-select], .status-col, .select-col, .actions-col, a.btn, .drag-grip, .register-select-program"))
       return;
     const btn = ev.target.closest("[data-action='open']");
     if (!btn) return;
@@ -1209,11 +1389,39 @@ function bindEvents() {
   });
 
   on("registerList", "change", (ev) => {
+    const progBox = ev.target.closest("[data-select-program]");
+    if (progBox) {
+      const program = progBox.getAttribute("data-select-program") || "";
+      const onFlag = !!progBox.checked;
+      for (const site of state.sites) {
+        if (programKey(site.program) !== programKey(program)) continue;
+        if (onFlag) state.selectedIds.add(site.id);
+        else state.selectedIds.delete(site.id);
+        const box = document.querySelector(`[data-select-id="${site.id}"]`);
+        if (box) box.checked = onFlag;
+      }
+      progBox.indeterminate = false;
+      syncBulkBar();
+      return;
+    }
     const box = ev.target.closest("[data-select-id]");
     if (box) {
       const id = Number(box.getAttribute("data-select-id"));
       if (box.checked) state.selectedIds.add(id);
       else state.selectedIds.delete(id);
+      const row = box.closest("tr.register-row");
+      const program = row?.getAttribute("data-program") || "";
+      const progInput = [...document.querySelectorAll("[data-select-program]")].find(
+        (el) => el.getAttribute("data-select-program") === program
+      );
+      if (progInput) {
+        const ids = state.sites
+          .filter((s) => programKey(s.program) === programKey(program))
+          .map((s) => s.id);
+        const selected = ids.filter((id) => state.selectedIds.has(id)).length;
+        progInput.checked = ids.length > 0 && selected === ids.length;
+        progInput.indeterminate = selected > 0 && selected < ids.length;
+      }
       syncBulkBar();
       return;
     }
@@ -1240,6 +1448,35 @@ function bindEvents() {
       alertDialog(e.message || String(e));
     });
   });
+  on("btnDensity", "click", () => {
+    state.compact = !state.compact;
+    saveDensityPref();
+    syncDensityButton();
+  });
+  on("btnCollapseAll", "click", () => {
+    for (const site of state.sites) state.collapsedPrograms.add(programKey(site.program));
+    saveCollapsedPrograms();
+    document.querySelectorAll("section.register-program").forEach((section) => {
+      applyProgramCollapsed(section, true);
+    });
+  });
+  on("btnExpandAll", "click", () => {
+    state.collapsedPrograms.clear();
+    saveCollapsedPrograms();
+    document.querySelectorAll("section.register-program").forEach((section) => {
+      applyProgramCollapsed(section, false);
+    });
+  });
+  on("registerJump", "click", (ev) => {
+    const btn = ev.target.closest("[data-jump-program]");
+    if (!btn) return;
+    const program = btn.getAttribute("data-jump-program") || "";
+    setProgramCollapsed(program, false);
+    const section = findProgramSection(program);
+    applyProgramCollapsed(section, false);
+    section?.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+  window.addEventListener("resize", syncRegisterSticky);
 
   on("columnList", "click", async (ev) => {
     const btn = ev.target.closest("[data-del-col]");
@@ -1277,6 +1514,8 @@ function showLoadError(err) {
 async function init() {
   try {
     injectChrome({ active: "/", mode: "ops" });
+    loadRegisterPrefs();
+    syncDensityButton();
     const params = new URLSearchParams(location.search);
     const hl = params.get("highlight");
     if (hl && Number(hl)) state.highlightId = Number(hl);

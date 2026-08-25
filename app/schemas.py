@@ -174,6 +174,15 @@ class SiteBulkArchiveOut(BaseModel):
     financial_year: str | None = None
 
 
+class SiteBulkPurgeRequest(BaseModel):
+    site_ids: list[int] = Field(min_length=1)
+
+
+class SiteBulkPurgeOut(BaseModel):
+    purged: int
+    site_ids: list[int]
+
+
 class SiteReorderRequest(BaseModel):
     program: str | None = None
     site_ids: list[int] = Field(min_length=1)

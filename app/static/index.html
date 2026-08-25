@@ -43,22 +43,28 @@
         </div>
       </div>
 
-      <div class="filter-bar">
-        <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
-        <select id="priorityFilter" aria-label="Priority">
-          <option value="">All priorities</option>
-          <option value="1">Priority 1</option>
-          <option value="2">Priority 2</option>
-        </select>
-        <select id="programFilter" aria-label="Program"><option value="">All programs</option></select>
-        <select id="stageFilter" aria-label="Stage"><option value="">All stages</option></select>
-        <select id="councilFilter" aria-label="Council"><option value="">All councils</option></select>
-        <select id="listFilter" aria-label="Client list">
-          <option value="">All lists</option>
-          <option value="permits">Permits</option>
-          <option value="trims">TRIMS</option>
-          <option value="none">Not on lists</option>
-        </select>
+      <div class="register-controls-sticky" id="registerControls">
+        <div class="filter-bar">
+          <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
+          <select id="priorityFilter" aria-label="Priority">
+            <option value="">All priorities</option>
+            <option value="1">Priority 1</option>
+            <option value="2">Priority 2</option>
+          </select>
+          <select id="programFilter" aria-label="Program"><option value="">All programs</option></select>
+          <select id="stageFilter" aria-label="Stage"><option value="">All stages</option></select>
+          <select id="councilFilter" aria-label="Council"><option value="">All councils</option></select>
+          <select id="listFilter" aria-label="Client list">
+            <option value="">All lists</option>
+            <option value="permits">Permits</option>
+            <option value="trims">TRIMS</option>
+            <option value="none">Not on lists</option>
+          </select>
+          <button type="button" class="btn" id="btnDensity" aria-pressed="true">Compact</button>
+          <button type="button" class="btn" id="btnCollapseAll">Collapse all</button>
+          <button type="button" class="btn" id="btnExpandAll">Expand all</button>
+        </div>
+        <nav class="register-jump" id="registerJump" aria-label="Jump to program" hidden></nav>
       </div>
 
       <div class="bulk-bar" id="bulkBar" hidden>

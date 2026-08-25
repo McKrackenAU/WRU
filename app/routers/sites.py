@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from ..database import get_db
+from ..database import UPLOAD_DIR, get_db
 from ..financial_year import australian_financial_year
-from ..models import MapFeature, MapLayer, Site, SiteCouncil
+from ..models import CostEstimate, MapFeature, MapLayer, Site, SiteCouncil
 from ..schemas import (
     SiteArchiveRequest,
     SiteBulkArchiveOut,
     SiteBulkArchiveRequest,
+    SiteBulkPurgeOut,
+    SiteBulkPurgeRequest,
     SiteCreate,
     SiteOut,
     SiteReorderOut,
@@ -84,6 +87,57 @@ def _attach_geometry(db: Session, site: Site, geometry: dict | None, name: str |
     db.add(feat)
     db.flush()
     layer.feature_count = db.query(MapFeature).filter(MapFeature.layer_id == layer.id).count()
+
+
+def _site_file_paths(site: Site) -> list[Path]:
+    """Local files that must be removed when a site is permanently purged."""
+    paths: list[Path] = []
+    for doc in site.documents or []:
+        name = (getattr(doc, "stored_name", None) or "").strip()
+        if name:
+            paths.append(UPLOAD_DIR / name)
+    for est in site.cost_estimates or []:
+        for att in getattr(est, "attachments", None) or []:
+            name = (getattr(att, "stored_name", None) or "").strip()
+            if name:
+                paths.append(UPLOAD_DIR / "cost-estimates" / name)
+    return paths
+
+
+def require_archived_for_purge(site: Site | None) -> Site:
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if not site.archived:
+        raise HTTPException(
+            status_code=409,
+            detail="Hard delete is only allowed from the archive — archive the site first",
+        )
+    return site
+
+
+def _purge_query(db: Session):
+    return db.query(Site).options(
+        selectinload(Site.documents),
+        selectinload(Site.cost_estimates).selectinload(CostEstimate.attachments),
+    )
+
+
+def purge_archived_sites(db: Session, sites: list[Site]) -> list[int]:
+    """Permanently delete archived sites and their on-disk attachments."""
+    files: list[Path] = []
+    ids: list[int] = []
+    for site in sites:
+        require_archived_for_purge(site)
+        files.extend(_site_file_paths(site))
+        ids.append(int(site.id))
+        db.delete(site)
+    db.commit()
+    for path in files:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return ids
 
 
 @router.get("", response_model=list[SiteOut])
@@ -194,6 +248,18 @@ def bulk_archive_sites(payload: SiteBulkArchiveRequest, db: Session = Depends(ge
         archived_ids.append(site.id)
     db.commit()
     return SiteBulkArchiveOut(archived=len(archived_ids), site_ids=archived_ids, financial_year=fy_used)
+
+
+@router.post("/bulk-purge", response_model=SiteBulkPurgeOut)
+def bulk_purge_sites(payload: SiteBulkPurgeRequest, db: Session = Depends(get_db)):
+    ids = sorted({int(i) for i in payload.site_ids if int(i) > 0})
+    if not ids:
+        raise HTTPException(status_code=400, detail="No site ids provided")
+    sites = _purge_query(db).filter(Site.id.in_(ids), Site.archived.is_(True)).all()
+    if not sites:
+        raise HTTPException(status_code=404, detail="No matching archived sites found")
+    purged = purge_archived_sites(db, sites)
+    return SiteBulkPurgeOut(purged=len(purged), site_ids=purged)
 
 
 def _program_key(value: str | None) -> str:
@@ -383,8 +449,7 @@ def restore_site(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{site_id}", status_code=204)
-def delete_site_blocked(site_id: int):
-    raise HTTPException(
-        status_code=405,
-        detail="Hard delete disabled — archive the site instead",
-    )
+def delete_site(site_id: int, db: Session = Depends(get_db)):
+    site = _purge_query(db).filter(Site.id == site_id).first()
+    require_archived_for_purge(site)
+    purge_archived_sites(db, [site])
