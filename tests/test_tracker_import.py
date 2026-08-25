@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from io import BytesIO
+from pathlib import Path
 
 from openpyxl import Workbook
 
@@ -64,3 +66,132 @@ def test_parse_keeps_unmatched_status_rows():
     unmatched_row = next(r for r in parsed["rows"] if r["site_number"] == "S1")
     assert unmatched_row["status_unmatched"]
     assert "Waiting on designer" in parsed["unmatched_statuses"]
+
+
+def _v6_like_bytes() -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "TGS-MOA Tracker"
+    headers = {
+        2: "Road Name",
+        3: "Site Number",
+        4: "Indicative Site Start Date",
+        7: "TGS Markup completed",
+        16: "Comments",
+        18: "MoA Number",
+        19: "MoA Submission Date",
+        24: "Council",
+        25: "Council Submission Date",
+        26: "Council No Objection Recieved Date",
+        35: "JOB COMPLETED",
+    }
+    for col, label in headers.items():
+        ws.cell(1, col, label)
+    ws["A2"] = "LCP - FMRP"
+
+    ws["A3"] = 1
+    ws["B3"] = "DYNON RD - 5035"
+    ws["C3"] = "S48"
+    ws["D3"] = datetime(2026, 9, 13)
+    ws["G3"] = "MoA Submitted"
+    ws["P3"] = "TRIMS requested 22/7/26\nVentia 28/7 responded to DTP"
+    ws["R3"] = "0093225"
+    ws["S3"] = datetime(2026, 7, 3)
+    ws["X3"] = "Maribyrnong"
+    ws["Y3"] = datetime(2026, 7, 6)
+    ws["Z3"] = datetime(2026, 7, 28)
+    ws["AI3"] = "No"
+
+    ws["B65"] = "ADD NEW LINE ABOVE"
+    ws["B66"] = "TOTALS"
+    ws["C66"] = "COMPLETED"
+    ws["G66"] = 62
+    ws["B68"] = 62
+    ws["C68"] = "% COMPLETE"
+    ws["G68"] = 1
+
+    ws["A87"] = "GENERICS MTMP & ITMP"
+    ws["A88"] = 1
+    ws["B88"] = "WRU - Miepol-TMR-VEN-OTH-396-MTMP 25-26"
+    ws["G88"] = "Yes"
+    ws["P88"] = "TGS-TMR-VEN-OTH-396\nChange form V2"
+    ws["R88"] = 77388
+    ws["X88"] = "Multiple"
+    ws["Y88"] = datetime(2025, 7, 15)
+    ws["Z88"] = "Brim-30/07/25\nMel-17/07/25\nHob-"
+    ws["AI88"] = "No"
+
+    ws["A81"] = "STRUCTURES"
+    ws["A82"] = 10
+    ws["B82"] = "PRINCES HWY WEST BRIDGE"
+    ws["G82"] = "Yes"
+    ws["P82"] = "TGS-TMR-GRD-2500-374\nsubmitted on 24-Feb-25"
+    ws["X82"] = "Multiple"
+    ws["Y82"] = datetime(2024, 9, 10)
+    ws["AI82"] = "Yes"
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_skips_totals_and_keeps_comments_and_council_dates():
+    parsed = parse_tracker_workbook(_v6_like_bytes())
+    roads = {r["road_name"] for r in parsed["rows"]}
+    assert "DYNON RD - 5035" in roads
+    assert "% COMPLETE" not in roads
+    assert "62" not in roads
+    assert parsed["parsed"] == 3
+
+    dynon = next(r for r in parsed["rows"] if r["site_number"] == "S48")
+    assert "TRIMS requested 22/7/26" in dynon["comments"]
+    assert "\n" in dynon["comments"]
+    assert dynon["councils"] == [
+        {
+            "council_name": "Maribyrnong",
+            "submitted_to_council_date": date(2026, 7, 6),
+            "no_objection_date": date(2026, 7, 28),
+        }
+    ]
+    assert dynon["must_have_manual"] is False
+    assert dynon["include_in_totals"] is True
+
+    generic = next(r for r in parsed["rows"] if "Miepol" in r["road_name"])
+    names = {c["council_name"]: c for c in generic["councils"]}
+    assert set(names) == {"Brimbank", "Melbourne", "Hobsons Bay"}
+    assert names["Brimbank"]["no_objection_date"].isoformat() == "2025-07-30"
+    assert names["Melbourne"]["no_objection_date"].isoformat() == "2025-07-17"
+    assert names["Brimbank"]["submitted_to_council_date"].isoformat() == "2025-07-15"
+    assert generic["is_generic_moa"] is True
+    assert generic["tgs_reference"] == "TGS-TMR-VEN-OTH-396"
+    assert generic["moa_number"] == "77388"
+
+    structures = next(r for r in parsed["rows"] if "BRIDGE" in r["road_name"])
+    assert structures["include_in_totals"] is False
+    assert structures["tgs_reference"] == "TGS-TMR-GRD-2500-374"
+    assert structures["archive"] is True
+    assert "1" not in parsed["unmatched_statuses"]
+
+
+def test_real_v6_workbook_if_attached():
+    path = Path("/home/ubuntu/.cursor/projects/workspace/uploads/WRU_Traffic_TGS-MOA_Tracker_V6_WIP_f68a.xlsm")
+    if not path.is_file():
+        return
+    parsed = parse_tracker_workbook(path.read_bytes())
+    roads = {r["road_name"] for r in parsed["rows"]}
+    assert "DYNON RD - 5035" in roads
+    assert not any("%" in r["site_number"] for r in parsed["rows"])
+    dynon = next(r for r in parsed["rows"] if r["site_number"] == "S48")
+    assert "TRIMS requested" in (dynon["comments"] or "")
+    assert dynon["councils"][0]["council_name"] == "Maribyrnong"
+    assert str(dynon["councils"][0]["submitted_to_council_date"]) == "2026-07-06"
+    assert str(dynon["councils"][0]["no_objection_date"]) == "2026-07-28"
+    miepol = next(r for r in parsed["rows"] if "Miepol" in r["road_name"])
+    names = {c["council_name"] for c in miepol["councils"]}
+    assert "Brimbank" in names
+    assert "Melbourne" in names
+    assert "Hobsons Bay" in names
+    brim = next(c for c in miepol["councils"] if c["council_name"] == "Brimbank")
+    assert str(brim["no_objection_date"]) == "2025-07-30"
+    assert parsed["parsed"] >= 60
+    assert parsed["parsed"] <= 72

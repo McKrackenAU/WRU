@@ -68,6 +68,8 @@ async def import_tracker_excel(
                     "status_text": r.get("status_text"),
                     "status_unmatched": r.get("status_unmatched"),
                     "moa_number": r.get("moa_number"),
+                    "comments": (r.get("comments") or "")[:160] or None,
+                    "councils": r.get("councils") or [],
                 }
                 for r in rows[:20]
             ],
