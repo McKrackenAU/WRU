@@ -90,6 +90,51 @@ def test_wrapped_chunks_reassemble_real_workbook():
     assert b"".join(parts) == content
 
 
+def test_json_chunk_http_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import asyncio
+
+    import app.routers.import_tracker as mod
+
+    monkeypatch.setattr(mod, "STAGING_DIR", tmp_path)
+
+    class DummyRequest:
+        def __init__(self, content_type: str, payload):
+            self.headers = {"content-type": content_type}
+            self._payload = payload
+
+        async def json(self):
+            return self._payload
+
+    payload = b"PK\x03\x04" + b"hello-tracker-bytes"
+    begin = mod.begin_tracker_session(
+        mod.TrackerUploadBegin(filename="tracker.xlsm", size=len(payload))
+    )
+    assert begin["chunk_size"] == CHUNK_SIZE
+    assert begin["wrap_key"]
+    sid = begin["id"]
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            mod.upload_tracker_chunk(sid, 0, DummyRequest("application/octet-stream", None))  # type: ignore[arg-type]
+        )
+    assert exc.value.status_code == 415
+
+    wrapped = xor_repeat(payload, base64.b64decode(begin["wrap_key"]))
+    out = asyncio.run(
+        mod.upload_tracker_chunk(
+            sid,
+            0,
+            DummyRequest(
+                "application/json",
+                {"p": base64.b64encode(wrapped).decode("ascii")},
+            ),
+        )
+    )
+    assert out["received"] == 1
+    folder = tmp_path / sid
+    assert assemble_chunks(folder, len(payload)) == payload
+
+
 def test_dry_run_from_real_v6_bytes():
     path = Path("/home/ubuntu/.cursor/projects/workspace/uploads/WRU_Traffic_TGS-MOA_Tracker_V6_WIP_f68a.xlsm")
     if not path.is_file():
