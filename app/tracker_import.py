@@ -10,25 +10,33 @@ from typing import Any
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
+from .calculations import expand_workflow_prefix
 from .models import Site
 from .services import apply_workflow, ensure_workflow_steps, set_councils, sync_computed_fields
-from .stage_registry import active_programs
+from .stage_registry import active_programs, stage_keys as registry_stage_keys
 
 # Spreadsheet status text → cumulative completed stages
 STATUS_STAGES: dict[str, list[str]] = {
     "not yet started": [],
     "tgs markup complete": ["tgs_markup_completed"],
     "submitted to tmd": ["tgs_markup_completed", "submitted_to_tmd"],
-    "plan received": ["tgs_markup_completed", "submitted_to_tmd", "plan_received"],
+    "plan received": [
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "ventia_review",
+        "plan_received",
+    ],
     "ready to submit moa": [
         "tgs_markup_completed",
         "submitted_to_tmd",
+        "ventia_review",
         "plan_received",
         "ready_to_submit_moa",
     ],
     "moa submitted": [
         "tgs_markup_completed",
         "submitted_to_tmd",
+        "ventia_review",
         "plan_received",
         "ready_to_submit_moa",
         "moa_submitted",
@@ -36,6 +44,7 @@ STATUS_STAGES: dict[str, list[str]] = {
     "moa with trims": [
         "tgs_markup_completed",
         "submitted_to_tmd",
+        "ventia_review",
         "plan_received",
         "ready_to_submit_moa",
         "moa_submitted",
@@ -44,6 +53,7 @@ STATUS_STAGES: dict[str, list[str]] = {
     "revision needed": [
         "tgs_markup_completed",
         "submitted_to_tmd",
+        "ventia_review",
         "plan_received",
         "ready_to_submit_moa",
         "moa_submitted",
@@ -53,6 +63,7 @@ STATUS_STAGES: dict[str, list[str]] = {
     "moa received": [
         "tgs_markup_completed",
         "submitted_to_tmd",
+        "ventia_review",
         "plan_received",
         "ready_to_submit_moa",
         "moa_submitted",
@@ -62,6 +73,7 @@ STATUS_STAGES: dict[str, list[str]] = {
     "ready for works": [
         "tgs_markup_completed",
         "submitted_to_tmd",
+        "ventia_review",
         "plan_received",
         "ready_to_submit_moa",
         "moa_submitted",
@@ -505,8 +517,9 @@ def _furthest_from_lamps(values: list[Any] | None) -> str | None:
 
 
 def _flags_for_status_key(canonical: str) -> dict[str, bool]:
-    stages = STATUS_STAGES.get(canonical, [])
+    stages = set(STATUS_STAGES.get(canonical, []))
     flags = {k: k in stages for k in WORKFLOW_KEYS}
+    flags["ventia_review"] = "ventia_review" in stages
     if canonical == "revision needed":
         flags["revision_needed"] = True
     return flags
@@ -744,6 +757,7 @@ def import_tracker_rows(
             # Reset leftover steps from earlier imports (e.g. inactive ventia_review).
             full_wf = {step.stage: False for step in site.workflow_steps}
             full_wf.update(raw.get("workflow") or {})
+            full_wf = expand_workflow_prefix(full_wf, registry_stage_keys(db))
             apply_workflow(site, full_wf, db)
             set_councils(site, raw.get("councils") or [])
             if raw.get("archive"):

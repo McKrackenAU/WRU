@@ -124,6 +124,37 @@ def _ordered_workflow(site: Site, stage_keys: list[str] | None = None) -> list[W
     return sorted(steps, key=lambda s: order.get(s.stage, 999))
 
 
+def expand_workflow_prefix(
+    done: dict[str, bool],
+    stage_keys: list[str] | None = None,
+) -> dict[str, bool]:
+    """Complete every configured stage up to the furthest completed one.
+
+    Import maps spreadsheet statuses to a hardcoded prefix and can skip extra
+    stages (Ventia review, admin-added steps). The register then shows
+    Ready for Works while the bar is ~90% (e.g. 8/9).
+    """
+    keys = _ordered_keys(stage_keys)
+    linear = [k for k in keys if k != "revision_needed"]
+    out = {k: False for k in keys}
+    last = None
+    for key in linear:
+        if done.get(key):
+            last = key
+    if last is not None:
+        idx = linear.index(last)
+        for i, key in enumerate(linear):
+            out[key] = i <= idx
+    if "revision_needed" in keys:
+        out["revision_needed"] = bool(done.get("revision_needed"))
+        if out["revision_needed"]:
+            # Revision is a detour — do not imply later complete-role stages.
+            for key in linear:
+                if key in ("moa_received", "ready_for_works"):
+                    out[key] = bool(done.get(key))
+    return out
+
+
 def current_stage_key(site: Site, stage_keys: list[str] | None = None) -> str | None:
     """Furthest completed stage in the configured order.
 
@@ -160,6 +191,7 @@ def workflow_progress_pct(
     *,
     stage_keys: list[str] | None = None,
     progress_keys: set[str] | None = None,
+    list_roles: dict[str, str] | None = None,
 ) -> int:
     """Percent complete from the furthest completed stage's place in the order."""
     keys = _ordered_keys(stage_keys)
@@ -169,10 +201,14 @@ def workflow_progress_pct(
         linear = [k for k in keys if k in progress_keys]
     if not linear:
         return 0
-    done = _completion_map(site)
+    implied = expand_workflow_prefix(_completion_map(site), keys)
+    roles = list_roles or {}
+    complete_in_linear = [k for k in linear if roles.get(k) == "complete"]
+    if complete_in_linear and implied.get(complete_in_linear[-1]):
+        return 100
     last_idx = -1
     for i, key in enumerate(linear):
-        if done.get(key):
+        if implied.get(key):
             last_idx = i
     if last_idx < 0:
         return 0
@@ -431,7 +467,7 @@ def site_metrics(
         "must_have_status": must,
         "must_have_date": must.get("date"),
         "workflow_progress_pct": workflow_progress_pct(
-            site, stage_keys=keys, progress_keys=progress_keys
+            site, stage_keys=keys, progress_keys=progress_keys, list_roles=roles
         ),
         "current_stage": current_stage_key(site, keys),
         "next_stage": next_stage_key(site, keys),

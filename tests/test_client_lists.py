@@ -134,6 +134,53 @@ def test_progress_follows_configured_order_not_flag_count():
     assert pct2 == round(100 * 1 / 3)
 
 
+def test_ready_for_works_is_full_progress_with_middle_gap():
+    site = _site(
+        [
+            "tgs_markup_completed",
+            "submitted_to_tmd",
+            "plan_received",
+            "ready_to_submit_moa",
+            "moa_submitted",
+            "moa_with_trims",
+            "moa_received",
+            "ready_for_works",
+        ]
+    )
+    progress = {s["key"] for s in DEFAULT_STAGES if s["counts_toward_progress"]}
+    roles = {s["key"]: s["list_role"] for s in DEFAULT_STAGES}
+    pct = workflow_progress_pct(
+        site,
+        stage_keys=list(WORKFLOW_STAGES),
+        progress_keys=progress,
+        list_roles=roles,
+    )
+    assert pct == 100
+    assert current_stage_key(site, WORKFLOW_STAGES) == "ready_for_works"
+
+
+def test_ready_for_works_full_even_with_later_admin_stage():
+    site = _site(["ready_for_works"])
+    site.workflow_steps.append(SimpleNamespace(stage="on_site", completed=False))
+    keys = list(WORKFLOW_STAGES) + ["on_site"]
+    progress = {k for k in keys if k != "revision_needed"}
+    roles = {**_roles(), "on_site": "none"}
+    pct = workflow_progress_pct(
+        site, stage_keys=keys, progress_keys=progress, list_roles=roles
+    )
+    assert pct == 100
+
+
+def test_expand_prefix_fills_skipped_middle_stage():
+    from app.calculations import expand_workflow_prefix
+
+    done = {"ready_for_works": True, "ventia_review": False, "tgs_markup_completed": True}
+    out = expand_workflow_prefix(done, list(WORKFLOW_STAGES))
+    assert out["ventia_review"] is True
+    assert out["ready_for_works"] is True
+    assert out["revision_needed"] is False
+
+
 def test_business_days_skip_weekend():
     friday = date(2026, 7, 24)  # Friday
     assert add_business_days(friday, 1) == date(2026, 7, 27)  # Monday

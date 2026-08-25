@@ -16,6 +16,7 @@ def test_status_aliases_ready_for_works():
     assert unmatched is None
     assert wf["ready_for_works"] is True
     assert wf["moa_received"] is True
+    assert wf["ventia_review"] is True
 
 
 def test_status_submitted_to_traffic_management():

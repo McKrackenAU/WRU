@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from .calculations import compute_must_have_date, compute_today_priority, site_metrics
+from .calculations import compute_must_have_date, compute_today_priority, expand_workflow_prefix, site_metrics
 from .financial_year import australian_financial_year
 from .models import WORKFLOW_STAGES, Site, SiteCouncil, WorkflowStep
 from .settings_store import get_rules
@@ -208,6 +208,12 @@ def apply_generic_moa_link(site: Site, generic: Site | None, db: Session | None 
 
 def sync_computed_fields(site: Site, db: Session | None = None) -> None:
     """Auto must-have date + archive-on-complete (spreadsheet AI=Yes behaviour)."""
+    if db is not None:
+        keys, _, _ = _stage_context(db)
+        done = {step.stage: bool(step.completed) for step in site.workflow_steps}
+        expanded = expand_workflow_prefix(done, keys)
+        if any(expanded.get(key) != done.get(key, False) for key in expanded):
+            apply_workflow(site, expanded, db)
     rules = get_rules(db)
     if rules.auto_compute_must_have and not site.must_have_manual:
         computed = compute_must_have_date(site, rules=rules)
