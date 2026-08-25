@@ -46,6 +46,7 @@ from .routers import (
 from .schemas import MetaOut
 from .settings_store import get_rules
 from .stage_registry import active_programs, ensure_lookup_seed, stage_meta
+from .upload_limits import configure_multipart_limits
 from .version import version_string
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -59,6 +60,8 @@ app = FastAPI(
     description="Ventia-styled traffic guidance / MoA workflow tracker with custom columns, tracking, documents, archive, and map.",
     version=version_string(),
 )
+
+configure_multipart_limits()
 
 run_migrations()
 

@@ -82,7 +82,7 @@
 
       <section class="panel-card">
         <h2>Import spreadsheet</h2>
-        <p class="hint">Upload the WRU Traffic TGS-MOA Tracker as <code>.xlsx</code> or <code>.xlsm</code> (legacy <code>.xls</code> must be saved as .xlsx first). Rows match on road + site number. Unrecognised statuses still import as Not yet started and are listed in the preview.</p>
+        <p class="hint">Upload the WRU Traffic TGS-MOA Tracker as <code>.xlsx</code> or <code>.xlsm</code> (legacy <code>.xls</code> must be saved as .xlsx first). Off-site (Cloudflare tunnel / workplace file policy) often blocks a whole <code>.xlsm</code>; Preview and Import send it in small anonymous chunks instead. Rows match on road + site number.</p>
         <div class="filters" style="flex-direction:column;align-items:stretch">
           <input id="importFile" type="file" accept=".xlsx,.xlsm" />
           <label><span><input id="importUpdate" type="checkbox" checked /> Update existing sites</span></label>

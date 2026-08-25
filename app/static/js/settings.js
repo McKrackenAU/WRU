@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, errorMessage, formatApiDetail } from "./common.js";
 
 async function loadRules() {
   const r = await api("/api/admin/settings");
@@ -64,34 +64,87 @@ async function addLookup() {
   await loadLookups();
 }
 
+async function readFetchError(res) {
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    const body = await res.json().catch(() => ({}));
+    return formatApiDetail(body?.detail ?? body, res.statusText || `HTTP ${res.status}`);
+  }
+  const text = await res.text().catch(() => "");
+  if (/cloudflare|cf-ray|error code 52|attention required/i.test(text)) {
+    return "Cloudflare or the tunnel blocked the upload (file policy). Retry — the importer sends small chunks instead of the whole .xlsm.";
+  }
+  if (res.status === 413) {
+    return "A proxy rejected the upload as too large. Retry — the importer sends 256 KB chunks.";
+  }
+  return (text || res.statusText || `HTTP ${res.status}`).slice(0, 240);
+}
+
+async function importTrackerChunked(file, { dryRun, updateExisting, onProgress }) {
+  const session = await api("/api/import/tracker/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, size: file.size }),
+    timeoutMs: 20000,
+  });
+  const chunkSize = Number(session.chunk_size) || 256 * 1024;
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const total = Math.max(1, Math.ceil(buf.length / chunkSize));
+  for (let i = 0; i < total; i += 1) {
+    onProgress?.(`Uploading… ${i + 1}/${total}`);
+    const slice = buf.subarray(i * chunkSize, (i + 1) * chunkSize);
+    const res = await fetch(`/api/import/tracker/session/${encodeURIComponent(session.id)}/chunk/${i}`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: slice,
+    });
+    if (res.status === 401) {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.href = `/login?next=${next}`;
+      throw new Error("Not authenticated");
+    }
+    if (!res.ok) throw new Error(await readFetchError(res));
+  }
+  onProgress?.(dryRun ? "Parsing preview…" : "Importing…");
+  const params = new URLSearchParams({
+    dry_run: dryRun ? "true" : "false",
+    update_existing: updateExisting ? "true" : "false",
+  });
+  return api(`/api/import/tracker/session/${encodeURIComponent(session.id)}/commit?${params}`, {
+    method: "POST",
+    timeoutMs: 120000,
+  });
+}
+
 async function runImport(dryRun) {
   const file = $("importFile").files?.[0];
   if (!file) {
-      alertDialog("Choose an Excel tracker file");
-      return;
-    }
-  const fd = new FormData();
-  fd.append("file", file);
-  const params = new URLSearchParams({
-    dry_run: dryRun ? "true" : "false",
-    update_existing: $("importUpdate").checked ? "true" : "false",
-  });
-  $("importStatus").textContent = dryRun ? "Previewing…" : "Importing…";
-  $("importLog").hidden = true;
-  const res = await fetch(`/api/import/tracker?${params}`, { method: "POST", body: fd });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    $("importStatus").textContent = "";
-    alertDialog(body.detail || "Import failed");
+    alertDialog("Choose an Excel tracker file");
     return;
   }
-  $("importStatus").textContent = dryRun
-    ? `Preview: ${body.parsed} rows${body.unmatched_statuses?.length ? ` · unmatched statuses: ${body.unmatched_statuses.join(", ")}` : ""}`
-    : `Imported · created ${body.created}, updated ${body.updated}, archived ${body.archived}${
-        body.unmatched_statuses?.length ? ` · unmatched statuses listed below` : ""
-      }`;
-  $("importLog").hidden = false;
-  $("importLog").textContent = JSON.stringify(body, null, 2);
+  $("importStatus").textContent = dryRun ? "Previewing…" : "Importing…";
+  $("importLog").hidden = true;
+  try {
+    const body = await importTrackerChunked(file, {
+      dryRun,
+      updateExisting: !!$("importUpdate")?.checked,
+      onProgress: (msg) => {
+        $("importStatus").textContent = msg;
+      },
+    });
+    $("importStatus").textContent = dryRun
+      ? `Preview: ${body.parsed} rows${body.unmatched_statuses?.length ? ` · unmatched statuses: ${body.unmatched_statuses.join(", ")}` : ""}`
+      : `Imported · created ${body.created}, updated ${body.updated}, archived ${body.archived}${
+          body.unmatched_statuses?.length ? ` · unmatched statuses listed below` : ""
+        }`;
+    $("importLog").hidden = false;
+    $("importLog").textContent = JSON.stringify(body, null, 2);
+  } catch (err) {
+    $("importStatus").textContent = "";
+    alertDialog(errorMessage(err, "Import failed"));
+  }
 }
 
 async function init() {
