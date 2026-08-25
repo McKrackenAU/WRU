@@ -19,6 +19,13 @@ def test_status_aliases_ready_for_works():
     assert wf["ventia_review"] is True
 
 
+def test_moa_received_matches_ready_for_works():
+    wf, unmatched = _status_workflow("MoA received / approved")
+    assert unmatched is None
+    assert wf["moa_received"] is True
+    assert wf["ready_for_works"] is True
+
+
 def test_status_submitted_to_traffic_management():
     wf, unmatched = _status_workflow("Submitted to traffic management")
     assert unmatched is None

@@ -32,10 +32,13 @@
 
       <section class="panel-card">
         <h2>Workflow stages</h2>
-        <p class="hint">Drag the ⋮⋮ handle or use ↑ ↓ to set order. Register dropdown, progress bar, and “set status” follow this list. List role: <strong>none</strong> = not on client lists · <strong>permits</strong> / <strong>trims</strong> = exclusive team list · <strong>complete</strong> = remove from both (approved / ready).</p>
+        <p class="hint">Drag the ⋮⋮ handle (not the row) or use ↑ ↓ to set order. <strong>Remove</strong> hides a stage from the register — use it to drop the duplicate complete stage (MoA received and Ready for works are the same end-state). Sites already marked complete stay complete. List role: <strong>none</strong> · <strong>permits</strong> / <strong>trims</strong> · <strong>complete</strong> = off both client lists.</p>
+        <div class="toolbar" style="margin-bottom:0.6rem">
+          <label class="hint"><span><input type="checkbox" id="showRemovedStages" /> Show removed stages</span></label>
+        </div>
         <div class="table-card" style="box-shadow:none">
           <div class="table-scroll" style="max-height:none">
-            <table class="data-table">
+            <table class="data-table stages-table">
               <thead>
                 <tr>
                   <th>Order</th>
@@ -43,8 +46,7 @@
                   <th>Key</th>
                   <th>List role</th>
                   <th>Progress</th>
-                  <th>Active</th>
-                  <th></th>
+                  <th class="stage-actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="stageBody"></tbody>

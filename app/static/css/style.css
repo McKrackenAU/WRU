@@ -2470,6 +2470,23 @@ html.dark .leaflet-control-scale-line {
   min-width: 1.7rem;
 }
 
+.stages-table {
+  width: 100%;
+}
+
+.stages-table th.stage-actions,
+.stages-table td.stage-actions {
+  position: sticky;
+  right: 0;
+  background: var(--panel);
+  box-shadow: -6px 0 8px -6px color-mix(in srgb, #000 28%, transparent);
+  z-index: 2;
+}
+
+.stages-table tr.is-inactive td {
+  opacity: 0.55;
+}
+
 .register-empty-row td {
   text-align: center;
   padding: 1.1rem 0.85rem;

@@ -69,6 +69,7 @@ STATUS_STAGES: dict[str, list[str]] = {
         "moa_submitted",
         "moa_with_trims",
         "moa_received",
+        "ready_for_works",
     ],
     "ready for works": [
         "tgs_markup_completed",
@@ -104,6 +105,8 @@ STATUS_ALIASES: dict[str, str] = {
     "revision needed": "revision needed",
     "revision required": "revision needed",
     "moa received": "moa received",
+    "moa received / approved": "moa received",
+    "moa approved": "moa received",
     "ready for works": "ready for works",
     "ready to works": "ready for works",
     "ventia review": "plan received",

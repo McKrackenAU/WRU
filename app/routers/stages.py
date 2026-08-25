@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -82,6 +84,60 @@ def assign_stage_positions(ordered_ids: list[int], all_ids: list[int]) -> dict[i
     return {sid: (i + 1) * 10 for i, sid in enumerate(used)}
 
 
+def pick_fold_target(removing_key: str, remaining: list[WorkflowStageDef]) -> str | None:
+    """Where to move completed-site flags when a stage is removed."""
+    active = [s for s in remaining if s.active and s.key != removing_key]
+    complete = [s for s in active if s.list_role == "complete"]
+    if complete:
+        complete.sort(key=lambda s: (s.position, s.id))
+        return complete[-1].key
+    if active:
+        active.sort(key=lambda s: (s.position, s.id))
+        return active[-1].key
+    return None
+
+
+def fold_completed_stage(db: Session, from_key: str, into_key: str) -> int:
+    """Copy completed flags from one stage key onto another. Returns sites updated."""
+    if from_key == into_key:
+        return 0
+    now = datetime.now(timezone.utc)
+    site_ids = [
+        sid
+        for (sid,) in db.query(WorkflowStep.site_id)
+        .filter(WorkflowStep.stage == from_key, WorkflowStep.completed.is_(True))
+        .all()
+    ]
+    if not site_ids:
+        return 0
+    targets = {
+        step.site_id: step
+        for step in db.query(WorkflowStep).filter(
+            WorkflowStep.stage == into_key,
+            WorkflowStep.site_id.in_(site_ids),
+        )
+    }
+    updated = 0
+    for sid in site_ids:
+        step = targets.get(sid)
+        if step is None:
+            db.add(
+                WorkflowStep(
+                    site_id=sid,
+                    stage=into_key,
+                    completed=True,
+                    completed_at=now,
+                )
+            )
+            updated += 1
+            continue
+        if not step.completed:
+            step.completed = True
+            step.completed_at = now
+            updated += 1
+    return updated
+
+
 def _backfill_stage_steps(db: Session, stage_key: str) -> None:
     """Ensure every site has a WorkflowStep row for a newly activated stage key.
 
@@ -127,13 +183,15 @@ def _backfill_stage_steps(db: Session, stage_key: str) -> None:
 
 
 @router.get("/stages", response_model=list[StageOut])
-def list_stages(db: Session = Depends(get_db)):
+def list_stages(
+    include_inactive: bool = Query(default=True),
+    db: Session = Depends(get_db),
+):
     ensure_stage_seed(db)
-    return (
-        db.query(WorkflowStageDef)
-        .order_by(WorkflowStageDef.position.asc(), WorkflowStageDef.id.asc())
-        .all()
-    )
+    q = db.query(WorkflowStageDef)
+    if not include_inactive:
+        q = q.filter(WorkflowStageDef.active.is_(True))
+    return q.order_by(WorkflowStageDef.position.asc(), WorkflowStageDef.id.asc()).all()
 
 
 @router.post("/stages", response_model=StageOut, status_code=201)
@@ -205,7 +263,12 @@ def delete_stage(stage_id: int, db: Session = Depends(get_db)):
     row = db.get(WorkflowStageDef, stage_id)
     if not row:
         raise HTTPException(status_code=404, detail="Stage not found")
-    # Soft-delete so historical WorkflowStep keys remain meaningful
+    others = [s for s in db.query(WorkflowStageDef).all() if s.id != row.id]
+    if row.active and not any(s.active for s in others):
+        raise HTTPException(status_code=400, detail="Keep at least one active stage")
+    target = pick_fold_target(row.key, others)
+    if target:
+        fold_completed_stage(db, row.key, target)
     row.active = False
     db.commit()
     return None

@@ -112,6 +112,20 @@ def test_current_stage_ignores_orphan_step_keys():
     assert current_stage_key(site, WORKFLOW_STAGES) == "submitted_to_tmd"
 
 
+def test_pick_fold_target_prefers_remaining_complete_stage():
+    from types import SimpleNamespace
+
+    from app.routers.stages import pick_fold_target
+
+    remaining = [
+        SimpleNamespace(key="tgs_markup_completed", active=True, list_role="none", position=10, id=1),
+        SimpleNamespace(key="ready_for_works", active=True, list_role="complete", position=100, id=2),
+    ]
+    assert pick_fold_target("moa_received", remaining) == "ready_for_works"
+    only_markup = remaining[:1]
+    assert pick_fold_target("ready_for_works", only_markup) == "tgs_markup_completed"
+
+
 def test_assign_stage_positions_keeps_payload_order():
     from app.routers.stages import assign_stage_positions
 
