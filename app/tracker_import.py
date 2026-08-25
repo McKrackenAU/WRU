@@ -77,6 +77,7 @@ STATUS_ALIASES: dict[str, str] = {
     "not started": "not yet started",
     "tgs markup completed": "tgs markup complete",
     "tgs markup complete": "tgs markup complete",
+    "markup complete": "tgs markup complete",
     "submitted to tmd": "submitted to tmd",
     "submitted to tm": "submitted to tmd",
     "submitted to traffic management": "submitted to tmd",
@@ -98,6 +99,33 @@ STATUS_ALIASES: dict[str, str] = {
 
 # Back-compat name used by tests / callers
 STATUS_MAP: list[tuple[str, list[str]]] = [(k, v) for k, v in STATUS_STAGES.items()]
+
+WORKFLOW_KEYS = [
+    "tgs_markup_completed",
+    "submitted_to_tmd",
+    "plan_received",
+    "ready_to_submit_moa",
+    "moa_submitted",
+    "moa_with_trims",
+    "revision_needed",
+    "moa_received",
+    "ready_for_works",
+]
+
+# Columns H–O after the master status dropdown (G)
+LAMP_KEYS = WORKFLOW_KEYS[1:]
+
+STAGE_TO_STATUS = {
+    "tgs_markup_completed": "tgs markup complete",
+    "submitted_to_tmd": "submitted to tmd",
+    "plan_received": "plan received",
+    "ready_to_submit_moa": "ready to submit moa",
+    "moa_submitted": "moa submitted",
+    "moa_with_trims": "moa with trims",
+    "revision_needed": "revision needed",
+    "moa_received": "moa received",
+    "ready_for_works": "ready for works",
+}
 
 # Column A section headers in the V6 workbook
 SECTION_HINTS = [
@@ -422,45 +450,101 @@ def _row_excel_comment(ws, row: int, cols: dict[str, int]) -> str | None:
     return "\n".join(bits) if bits else None
 
 
-def _status_workflow(status: str) -> tuple[dict[str, bool], str | None]:
+def _canonical_status_key(status: str) -> str | None:
+    """Map spreadsheet status text to a STATUS_STAGES key.
+
+    Exact match first. Then the longest alias contained in the cell (so
+    'MoA Submitted - TRIMS requested…' still maps). Never match a short
+    cell inside a longer alias ('received' must not become 'plan received').
+    """
+    key = _norm(status).lower()
+    if not key:
+        return None
+    if key in STATUS_ALIASES:
+        return STATUS_ALIASES[key]
+    contained = [alias for alias in STATUS_ALIASES if alias in key]
+    if not contained:
+        return None
+    contained.sort(key=len, reverse=True)
+    return STATUS_ALIASES[contained[0]]
+
+
+def _lamp_reached(val: Any) -> bool | None:
+    if val is None or val == "":
+        return None
+    if isinstance(val, datetime) and val.year < 1950:
+        return None
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        return float(val) != 0
+    n = _norm(val).lower()
+    if n in ("0", "no", "n", "false", "-"):
+        return False
+    if n in ("yes", "y", "1", "true"):
+        return True
+    return None
+
+
+def _furthest_from_lamps(values: list[Any] | None) -> str | None:
+    """V6 H–O lamps: blank = passed, 0 = not yet reached, Yes = passed (legacy)."""
+    if not values:
+        return None
+    padded = list(values[: len(LAMP_KEYS)]) + [None] * max(0, len(LAMP_KEYS) - len(values))
+    if all(v in (None, "") for v in padded):
+        return None
+    furthest: str | None = None
+    for key, val in zip(LAMP_KEYS, padded):
+        if val in (None, ""):
+            furthest = key
+            continue
+        reached = _lamp_reached(val)
+        if reached is False:
+            break
+        if reached is True:
+            furthest = key
+    return furthest
+
+
+def _flags_for_status_key(canonical: str) -> dict[str, bool]:
+    stages = STATUS_STAGES.get(canonical, [])
+    flags = {k: k in stages for k in WORKFLOW_KEYS}
+    if canonical == "revision needed":
+        flags["revision_needed"] = True
+    return flags
+
+
+def _status_workflow(status: str, lamps: list[Any] | None = None) -> tuple[dict[str, bool], str | None]:
     """Return (workflow flags, unmatched original text if we fell back)."""
     key = _norm(status).lower()
     unmatched: str | None = None
+    canonical: str | None = None
+
     if not key or key in ("n/a", "na", "-", "0"):
-        key = "not yet started"
+        canonical = None
     elif key in ("yes", "y"):
-        # Structures / generics Yes-No lamps
-        key = "ready for works"
+        lamp_stage = _furthest_from_lamps(lamps)
+        if lamp_stage:
+            canonical = STAGE_TO_STATUS.get(lamp_stage)
+        else:
+            canonical = "ready for works"
     elif key in ("no", "n"):
-        key = "not yet started"
+        canonical = "not yet started"
     elif key.isdigit():
-        key = "not yet started"
         unmatched = status
+        canonical = None
     else:
-        canonical = STATUS_ALIASES.get(key)
-        if canonical is None:
-            for alias, target in STATUS_ALIASES.items():
-                if alias in key or key in alias:
-                    canonical = target
-                    break
+        canonical = _canonical_status_key(status)
         if canonical is None:
             unmatched = status
-            key = "not yet started"
+
+    if canonical is None:
+        lamp_stage = _furthest_from_lamps(lamps)
+        if lamp_stage:
+            canonical = STAGE_TO_STATUS.get(lamp_stage)
+            unmatched = None
         else:
-            key = canonical
-    stages = STATUS_STAGES.get(key, [])
-    all_keys = [
-        "tgs_markup_completed",
-        "submitted_to_tmd",
-        "plan_received",
-        "ready_to_submit_moa",
-        "moa_submitted",
-        "moa_with_trims",
-        "revision_needed",
-        "moa_received",
-        "ready_for_works",
-    ]
-    return {k: k in stages for k in all_keys}, unmatched
+            canonical = "not yet started"
+
+    return _flags_for_status_key(canonical or "not yet started"), unmatched
 
 
 def _section_from_a(value: Any) -> str | None:
@@ -512,7 +596,9 @@ def parse_tracker_workbook(content: bytes) -> dict[str, Any]:
             continue
 
         status = _norm(status_raw)
-        workflow, unmatched = _status_workflow(status)
+        status_idx = cols.get("status") or 7
+        lamps = [ws.cell(r, status_idx + i).value for i in range(1, 9)]
+        workflow, unmatched = _status_workflow(status, lamps)
         if unmatched:
             unmatched_statuses.append(_norm(unmatched))
 
@@ -655,7 +741,10 @@ def import_tracker_rows(
 
             db.flush()
             ensure_workflow_steps(site, db)
-            apply_workflow(site, raw.get("workflow"), db)
+            # Reset leftover steps from earlier imports (e.g. inactive ventia_review).
+            full_wf = {step.stage: False for step in site.workflow_steps}
+            full_wf.update(raw.get("workflow") or {})
+            apply_workflow(site, full_wf, db)
             set_councils(site, raw.get("councils") or [])
             if raw.get("archive"):
                 from datetime import datetime, timezone

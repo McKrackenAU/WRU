@@ -39,6 +39,35 @@ def test_unknown_status_does_not_drop_row():
     assert wf["ready_for_works"] is False
 
 
+def test_short_status_does_not_match_longer_alias():
+    wf, unmatched = _status_workflow("Received")
+    assert unmatched == "Received"
+    assert wf["plan_received"] is False
+    assert wf["moa_received"] is False
+
+
+def test_status_with_comment_suffix_still_maps():
+    wf, unmatched = _status_workflow("MoA Submitted - TRIMS requested 22/7/26")
+    assert unmatched is None
+    assert wf["moa_submitted"] is True
+    assert wf["moa_with_trims"] is False
+
+
+def test_yes_uses_lamps_instead_of_jumping_to_ready_for_works():
+    lamps = [None, None, None, None, 0, 0, 0, 0]  # through MoA Submitted
+    wf, unmatched = _status_workflow("Yes", lamps)
+    assert unmatched is None
+    assert wf["moa_submitted"] is True
+    assert wf["ready_for_works"] is False
+
+
+def test_all_zero_lamps_stay_not_started():
+    wf, unmatched = _status_workflow("", [0, 0, 0, 0, 0, 0, 0, 0])
+    assert unmatched is None
+    assert wf["tgs_markup_completed"] is False
+    assert wf["submitted_to_tmd"] is False
+
+
 def _tracker_bytes() -> bytes:
     wb = Workbook()
     ws = wb.active
@@ -183,6 +212,26 @@ def test_real_v6_workbook_if_attached():
     assert not any("%" in r["site_number"] for r in parsed["rows"])
     dynon = next(r for r in parsed["rows"] if r["site_number"] == "S48")
     assert "TRIMS requested" in (dynon["comments"] or "")
+    assert dynon["workflow"]["moa_submitted"] is True
+    assert dynon["workflow"]["ready_for_works"] is False
+    last_stages: dict[str, int] = {}
+    for row in parsed["rows"]:
+        last = "none"
+        for k in (
+            "tgs_markup_completed",
+            "submitted_to_tmd",
+            "plan_received",
+            "ready_to_submit_moa",
+            "moa_submitted",
+            "moa_with_trims",
+            "moa_received",
+            "ready_for_works",
+        ):
+            if row["workflow"].get(k):
+                last = k
+        last_stages[last] = last_stages.get(last, 0) + 1
+    assert last_stages.get("submitted_to_tmd", 0) >= 30
+    assert last_stages.get("moa_submitted", 0) >= 10
     assert dynon["councils"][0]["council_name"] == "Maribyrnong"
     assert str(dynon["councils"][0]["submitted_to_council_date"]) == "2026-07-06"
     assert str(dynon["councils"][0]["no_objection_date"]) == "2026-07-28"

@@ -112,6 +112,7 @@ function workflowAdvanceTo(targetKey) {
 
 function statusSelectHtml(site) {
   const current = currentStageKey(site);
+  const currentLabel = stageLabel(state.meta, current);
   const opts = (state.meta.workflow_stages || [])
     .map(
       (s) =>
@@ -123,7 +124,7 @@ function statusSelectHtml(site) {
   return `<label class="sr-only" for="status-${site.id}">Status for ${escapeHtml(
     site.road_name
   )}</label>
-    <select class="status-select" id="status-${site.id}" data-status-select="${site.id}" aria-label="Set status">
+    <select class="status-select" id="status-${site.id}" data-status-select="${site.id}" aria-label="Set status" title="${escapeHtml(currentLabel)}">
       ${opts || `<option value="">No stages</option>`}
     </select>`;
 }
@@ -683,11 +684,6 @@ function renderRegister() {
       const body = rows.map(siteRowHtml).join("");
       return `<section class="register-program${collapsed ? " is-collapsed" : ""}" data-program="${escapeHtml(program)}">
         <div class="register-program-head">
-          <label class="register-select-program" onclick="event.stopPropagation()">
-            <input type="checkbox" data-select-program="${escapeHtml(program)}" ${allSelected ? "checked" : ""} ${
-        someSelected ? "data-indeterminate=\"1\"" : ""
-      } aria-label="Select all in ${escapeHtml(program)}" />
-          </label>
           <button type="button" class="register-collapse-btn" data-toggle-program aria-expanded="${
             collapsed ? "false" : "true"
           }" aria-label="${collapsed ? "Expand" : "Collapse"} ${escapeHtml(program)}">▾</button>
@@ -698,6 +694,12 @@ function renderRegister() {
             </button>
             ${stats ? `<span class="register-program-stats">${escapeHtml(stats)}</span>` : ""}
           </h2>
+          <label class="register-select-program" onclick="event.stopPropagation()">
+            <input type="checkbox" data-select-program="${escapeHtml(program)}" ${allSelected ? "checked" : ""} ${
+        someSelected ? "data-indeterminate=\"1\"" : ""
+      } />
+            Select all
+          </label>
           <div class="register-program-actions">${ganttLink}</div>
         </div>
         <div class="register-table-wrap">

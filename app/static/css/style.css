@@ -1133,6 +1133,10 @@ html.dark .data-table th {
   background: color-mix(in srgb, var(--ventia-green) 8%, var(--panel));
 }
 
+.bulk-bar[hidden] {
+  display: none !important;
+}
+
 .bulk-count {
   font-size: 0.85rem;
   color: var(--ventia-muted);
@@ -1143,12 +1147,15 @@ html.dark .data-table th {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.5rem 0.75rem;
+  flex-wrap: wrap;
   background: color-mix(in srgb, var(--ventia-border) 28%, var(--panel));
   border-bottom: 1px solid var(--ventia-border);
-  position: sticky;
-  top: var(--register-sticky-top, 9rem);
-  z-index: 5;
+  position: relative;
+  top: auto;
+  z-index: 1;
+  min-height: 2.6rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.45rem;
 }
 
 .register-program-head .register-program-title {
@@ -2446,7 +2453,7 @@ html.dark .leaflet-control-scale-line {
 
 .register-program-title {
   margin: 0;
-  padding: 0.5rem 0.35rem 0.5rem 0;
+  padding: 0.15rem 0.35rem 0.15rem 0;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -2496,7 +2503,7 @@ html.dark .leaflet-control-scale-line {
   flex-shrink: 0;
   width: 1.85rem;
   height: 1.85rem;
-  margin-left: 0.45rem;
+  margin-left: 0;
   border: 0;
   border-radius: 0.4rem;
   background: transparent;
@@ -2519,9 +2526,17 @@ html.dark .leaflet-control-scale-line {
 .register-select-program {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  margin-left: 0.45rem;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ventia-muted);
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .register-select-program input {
@@ -2547,9 +2562,7 @@ html.dark .leaflet-control-scale-line {
 }
 
 .register-table th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  position: static;
   background: color-mix(in srgb, var(--panel) 92%, var(--ventia-green-tint));
   text-align: left;
   padding: 0.65rem 0.75rem;
