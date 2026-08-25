@@ -29,6 +29,14 @@ export function currentUser() {
   return _sessionUser;
 }
 
+export function safeNextUrl(raw, fallback = "/") {
+  const n = String(raw || "");
+  if (!n.startsWith("/") || n.startsWith("//") || n.startsWith("/login") || n.startsWith("/password")) {
+    return fallback;
+  }
+  return n;
+}
+
 export function isAdminUser() {
   if (_sessionUser) return _sessionUser.role === "admin";
   try {
@@ -130,6 +138,18 @@ export async function api(path, options = {}) {
       const next = encodeURIComponent(location.pathname + location.search);
       location.href = `/login?next=${next}`;
       throw new Error("Not authenticated");
+    }
+    if (
+      res.status === 403 &&
+      location.pathname !== "/password" &&
+      !String(path).startsWith("/api/auth/")
+    ) {
+      const peek = await res.clone().text().catch(() => "");
+      if (/password change required/i.test(peek)) {
+        const next = encodeURIComponent(location.pathname + location.search);
+        location.href = `/password?next=${next}`;
+        throw new Error("Password change required");
+      }
     }
     if (!res.ok) {
       const rawText = await res.text().catch(() => "");
@@ -489,6 +509,7 @@ export async function injectChrome({ active, mode } = {}) {
   const canAdmin = isAdminUser();
   document.body.classList.toggle("admin-mode", isAdmin);
   document.body.classList.toggle("ops-mode", !isAdmin);
+  document.body.classList.toggle("must-change-password", Boolean(currentUser()?.must_change_password));
   ensureShellStructure();
 
   const links = isAdmin ? ADMIN_NAV : OPS_NAV;
@@ -513,6 +534,7 @@ export async function injectChrome({ active, mode } = {}) {
       </nav>
       <div class="sidebar-foot">
         ${isAdmin ? `<a class="btn btn-block" href="/">← Back to tracker</a>` : adminLink}
+        <a class="btn btn-block" href="/password" id="changePasswordLink">Change password</a>
         <button type="button" class="btn btn-block theme-toggle" id="themeToggle" data-theme-toggle>Theme</button>
         <button type="button" class="btn btn-block" id="logoutBtn">Sign out</button>
       </div>
@@ -537,6 +559,7 @@ export async function injectChrome({ active, mode } = {}) {
       </div>
       <div class="topbar-end">
         ${who ? `<span class="session-user" title="Signed in">${who}</span>` : ""}
+        <a class="btn" href="/password">Change password</a>
       </div>
     `;
   }

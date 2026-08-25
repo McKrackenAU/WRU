@@ -1,4 +1,4 @@
-import { $, on } from "./common.js";
+import { $, on, safeNextUrl } from "./common.js";
 
 function qs(name) {
   return new URLSearchParams(location.search).get(name) || "";
@@ -17,9 +17,16 @@ function showError(id, msg) {
 }
 
 function nextUrl() {
-  const n = qs("next");
-  if (!n || !n.startsWith("/") || n.startsWith("//") || n.startsWith("/login")) return "/";
-  return n;
+  return safeNextUrl(qs("next"), "/");
+}
+
+function afterLogin(user) {
+  if (user?.must_change_password) {
+    const n = qs("next");
+    location.replace(n ? `/password?next=${encodeURIComponent(safeNextUrl(n, "/"))}` : "/password");
+    return;
+  }
+  location.replace(nextUrl());
 }
 
 async function tryResumeSession() {
@@ -35,7 +42,7 @@ async function tryResumeSession() {
 async function init() {
   const existing = await tryResumeSession();
   if (existing) {
-    location.replace(nextUrl());
+    afterLogin(existing);
   }
 }
 
@@ -65,7 +72,7 @@ on("loginForm", "submit", async (e) => {
     } catch {
       /* ignore */
     }
-    location.replace(nextUrl());
+    afterLogin(user);
   } catch (err) {
     showError("loginError", err.message || String(err));
   } finally {

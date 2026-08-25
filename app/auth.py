@@ -231,12 +231,39 @@ def ensure_root_user(db: Session | None = None) -> None:
             db.close()
 
 
+MIN_PASSWORD_LENGTH = 8
+
+PASSWORD_CHANGE_ALLOWED_PATHS = {
+    "/password",
+    "/api/auth/me",
+    "/api/auth/change-password",
+    "/api/auth/logout",
+}
+
+
 def is_public_path(path: str) -> bool:
     if path.startswith("/static/"):
         return True
     if path in {"/login", "/favicon.ico", "/api/auth/login", "/api/auth/logout"}:
         return True
     return False
+
+
+def is_password_change_allowed_path(path: str) -> bool:
+    """Pages/APIs a signed-in user may hit while a password change is required."""
+    if path.startswith("/static/"):
+        return True
+    return path in PASSWORD_CHANGE_ALLOWED_PATHS
+
+
+def new_password_error(new_password: str, current_password: str | None = None) -> str | None:
+    """Return a user-facing error, or None if the new password is acceptable."""
+    pw = (new_password or "").strip()
+    if len(pw) < MIN_PASSWORD_LENGTH:
+        return f"New password must be at least {MIN_PASSWORD_LENGTH} characters"
+    if current_password is not None and pw == current_password:
+        return "New password must be different from the current password"
+    return None
 
 
 def is_admin_path(path: str, method: str = "GET") -> bool:

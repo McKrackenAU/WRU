@@ -16,6 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import (
     is_admin_path,
+    is_password_change_allowed_path,
     is_public_path,
     require_admin,
     secret_key,
@@ -121,6 +122,12 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
             if path.startswith("/api/"):
                 return JSONResponse({"detail": "Admin access required"}, status_code=403)
             return RedirectResponse("/", status_code=302)
+
+        if request.session.get("must_change_password") and not is_password_change_allowed_path(path):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Password change required"}, status_code=403)
+            next_q = quote(path + (("?" + request.url.query) if request.url.query else ""))
+            return RedirectResponse(f"/password?next={next_q}", status_code=302)
 
         return await call_next(request)
 
@@ -247,6 +254,11 @@ window.addEventListener("error",function(e){{
 @app.get("/login")
 def login_page():
     return _page("login.html")
+
+
+@app.get("/password")
+def password_page():
+    return _page("password.html")
 
 
 @app.get("/")

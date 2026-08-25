@@ -11,6 +11,8 @@ from ..auth import (
     clear_session,
     get_current_user,
     hash_password,
+    is_hidden_user,
+    new_password_error,
     set_session_user,
     user_to_public,
     verify_password,
@@ -58,10 +60,13 @@ def change_password(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    if is_hidden_user(user):
+        raise HTTPException(status_code=400, detail="The recovery account password cannot be changed")
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
-    if len(payload.new_password.strip()) < 8:
-        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    problem = new_password_error(payload.new_password, payload.current_password)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
     user.password_hash = hash_password(payload.new_password.strip())
     user.must_change_password = False
     db.commit()

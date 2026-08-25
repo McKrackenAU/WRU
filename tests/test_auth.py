@@ -6,7 +6,9 @@ from app.auth import (
     hash_password,
     is_admin_path,
     is_hidden_username,
+    is_password_change_allowed_path,
     is_public_path,
+    new_password_error,
     verify_password,
 )
 
@@ -25,6 +27,25 @@ def test_public_paths():
     assert is_public_path("/static/js/common.js")
     assert not is_public_path("/")
     assert not is_public_path("/api/sites")
+    assert not is_public_path("/password")
+    assert not is_public_path("/api/auth/change-password")
+
+
+def test_password_change_allowed_paths():
+    assert is_password_change_allowed_path("/password")
+    assert is_password_change_allowed_path("/api/auth/me")
+    assert is_password_change_allowed_path("/api/auth/change-password")
+    assert is_password_change_allowed_path("/api/auth/logout")
+    assert is_password_change_allowed_path("/static/js/password.js")
+    assert not is_password_change_allowed_path("/")
+    assert not is_password_change_allowed_path("/api/sites")
+    assert not is_password_change_allowed_path("/admin/users")
+
+
+def test_new_password_error():
+    assert new_password_error("short") == "New password must be at least 8 characters"
+    assert new_password_error("same-pass", "same-pass") == "New password must be different from the current password"
+    assert new_password_error("good-enough", "old-secret") is None
 
 
 def test_admin_paths():
