@@ -22,20 +22,20 @@
 <body>
   <div class="app-shell">
     <header class="topbar" data-app-header></header>
-    <main id="main-content" tabindex="-1" class="main">
-      <div class="page-head">
+    <main id="main-content" tabindex="-1" class="main page-lists">
+      <div class="page-head lists-page-head">
         <div>
           <h1>Client priority lists</h1>
           <p>Permits and TRIMS are mutually exclusive. Approved / received MoAs leave both lists. Not yet submitted to DTP do not appear.</p>
         </div>
       </div>
 
-      <div class="split-2">
+      <div class="split-2 lists-layout">
         <section class="panel-card">
-          <div class="page-head" style="margin-bottom:0.75rem">
+          <div class="page-head lists-panel-head">
             <div>
-              <h2 style="margin:0">Permits team</h2>
-              <p class="hint" id="permitsHint" style="margin:0.25rem 0 0">Loading…</p>
+              <h2>Permits team</h2>
+              <p class="hint" id="permitsHint">Loading…</p>
             </div>
             <div class="toolbar">
               <a class="btn" href="/api/export/permits-list.csv">CSV</a>
@@ -43,16 +43,23 @@
               <a class="btn btn-primary" href="/api/export/permits-list.pdf">PDF</a>
             </div>
           </div>
-          <div class="table-card" style="box-shadow:none">
+          <div class="table-card lists-table-card">
             <div class="table-scroll">
-              <table class="data-table">
+              <table class="data-table lists-table">
+                <colgroup>
+                  <col class="col-pri" />
+                  <col class="col-road" />
+                  <col class="col-site" />
+                  <col class="col-program" />
+                  <col class="col-council" />
+                  <col class="col-moa" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Pri</th>
                     <th>Road</th>
-                    <th>Site</th>
+                    <th>Site #</th>
                     <th>Program</th>
-                    <th>Stage</th>
                     <th>Council wait</th>
                     <th>MoA #</th>
                   </tr>
@@ -64,10 +71,10 @@
         </section>
 
         <section class="panel-card">
-          <div class="page-head" style="margin-bottom:0.75rem">
+          <div class="page-head lists-panel-head">
             <div>
-              <h2 style="margin:0">TRIMS team</h2>
-              <p class="hint" id="trimsHint" style="margin:0.25rem 0 0">Loading…</p>
+              <h2>TRIMS team</h2>
+              <p class="hint" id="trimsHint">Loading…</p>
             </div>
             <div class="toolbar">
               <a class="btn" href="/api/export/trims-list.csv">CSV</a>
@@ -75,16 +82,23 @@
               <a class="btn btn-primary" href="/api/export/trims-list.pdf">PDF</a>
             </div>
           </div>
-          <div class="table-card" style="box-shadow:none">
+          <div class="table-card lists-table-card">
             <div class="table-scroll">
-              <table class="data-table">
+              <table class="data-table lists-table">
+                <colgroup>
+                  <col class="col-pri" />
+                  <col class="col-road" />
+                  <col class="col-site" />
+                  <col class="col-program" />
+                  <col class="col-council" />
+                  <col class="col-moa" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Pri</th>
                     <th>Road</th>
-                    <th>Site</th>
+                    <th>Site #</th>
                     <th>Program</th>
-                    <th>Stage</th>
                     <th>Council wait</th>
                     <th>MoA #</th>
                   </tr>
