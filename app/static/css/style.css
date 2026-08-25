@@ -2363,6 +2363,7 @@ html.dark .leaflet-control-scale-line {
 .register-program {
   border-bottom: 1px solid var(--ventia-border);
   transition: background 0.12s ease, box-shadow 0.12s ease;
+  scroll-margin-top: calc(var(--register-sticky-top, 9rem) + 0.35rem);
 }
 
 .register-program:last-child {
