@@ -82,7 +82,7 @@
 
       <section class="panel-card">
         <h2>Import spreadsheet</h2>
-        <p class="hint">Upload the WRU Traffic TGS-MOA Tracker as <code>.xlsx</code> or <code>.xlsm</code> (legacy <code>.xls</code> must be saved as .xlsx first). Off-site (Cloudflare tunnel / workplace file policy) often blocks a whole <code>.xlsm</code>; Preview and Import send it in small anonymous chunks instead. Rows match on road + site number.</p>
+        <p class="hint">Upload the WRU Traffic TGS-MOA Tracker as <code>.xlsx</code> or <code>.xlsm</code> (legacy <code>.xls</code> must be saved as .xlsx first). Off-site, Zscaler / Cloudflare often block a spreadsheet upload; Preview and Import send JSON pieces instead of the workbook file. Update first, then retry. Rows match on road + site number.</p>
         <div class="filters" style="flex-direction:column;align-items:stretch">
           <input id="importFile" type="file" accept=".xlsx,.xlsm" />
           <label><span><input id="importUpdate" type="checkbox" checked /> Update existing sites</span></label>

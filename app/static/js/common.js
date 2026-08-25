@@ -38,6 +38,38 @@ export function isAdminUser() {
   }
 }
 
+/** True when a response body is a proxy/login HTML page rather than an API payload. */
+export function looksLikeHtmlOrProxyPage(text) {
+  return /<!DOCTYPE|<html[\s>]|<head[\s>]|<!--#|\bzscaler\b/i.test(String(text || ""));
+}
+
+/**
+ * Never dump proxy HTML (Zscaler, Cloudflare, login pages) into the Notice dialog.
+ */
+export function humanizeHttpError(status, text, fallback = "Request failed") {
+  const raw = String(text || "");
+  const code = Number(status) || 0;
+  if (/zscaler/i.test(raw) || (looksLikeHtmlOrProxyPage(raw) && /zscaler|z-?scaler/i.test(raw))) {
+    return "Workplace security (Zscaler) blocked this request. File uploads from this network are being intercepted. Check for updates, then retry — import now sends JSON instead of a spreadsheet file. If it still fails, try from a network that is not filtered.";
+  }
+  if (/cloudflare|cf-ray|error code 52|attention required/i.test(raw)) {
+    return "Cloudflare or the tunnel blocked this request. Check for updates and retry, or import from the LAN.";
+  }
+  if (looksLikeHtmlOrProxyPage(raw)) {
+    const http = code ? `HTTP ${code}` : "a web page";
+    return `A network filter or login page intercepted this request (${http}). The response was a web page, not an API result.`;
+  }
+  if (code === 413) {
+    return "A proxy rejected the request as too large. Retry — the importer sends small JSON chunks.";
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return fallback || (code ? `Request failed (HTTP ${code})` : "Request failed");
+  }
+  if (trimmed.length > 240) return `${trimmed.slice(0, 240)}…`;
+  return trimmed;
+}
+
 /** Turn FastAPI / fetch failure payloads into a readable message (never blank). */
 export function formatApiDetail(detail, fallback = "Request failed") {
   if (detail == null || detail === "") return fallback;
@@ -69,9 +101,17 @@ export function formatApiDetail(detail, fallback = "Request failed") {
 
 export function errorMessage(err, fallback = "Something went wrong") {
   if (err == null) return fallback;
-  if (typeof err === "string") return err.trim() || fallback;
+  if (typeof err === "string") {
+    const t = err.trim();
+    if (!t) return fallback;
+    if (looksLikeHtmlOrProxyPage(t)) return humanizeHttpError(0, t, fallback);
+    return t;
+  }
   const msg = err.message || err.detail || "";
-  if (typeof msg === "string" && msg.trim()) return msg.trim();
+  if (typeof msg === "string" && msg.trim()) {
+    if (looksLikeHtmlOrProxyPage(msg)) return humanizeHttpError(0, msg, fallback);
+    return msg.trim();
+  }
   return formatApiDetail(msg, fallback);
 }
 
@@ -92,12 +132,18 @@ export async function api(path, options = {}) {
       throw new Error("Not authenticated");
     }
     if (!res.ok) {
+      const rawText = await res.text().catch(() => "");
       let detail = res.statusText || `HTTP ${res.status}`;
-      try {
-        const body = await res.json();
-        detail = formatApiDetail(body?.detail ?? body, detail);
-      } catch (_) {
-        /* ignore non-JSON error bodies */
+      const trimmed = rawText.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          const body = JSON.parse(rawText);
+          detail = formatApiDetail(body?.detail ?? body, detail);
+        } catch (_) {
+          detail = humanizeHttpError(res.status, rawText, detail);
+        }
+      } else {
+        detail = humanizeHttpError(res.status, rawText, detail);
       }
       throw new Error(detail || `Request failed (${res.status})`);
     }

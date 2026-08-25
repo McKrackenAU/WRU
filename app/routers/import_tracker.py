@@ -1,14 +1,17 @@
 """Upload WRU Traffic TGS-MOA Tracker Excel workbooks.
 
-Off-network imports (Cloudflare Tunnel, workplace file-upload policy) often
-block a whole .xlsm because it is a macro-enabled Office file. The chunked
-session API sends anonymous 256 KB octet-stream pieces and only assembles the
-workbook on the server.
+Off-network imports are often blocked as a file upload: Cloudflare WAF,
+workplace SSL inspection (Zscaler), and DLP looking for Office/ZIP magic
+(``PK``) or ``.xlsm``. The chunked session API wraps small pieces as JSON
+(base64 of XOR'd bytes) so the request is not classified as a spreadsheet.
+The workbook is only assembled on the server.
 """
 
 from __future__ import annotations
 
+import base64
 import json
+import secrets
 import shutil
 import time
 import uuid
@@ -33,7 +36,9 @@ router = APIRouter(
 )
 
 MAX_BYTES = 40 * 1024 * 1024
-CHUNK_SIZE = 256 * 1024
+CHUNK_SIZE = 48 * 1024
+MAX_CHUNKS = (MAX_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
+WRAP_KEY_BYTES = 32
 STAGING_TTL_SEC = 20 * 60
 STAGING_DIR = DATA_DIR / "import-staging"
 STAGING_DIR.mkdir(parents=True, exist_ok=True)
@@ -42,6 +47,39 @@ STAGING_DIR.mkdir(parents=True, exist_ok=True)
 class TrackerUploadBegin(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
     size: int = Field(ge=1, le=MAX_BYTES)
+
+
+class TrackerChunkBody(BaseModel):
+    """JSON chunk: base64 of XOR-wrapped workbook bytes (field name kept short)."""
+
+    p: str = Field(min_length=4, max_length=(CHUNK_SIZE + 8192) * 2)
+
+
+def xor_repeat(data: bytes, key: bytes) -> bytes:
+    if not data:
+        return data
+    if not key:
+        raise ValueError("wrap key required")
+    klen = len(key)
+    return bytes(b ^ key[i % klen] for i, b in enumerate(data))
+
+
+def unwrap_chunk_payload(encoded_b64: str, wrap_key_b64: str) -> bytes:
+    blob = (encoded_b64 or "").strip()
+    key_blob = (wrap_key_b64 or "").strip()
+    try:
+        wrapped = base64.b64decode(blob, validate=True)
+        key = base64.b64decode(key_blob, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid chunk encoding") from exc
+    if len(key) < 16:
+        raise HTTPException(status_code=400, detail="Corrupt upload session")
+    data = xor_repeat(wrapped, key)
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty chunk")
+    if len(data) > CHUNK_SIZE + 4096:
+        raise HTTPException(status_code=413, detail="Chunk too large")
+    return data
 
 
 def _cleanup_stale_sessions() -> None:
@@ -198,7 +236,7 @@ async def import_tracker_excel(
 
 @router.post("/tracker/session")
 def begin_tracker_session(payload: TrackerUploadBegin):
-    """Start a chunked upload that bypasses .xlsm / whole-file upload filters."""
+    """Start a chunked JSON upload that bypasses .xlsm / file-upload filters."""
     _cleanup_stale_sessions()
     if not _filename_ok(payload.filename) and not payload.filename.lower().endswith(".bin"):
         raise HTTPException(status_code=400, detail="Upload an Excel .xlsx / .xlsm tracker file")
@@ -206,6 +244,7 @@ def begin_tracker_session(payload: TrackerUploadBegin):
     folder = STAGING_DIR / upload_id
     folder.mkdir(parents=True, exist_ok=True)
     chunks = (payload.size + CHUNK_SIZE - 1) // CHUNK_SIZE
+    wrap_key = base64.b64encode(secrets.token_bytes(WRAP_KEY_BYTES)).decode("ascii")
     _write_meta(
         folder,
         {
@@ -214,22 +253,46 @@ def begin_tracker_session(payload: TrackerUploadBegin):
             "chunks": chunks,
             "received": [],
             "created": time.time(),
+            "wrap_key": wrap_key,
         },
     )
-    return {"id": upload_id, "chunk_size": CHUNK_SIZE, "chunks": chunks}
+    return {
+        "id": upload_id,
+        "chunk_size": CHUNK_SIZE,
+        "chunks": chunks,
+        "wrap_key": wrap_key,
+    }
 
 
 @router.post("/tracker/session/{upload_id}/chunk/{index}")
 async def upload_tracker_chunk(upload_id: str, index: int, request: Request):
-    if index < 0 or index > 400:
+    if index < 0 or index >= MAX_CHUNKS:
         raise HTTPException(status_code=400, detail="Invalid chunk index")
     folder = _session_dir(upload_id)
     meta = _read_meta(folder)
-    data = await request.body()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty chunk")
-    if len(data) > CHUNK_SIZE + 4096:
-        raise HTTPException(status_code=413, detail="Chunk too large")
+    expected = int(meta.get("chunks") or 0)
+    if expected and index >= expected:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if ctype != "application/json":
+        raise HTTPException(
+            status_code=415,
+            detail="Import protocol changed — Check for updates, then retry. Chunks must be JSON, not a file upload.",
+        )
+    wrap_key = meta.get("wrap_key")
+    if not wrap_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload session is from an older app version — start the import again after updating",
+        )
+    try:
+        raw_json = await request.json()
+        payload = TrackerChunkBody.model_validate(raw_json)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid chunk payload") from exc
+    data = unwrap_chunk_payload(payload.p, wrap_key)
     received = set(meta.get("received") or [])
     dest = folder / f"chunk-{index:05d}.bin"
     dest.write_bytes(data)

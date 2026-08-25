@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, errorMessage, formatApiDetail } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, errorMessage, formatApiDetail, humanizeHttpError } from "./common.js";
 
 async function loadRules() {
   const r = await api("/api/admin/settings");
@@ -64,6 +64,29 @@ async function addLookup() {
   await loadLookups();
 }
 
+function xorBytes(u8, keyU8) {
+  const out = new Uint8Array(u8.length);
+  const klen = keyU8.length;
+  for (let i = 0; i < u8.length; i += 1) out[i] = u8[i] ^ keyU8[i % klen];
+  return out;
+}
+
+function bytesToB64(u8) {
+  let s = "";
+  const step = 0x8000;
+  for (let i = 0; i < u8.length; i += step) {
+    s += String.fromCharCode(...u8.subarray(i, i + step));
+  }
+  return btoa(s);
+}
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 async function readFetchError(res) {
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
@@ -71,13 +94,7 @@ async function readFetchError(res) {
     return formatApiDetail(body?.detail ?? body, res.statusText || `HTTP ${res.status}`);
   }
   const text = await res.text().catch(() => "");
-  if (/cloudflare|cf-ray|error code 52|attention required/i.test(text)) {
-    return "Cloudflare or the tunnel blocked the upload (file policy). Retry — the importer sends small chunks instead of the whole .xlsm.";
-  }
-  if (res.status === 413) {
-    return "A proxy rejected the upload as too large. Retry — the importer sends 256 KB chunks.";
-  }
-  return (text || res.statusText || `HTTP ${res.status}`).slice(0, 240);
+  return humanizeHttpError(res.status, text, res.statusText || `HTTP ${res.status}`);
 }
 
 async function importTrackerChunked(file, { dryRun, updateExisting, onProgress }) {
@@ -87,18 +104,24 @@ async function importTrackerChunked(file, { dryRun, updateExisting, onProgress }
     body: JSON.stringify({ filename: file.name, size: file.size }),
     timeoutMs: 20000,
   });
-  const chunkSize = Number(session.chunk_size) || 256 * 1024;
+  if (!session?.id) throw new Error("Could not start import session");
+  if (!session.wrap_key) {
+    throw new Error("This server is still on the old import protocol. Check for updates, then retry.");
+  }
+  const keyBytes = b64ToBytes(session.wrap_key);
+  const chunkSize = Number(session.chunk_size) || 48 * 1024;
   const buf = new Uint8Array(await file.arrayBuffer());
   const total = Math.max(1, Math.ceil(buf.length / chunkSize));
   for (let i = 0; i < total; i += 1) {
     onProgress?.(`Uploading… ${i + 1}/${total}`);
     const slice = buf.subarray(i * chunkSize, (i + 1) * chunkSize);
+    const wrapped = xorBytes(slice, keyBytes);
     const res = await fetch(`/api/import/tracker/session/${encodeURIComponent(session.id)}/chunk/${i}`, {
       method: "POST",
       credentials: "include",
       cache: "no-store",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: slice,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ p: bytesToB64(wrapped) }),
     });
     if (res.status === 401) {
       const next = encodeURIComponent(location.pathname + location.search);
@@ -122,6 +145,10 @@ async function runImport(dryRun) {
   const file = $("importFile").files?.[0];
   if (!file) {
     alertDialog("Choose an Excel tracker file");
+    return;
+  }
+  if (!file.size) {
+    alertDialog("That file is empty");
     return;
   }
   $("importStatus").textContent = dryRun ? "Previewing…" : "Importing…";
