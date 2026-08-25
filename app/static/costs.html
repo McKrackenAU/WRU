@@ -108,6 +108,10 @@
               <label>VMS qty<input id="sVmsQty" type="number" min="0" step="1" value="2" /></label>
               <label>VMS lead days<input id="sVmsLead" type="number" min="0" step="1" /></label>
             </div>
+            <h3 class="cost-subhead">Per-shift extras</h3>
+            <p class="hint">Arrowboard and similar plant: quantity × rate × total shifts. No pickup or delivery.</p>
+            <div id="sExtrasWrap"></div>
+            <button type="button" class="btn btn-sm" id="btnAddSExtra" style="margin-top:0.35rem">Add extra</button>
             <div class="toolbar" style="margin-top:0.65rem">
               <button type="button" class="btn btn-primary" id="btnCalcStandard">Calculate</button>
               <button type="button" class="btn" id="btnSaveStandard">Save</button>
@@ -138,6 +142,10 @@
               <label>VMS qty<input id="cVmsQty" type="number" min="0" step="1" value="2" /></label>
               <label>VMS lead<input id="cVmsLead" type="number" min="0" step="1" /></label>
             </div>
+            <h3 class="cost-subhead">Per-shift extras</h3>
+            <p class="hint">Same extras as standard: qty × rate × shifts in each 8h / 12h option.</p>
+            <div id="cExtrasWrap"></div>
+            <button type="button" class="btn btn-sm" id="btnAddCExtra" style="margin-top:0.35rem">Add extra</button>
             <p class="hint">Compares 3×8h vs 2×12h for the window. Weekend hours use the Weekend rate.</p>
             <div class="toolbar" style="margin-top:0.65rem">
               <button type="button" class="btn btn-primary" id="btnCalcClosure">Compare options</button>

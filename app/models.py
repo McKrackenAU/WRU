@@ -374,6 +374,22 @@ class LabourRate(Base):
     )
 
 
+class ShiftExtraRate(Base):
+    """Per-shift plant / add-on (arrowboard, etc.): qty × unit_rate × shifts."""
+
+    __tablename__ = "shift_extra_rates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    unit_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class CostEstimate(Base):
     """Saved traffic management cost estimate linked to a site / MoA."""
 

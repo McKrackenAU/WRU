@@ -23,6 +23,7 @@ from .models import (  # noqa: F401 — register metadata
     MapFeature,
     MapLayer,
     ProgramCategory,
+    ShiftExtraRate,
     Site,
     SiteCouncil,
     TrackingEvent,

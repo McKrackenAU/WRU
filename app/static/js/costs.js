@@ -19,6 +19,8 @@ let scheduleInclude = new Set();
 let scheduleRdo = new Set();
 let scheduleWorkDates = [];
 let scheduleTimer = null;
+let extraCatalogue = [];
+let extraLines = [];
 
 const money = (n) =>
   `$${Number(n || 0).toLocaleString(undefined, {
@@ -195,6 +197,136 @@ function vmsBlock(vms) {
     </div>`;
 }
 
+function extrasBlock(extras, heading) {
+  if (!extras) return "";
+  const title = heading || "Per-shift extras";
+  const lines = extras.lines || [];
+  if (!lines.length && !Number(extras.extras_total || 0)) {
+    return heading
+      ? ""
+      : `<div><strong>${escapeHtml(title)}</strong><div class="hint">${escapeHtml(extras.note || "None.")}</div></div>`;
+  }
+  const rows = lines
+    .map(
+      (l) => `<tr>
+        <td>${escapeHtml(l.name)}</td>
+        <td>${l.quantity}</td>
+        <td>${money(l.unit_rate)}</td>
+        <td>${l.shifts}</td>
+        <td class="money">${money(l.line_total)}</td>
+      </tr>`
+    )
+    .join("");
+  return `<div>
+    <strong>${escapeHtml(title)}</strong>
+    <div class="hint">${escapeHtml(extras.note || "")}</div>
+    <div class="table-scroll" style="max-height:12rem;margin-top:0.35rem">
+      <table class="data-table">
+        <thead><tr><th>Item</th><th>Qty</th><th>Rate / shift</th><th>Shifts</th><th>Total</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="money"><strong>Extras total ${money(extras.extras_total)}</strong></div>
+  </div>`;
+}
+
+function extraOptions(selectedId) {
+  return (
+    `<option value="">Custom…</option>` +
+    extraCatalogue
+      .filter((e) => e.active)
+      .map(
+        (e) =>
+          `<option value="${e.id}" ${String(selectedId) === String(e.id) ? "selected" : ""}>${escapeHtml(
+            e.name
+          )} (${money(e.unit_rate)}/shift)</option>`
+      )
+      .join("")
+  );
+}
+
+function visibleExtrasWrap() {
+  const stdPanel = $("panel-standard");
+  if (stdPanel && !stdPanel.hidden && $("sExtrasWrap")) return $("sExtrasWrap");
+  const cloPanel = $("panel-closure");
+  if (cloPanel && !cloPanel.hidden && $("cExtrasWrap")) return $("cExtrasWrap");
+  return $("sExtrasWrap") || $("cExtrasWrap");
+}
+
+function collectExtrasFromDom() {
+  const wrap = visibleExtrasWrap() || document;
+  extraLines = extraLines.map((line, idx) => {
+    const nameEl = wrap.querySelector(`[data-extra-name="${idx}"]`);
+    const qtyEl = wrap.querySelector(`[data-extra-qty="${idx}"]`);
+    const rateEl = wrap.querySelector(`[data-extra-rate="${idx}"]`);
+    const catEl = wrap.querySelector(`[data-extra-cat="${idx}"]`);
+    return {
+      ...line,
+      extra_id: catEl?.value ? Number(catEl.value) : null,
+      name: nameEl?.value.trim() || line.name,
+      quantity: Number(qtyEl?.value || 0),
+      unit_rate: Number(rateEl?.value || 0),
+    };
+  });
+}
+
+function extrasPayload() {
+  collectExtrasFromDom();
+  return extraLines
+    .filter((l) => Number(l.quantity) > 0)
+    .map((l) => ({
+      extra_id: l.extra_id || null,
+      name: l.name || "Extra",
+      quantity: Number(l.quantity || 0),
+      unit_rate: Number(l.unit_rate || 0),
+    }));
+}
+
+function renderExtraLines() {
+  const html = extraLines.length
+    ? `<div class="table-scroll"><table class="data-table">
+        <thead><tr><th>Item</th><th>Name</th><th>Qty</th><th>$ / shift</th><th></th></tr></thead>
+        <tbody>
+          ${extraLines
+            .map(
+              (line, idx) => `<tr>
+            <td><select data-extra-cat="${idx}">${extraOptions(line.extra_id)}</select></td>
+            <td><input data-extra-name="${idx}" value="${escapeHtml(line.name || "")}" /></td>
+            <td><input data-extra-qty="${idx}" type="number" min="0" step="1" value="${line.quantity ?? 0}" style="width:4.5rem" /></td>
+            <td><input data-extra-rate="${idx}" type="number" min="0" step="0.01" value="${line.unit_rate ?? 0}" style="width:6rem" /></td>
+            <td><button type="button" class="btn btn-danger btn-sm" data-rm-extra="${idx}">Remove</button></td>
+          </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table></div>`
+    : `<p class="hint">No extras yet — add Arrowboard or another per-shift item.</p>`;
+  if ($("sExtrasWrap")) $("sExtrasWrap").innerHTML = html;
+  if ($("cExtrasWrap")) $("cExtrasWrap").innerHTML = html;
+}
+
+function addExtraLine(preset) {
+  collectExtrasFromDom();
+  extraLines.push(
+    preset || {
+      extra_id: null,
+      name: "",
+      quantity: 0,
+      unit_rate: 0,
+    }
+  );
+  renderExtraLines();
+}
+
+function seedDefaultExtras() {
+  if (extraLines.length) return;
+  const arrow = extraCatalogue.find((e) => e.active && String(e.name).toLowerCase() === "arrowboard");
+  extraLines = arrow
+    ? [{ extra_id: arrow.id, name: arrow.name, quantity: 0, unit_rate: arrow.unit_rate }]
+    : [];
+  renderExtraLines();
+}
+
 function scheduleTable(schedule) {
   if (!schedule?.length) return "";
   const rows = schedule
@@ -230,6 +362,7 @@ function renderStandard(result) {
       <div class="stat-card"><div class="label">Per shift total (incl. allowances)</div><div class="value money-total">${money(p.shift_total)}</div></div>
       <div class="stat-card"><div class="label">Site crew (${result.inputs_echo.total_shifts} shifts · ${result.inputs_echo.days_of_work || "—"} days)</div><div class="value money-total">${money(result.site_crew_total ?? result.site_labour_total)}</div></div>
       <div class="stat-card"><div class="label">VMS total</div><div class="value money-total">${money(result.vms.vms_total)}</div></div>
+      <div class="stat-card"><div class="label">Per-shift extras</div><div class="value money-total">${money((result.shift_extras || {}).extras_total)}</div></div>
       <div class="stat-card"><div class="label">Site traffic total</div><div class="value money-total">${money(result.site_traffic_total)}</div></div>
     </div>
     ${allocationBlock(p.allocation)}
@@ -241,6 +374,7 @@ function renderStandard(result) {
     </div>
     ${scheduleTable(result.schedule)}
     ${vmsBlock(result.vms)}
+    ${extrasBlock(result.shift_extras)}
   `;
 }
 
@@ -261,6 +395,7 @@ function optionCard(opt, winner) {
         <div class="stat-card"><div class="label">Meals</div><div class="value money-total" style="font-size:1.1rem">${money(opt.meal_total)}</div></div>
         <div class="stat-card"><div class="label">Crew total</div><div class="value money-total" style="font-size:1.1rem">${money(opt.crew_total ?? opt.labour_total)}</div></div>
         <div class="stat-card"><div class="label">VMS</div><div class="value money-total" style="font-size:1.1rem">${money(opt.vms_total)}</div></div>
+        <div class="stat-card"><div class="label">Extras</div><div class="value money-total" style="font-size:1.1rem">${money(opt.extras_total)}</div></div>
         <div class="stat-card"><div class="label">Grand total</div><div class="value money-total" style="font-size:1.25rem">${money(opt.grand_total)}</div></div>
       </div>
     </div>`;
@@ -281,6 +416,8 @@ function renderClosure(result) {
       ${optionCard(result.option_2x12, !!result.option_2x12.is_best)}
     </div>
     ${vmsBlock(result.vms)}
+    ${extrasBlock(result.option_3x8?.shift_extras, "Per-shift extras (8h pattern)")}
+    ${extrasBlock(result.option_2x12?.shift_extras, "Per-shift extras (12h pattern)")}
     <details open>
       <summary>8-hour shift sample (pack mix &amp; allowances)</summary>
       ${allowancesBlock(result.option_3x8.sample_allowances || result.option_3x8.per_shift?.[0]?.allowances)}
@@ -571,6 +708,7 @@ function standardPayload() {
     vms_quantity: Number($("sVmsQty").value),
     vms_lead_days: Number($("sVmsLead").value),
     resources: resourcesFrom("s"),
+    shift_extras: extrasPayload(),
   };
   if (typeSel === "day" || typeSel === "night") payload.shift_type = typeSel;
   return payload;
@@ -597,6 +735,7 @@ async function calcClosure() {
     vms_quantity: Number($("cVmsQty").value),
     vms_lead_days: Number($("cVmsLead").value),
     resources: resourcesFrom("c"),
+    shift_extras: extrasPayload(),
   };
   const result = await api("/api/costs/calculate/closure-24h", {
     method: "POST",
@@ -632,6 +771,7 @@ async function saveEstimate(mode) {
           closure_end: $("cEnd").value,
           vms_quantity: Number($("cVmsQty").value),
           resources: resourcesFrom("c"),
+          shift_extras: extrasPayload(),
         };
   await api("/api/costs/estimates", {
     method: "POST",
@@ -680,6 +820,8 @@ async function init() {
   settings = await api("/api/costs/settings");
   // Touch rates endpoint so pack/TMA defaults are seeded
   await api("/api/costs/rates?active_only=true");
+  extraCatalogue = await api("/api/costs/shift-extras?active_only=true");
+  seedDefaultExtras();
   sites = await api("/api/sites?archived=false");
 
   fillSiteSelect(preselect);
@@ -706,6 +848,35 @@ async function init() {
   $("sSkipPh")?.addEventListener("change", queueScheduleRefresh);
   $("sSkipSunBeforePh")?.addEventListener("change", queueScheduleRefresh);
   $("btnAddRdo")?.addEventListener("click", addRdoDate);
+  $("btnAddSExtra")?.addEventListener("click", () => addExtraLine());
+  $("btnAddCExtra")?.addEventListener("click", () => addExtraLine());
+  const onExtraDom = (ev) => {
+    const rm = ev.target.closest("[data-rm-extra]");
+    if (rm) {
+      collectExtrasFromDom();
+      extraLines.splice(Number(rm.dataset.rmExtra), 1);
+      renderExtraLines();
+      return;
+    }
+    const cat = ev.target.closest("[data-extra-cat]");
+    if (cat && ev.type === "change") {
+      const idx = Number(cat.getAttribute("data-extra-cat"));
+      const item = extraCatalogue.find((e) => String(e.id) === cat.value);
+      collectExtrasFromDom();
+      if (item) {
+        extraLines[idx].extra_id = item.id;
+        extraLines[idx].name = item.name;
+        extraLines[idx].unit_rate = item.unit_rate;
+      } else {
+        extraLines[idx].extra_id = null;
+      }
+      renderExtraLines();
+    }
+  };
+  $("sExtrasWrap")?.addEventListener("click", onExtraDom);
+  $("cExtrasWrap")?.addEventListener("click", onExtraDom);
+  $("sExtrasWrap")?.addEventListener("change", onExtraDom);
+  $("cExtrasWrap")?.addEventListener("change", onExtraDom);
   $("workCalendar")?.addEventListener("change", (ev) => {
     const box = ev.target.closest("[data-cal-date]");
     if (!box) return;
@@ -716,9 +887,11 @@ async function init() {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tabs [data-tab]").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
+      collectExtrasFromDom();
       const tab = btn.dataset.tab;
       $("panel-standard").hidden = tab !== "standard";
       $("panel-closure").hidden = tab !== "closure";
+      renderExtraLines();
     });
   });
 

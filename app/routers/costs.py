@@ -21,7 +21,7 @@ from ..cost_engine import (
 )
 from ..cost_export import build_cost_pdf, build_cost_workbook
 from ..database import UPLOAD_DIR, get_db
-from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, Site, User
+from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, ShiftExtraRate, Site, User
 from ..rate_import import build_traffic_template, import_traffic_rates
 
 router = APIRouter(prefix="/api/costs", tags=["costs"])
@@ -82,6 +82,25 @@ class LabourRateOut(LabourRateIn):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+class ShiftExtraIn(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    unit_rate: float = Field(ge=0)
+    notes: str | None = Field(default=None, max_length=255)
+    active: bool = True
+    position: int | None = None
+
+
+class ShiftExtraOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    unit_rate: float
+    notes: str | None = None
+    active: bool
+    position: int
 
 
 class EstimateSave(BaseModel):
@@ -243,6 +262,57 @@ def ensure_default_rates(db: Session) -> None:
         db.commit()
 
 
+def ensure_default_shift_extras(db: Session) -> None:
+    """Seed Arrowboard ($54.27 / shift) when the extras catalogue is empty of that name."""
+    existing = (
+        db.query(ShiftExtraRate)
+        .filter(func.lower(ShiftExtraRate.name) == "arrowboard")
+        .first()
+    )
+    if existing:
+        return
+    max_pos = db.query(func.max(ShiftExtraRate.position)).scalar() or 0
+    db.add(
+        ShiftExtraRate(
+            name="Arrowboard",
+            unit_rate=54.27,
+            notes="Per shift each. No pickup or delivery.",
+            active=True,
+            position=max_pos + 10,
+        )
+    )
+    db.commit()
+
+
+def hydrate_shift_extras(db: Session, payload: dict) -> dict:
+    """Fill name/rate from the extras catalogue when a row only has extra_id."""
+    items = payload.get("shift_extras")
+    if not items:
+        return payload
+    hydrated = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        item = dict(raw)
+        extra_id = item.get("extra_id") or item.get("id")
+        try:
+            extra_id = int(extra_id) if extra_id else None
+        except (TypeError, ValueError):
+            extra_id = None
+        if extra_id:
+            row = db.get(ShiftExtraRate, extra_id)
+            if row:
+                item["extra_id"] = row.id
+                if not (item.get("name") or "").strip():
+                    item["name"] = row.name
+                if item.get("unit_rate") in (None, ""):
+                    item["unit_rate"] = row.unit_rate
+        hydrated.append(item)
+    out = dict(payload)
+    out["shift_extras"] = hydrated
+    return out
+
+
 def _summary_total(mode: str, results: dict) -> float | None:
     if mode == "standard":
         return results.get("site_traffic_total")
@@ -294,6 +364,7 @@ def _estimate_out(row: CostEstimate, *, include_results: bool = True) -> dict:
 def read_settings(db: Session = Depends(get_db)):
     s = get_or_create_settings(db)
     ensure_default_rates(db)
+    ensure_default_shift_extras(db)
     return s
 
 
@@ -447,6 +518,81 @@ async def import_traffic_rate_file(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/shift-extras", response_model=list[ShiftExtraOut])
+def list_shift_extras(active_only: bool = False, db: Session = Depends(get_db)):
+    ensure_default_shift_extras(db)
+    q = db.query(ShiftExtraRate)
+    if active_only:
+        q = q.filter(ShiftExtraRate.active.is_(True))
+    return q.order_by(ShiftExtraRate.position.asc(), ShiftExtraRate.id.asc()).all()
+
+
+@router.post("/shift-extras", response_model=ShiftExtraOut, status_code=201)
+def create_shift_extra(
+    payload: ShiftExtraIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    name = payload.name.strip()
+    if db.query(ShiftExtraRate).filter(func.lower(ShiftExtraRate.name) == name.lower()).first():
+        raise HTTPException(status_code=400, detail="Shift extra already exists")
+    max_pos = db.query(func.max(ShiftExtraRate.position)).scalar() or 0
+    row = ShiftExtraRate(
+        name=name,
+        unit_rate=payload.unit_rate,
+        notes=(payload.notes or "").strip() or None,
+        active=payload.active,
+        position=payload.position if payload.position is not None else max_pos + 10,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/shift-extras/{extra_id}", response_model=ShiftExtraOut)
+def update_shift_extra(
+    extra_id: int,
+    payload: ShiftExtraIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    row = db.get(ShiftExtraRate, extra_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Shift extra not found")
+    name = payload.name.strip()
+    clash = (
+        db.query(ShiftExtraRate)
+        .filter(func.lower(ShiftExtraRate.name) == name.lower(), ShiftExtraRate.id != extra_id)
+        .first()
+    )
+    if clash:
+        raise HTTPException(status_code=400, detail="Shift extra already exists")
+    row.name = name
+    row.unit_rate = payload.unit_rate
+    row.notes = (payload.notes or "").strip() or None
+    row.active = payload.active
+    if payload.position is not None:
+        row.position = payload.position
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/shift-extras/{extra_id}", status_code=204)
+def delete_shift_extra(
+    extra_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    row = db.get(ShiftExtraRate, extra_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Shift extra not found")
+    row.active = False
+    db.commit()
+    return None
+
+
 @router.get("/public-holidays")
 def list_public_holidays(
     start: str = Query(..., description="ISO date"),
@@ -513,6 +659,7 @@ def schedule_preview(payload: dict):
 def calc_standard(payload: dict, db: Session = Depends(get_db)):
     settings = get_or_create_settings(db)
     rates = db.query(LabourRate).filter(LabourRate.active.is_(True)).all()
+    payload = hydrate_shift_extras(db, payload)
     try:
         return calculate_standard(payload, settings, rates)
     except (ValueError, KeyError, TypeError) as exc:
@@ -523,6 +670,7 @@ def calc_standard(payload: dict, db: Session = Depends(get_db)):
 def calc_closure(payload: dict, db: Session = Depends(get_db)):
     settings = get_or_create_settings(db)
     rates = db.query(LabourRate).filter(LabourRate.active.is_(True)).all()
+    payload = hydrate_shift_extras(db, payload)
     try:
         return calculate_closure_24h(payload, settings, rates)
     except (ValueError, KeyError, TypeError) as exc:

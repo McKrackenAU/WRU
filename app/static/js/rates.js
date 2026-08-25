@@ -133,11 +133,34 @@ async function loadTrafficContractors() {
     : `<tr><td colspan="4"><span class="hint">No traffic contractors yet.</span></td></tr>`;
 }
 
+async function loadExtras() {
+  const rows = await api("/api/costs/shift-extras");
+  $("extraBody").innerHTML = rows.length
+    ? rows
+        .map(
+          (r) => `<tr data-id="${r.id}">
+      <td><input data-f="name" value="${escapeHtml(r.name)}" /></td>
+      <td><input data-f="unit_rate" type="number" min="0" step="0.01" value="${r.unit_rate}" /></td>
+      <td><input data-f="notes" value="${escapeHtml(r.notes || "")}" /></td>
+      <td><input data-f="active" type="checkbox" ${r.active ? "checked" : ""} /></td>
+      <td>
+        <div class="row-actions">
+          <button type="button" class="btn" data-save-extra="${r.id}">Save</button>
+          <button type="button" class="btn btn-danger" data-del-extra="${r.id}">Deactivate</button>
+        </div>
+      </td>
+    </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="5"><span class="hint">No per-shift extras yet.</span></td></tr>`;
+}
+
 async function init() {
   injectChrome({ active: "/admin/rates", mode: "admin" });
   await loadSettings();
   await loadRates();
   await loadTrafficContractors();
+  await loadExtras();
 
   $("btnSaveSettings").addEventListener("click", () =>
     saveSettings().catch((e) => { alertDialog(e.message); })
@@ -258,6 +281,55 @@ async function init() {
         if (!await confirmDialog("Delete this rate?")) return;
         await api(`/api/costs/rates/${del.dataset.del}`, { method: "DELETE" });
         await loadRates();
+      }
+    } catch (e) {
+      alertDialog(e.message);
+    }
+  });
+
+  $("btnAddExtra").addEventListener("click", async () => {
+    try {
+      await api("/api/costs/shift-extras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: $("eName").value.trim(),
+          unit_rate: Number($("eRate").value || 0),
+          notes: $("eNotes").value.trim() || null,
+          active: true,
+        }),
+      });
+      $("eName").value = "";
+      $("eRate").value = "54.27";
+      $("eNotes").value = "";
+      await loadExtras();
+    } catch (e) {
+      alertDialog(e.message);
+    }
+  });
+
+  $("extraBody").addEventListener("click", async (ev) => {
+    const save = ev.target.closest("[data-save-extra]");
+    const del = ev.target.closest("[data-del-extra]");
+    try {
+      if (save) {
+        const tr = save.closest("tr");
+        await api(`/api/costs/shift-extras/${save.dataset.saveExtra}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: tr.querySelector('[data-f="name"]').value.trim(),
+            unit_rate: Number(tr.querySelector('[data-f="unit_rate"]').value || 0),
+            notes: tr.querySelector('[data-f="notes"]').value.trim() || null,
+            active: tr.querySelector('[data-f="active"]').checked,
+          }),
+        });
+        await loadExtras();
+      }
+      if (del) {
+        if (!await confirmDialog("Deactivate this per-shift extra?")) return;
+        await api(`/api/costs/shift-extras/${del.dataset.delExtra}`, { method: "DELETE" });
+        await loadExtras();
       }
     } catch (e) {
       alertDialog(e.message);

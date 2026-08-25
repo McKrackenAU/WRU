@@ -110,6 +110,7 @@ def build_cost_workbook(
             ("Site crew total", _money(result.get("site_crew_total"))),
             ("Site allowances", _money(result.get("site_allowances_total"))),
             ("VMS total", _money((result.get("vms") or {}).get("vms_total"))),
+            ("Per-shift extras", _money((result.get("shift_extras") or {}).get("extras_total"))),
             ("Site traffic total", _money(result.get("site_traffic_total"))),
         ]
         for label, val in rows:
@@ -147,6 +148,26 @@ def build_cost_workbook(
             ws2.cell(i, 9, line.get("overtime_rate"))
             ws2.cell(i, 10, line.get("line_total"))
 
+        extras = result.get("shift_extras") or {}
+        extra_lines = extras.get("lines") or []
+        if extra_lines:
+            ws_x = wb.create_sheet("Per-shift extras")
+            xheaders = ["Item", "Qty", "Rate / shift", "Shifts", "Line total", "Basis"]
+            for col, h in enumerate(xheaders, 1):
+                cell = ws_x.cell(1, col, h)
+                cell.font = header_font
+                cell.fill = header_fill
+            for i, line in enumerate(extra_lines, start=2):
+                ws_x.cell(i, 1, line.get("name"))
+                ws_x.cell(i, 2, line.get("quantity"))
+                ws_x.cell(i, 3, line.get("unit_rate"))
+                ws_x.cell(i, 4, line.get("shifts"))
+                ws_x.cell(i, 5, line.get("line_total"))
+                ws_x.cell(i, 6, line.get("basis") or "qty × rate × shifts")
+            total_row = len(extra_lines) + 2
+            ws_x.cell(total_row, 1, "Extras total").font = money_font
+            ws_x.cell(total_row, 5, extras.get("extras_total")).font = money_font
+
     elif mode == "closure_24h":
         rec = result.get("recommendation") or {}
         ws.cell(row, 1, "Recommendation").font = Font(bold=True)
@@ -166,6 +187,7 @@ def build_cost_workbook(
             "Meals",
             "Crew total",
             "VMS",
+            "Extras",
             "Grand total",
             "Best?",
         ]
@@ -186,6 +208,7 @@ def build_cost_workbook(
                 opt.get("meal_total"),
                 opt.get("crew_total") or opt.get("labour_total"),
                 opt.get("vms_total"),
+                opt.get("extras_total") or (opt.get("shift_extras") or {}).get("extras_total"),
                 opt.get("grand_total"),
                 "BEST" if opt.get("is_best") else "",
             ]
@@ -193,7 +216,7 @@ def build_cost_workbook(
                 cell = ws.cell(row, col, val)
                 if opt.get("is_best"):
                     cell.fill = best_fill
-                    if col == 9:
+                    if col == 10:
                         cell.font = money_font
             row += 1
 
@@ -226,6 +249,26 @@ def build_cost_workbook(
                 ws_d.cell(i, 5, sh.get("travel_total"))
                 ws_d.cell(i, 6, sh.get("meal_total"))
                 ws_d.cell(i, 7, sh.get("shift_total"))
+
+            extras = opt.get("shift_extras") or {}
+            extra_lines = extras.get("lines") or []
+            if extra_lines:
+                start = 8 + len(opt.get("per_shift") or [])
+                ws_d.cell(start, 1, "Per-shift extras").font = Font(bold=True)
+                xheaders = ["Item", "Qty", "Rate / shift", "Shifts", "Line total"]
+                for col, h in enumerate(xheaders, 1):
+                    cell = ws_d.cell(start + 1, col, h)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                for i, line in enumerate(extra_lines, start=start + 2):
+                    ws_d.cell(i, 1, line.get("name"))
+                    ws_d.cell(i, 2, line.get("quantity"))
+                    ws_d.cell(i, 3, line.get("unit_rate"))
+                    ws_d.cell(i, 4, line.get("shifts"))
+                    ws_d.cell(i, 5, line.get("line_total"))
+                tot = start + 2 + len(extra_lines)
+                ws_d.cell(tot, 1, "Extras total").font = money_font
+                ws_d.cell(tot, 5, extras.get("extras_total")).font = money_font
 
     for sheet in wb.worksheets:
         for col in sheet.columns:
@@ -324,6 +367,7 @@ def build_cost_pdf(
             ["Per-shift total", _money(per.get("shift_total"))],
             ["Site crew total", _money(result.get("site_crew_total"))],
             ["VMS total", _money((result.get("vms") or {}).get("vms_total"))],
+            ["Per-shift extras", _money((result.get("shift_extras") or {}).get("extras_total"))],
             ["Site traffic total", _money(result.get("site_traffic_total"))],
         ]
         table = Table(data, colWidths=[90 * mm, 70 * mm])
@@ -370,6 +414,38 @@ def build_cost_pdf(
             )
             story.append(pt)
 
+        extras = result.get("shift_extras") or {}
+        extra_lines = extras.get("lines") or []
+        if extra_lines:
+            story.append(Spacer(1, 10))
+            story.append(Paragraph("<b>Per-shift extras (qty × rate × shifts)</b>", styles["BodySmall"]))
+            xdata = [["Item", "Qty", "Rate / shift", "Shifts", "Total"]]
+            for line in extra_lines:
+                xdata.append(
+                    [
+                        str(line.get("name") or ""),
+                        str(line.get("quantity") or ""),
+                        _money(line.get("unit_rate")),
+                        str(line.get("shifts") or ""),
+                        _money(line.get("line_total")),
+                    ]
+                )
+            xdata.append(["Extras total", "", "", "", _money(extras.get("extras_total"))])
+            xt = Table(xdata, colWidths=[55 * mm, 18 * mm, 32 * mm, 22 * mm, 33 * mm])
+            xt.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), GREEN),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("GRID", (0, 0), (-1, -1), 0.3, RULE),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, ROW_ALT]),
+                        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                    ]
+                )
+            )
+            story.append(xt)
+
     elif mode == "closure_24h":
         rec = result.get("recommendation") or {}
         story.append(
@@ -389,6 +465,7 @@ def build_cost_pdf(
                 "Travel",
                 "Meals",
                 "VMS",
+                "Extras",
                 "Grand total",
             ]
         ]
@@ -407,10 +484,11 @@ def build_cost_pdf(
                     _money(opt.get("travel_total")),
                     _money(opt.get("meal_total")),
                     _money(opt.get("vms_total")),
+                    _money(opt.get("extras_total") or (opt.get("shift_extras") or {}).get("extras_total")),
                     _money(opt.get("grand_total")),
                 ]
             )
-        table = Table(data, colWidths=[42 * mm, 16 * mm, 28 * mm, 24 * mm, 24 * mm, 24 * mm, 28 * mm])
+        table = Table(data, colWidths=[38 * mm, 14 * mm, 24 * mm, 20 * mm, 20 * mm, 20 * mm, 20 * mm, 24 * mm])
         style_cmds = [
             ("BACKGROUND", (0, 0), (-1, 0), GREEN),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),

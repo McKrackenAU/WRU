@@ -175,6 +175,7 @@ def _calculate_spend(
             },
             "vms_quantity": int(raw_inputs.get("vms_quantity") or 0),
             "vms_lead_days": int(raw_inputs.get("vms_lead_days") or settings.vms_lead_days_default or 0),
+            "shift_extras": raw_inputs.get("shift_extras") or [],
         }
         if raw_inputs.get("crew"):
             payload["crew"] = raw_inputs["crew"]

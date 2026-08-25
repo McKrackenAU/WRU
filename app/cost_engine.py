@@ -815,6 +815,40 @@ def vms_cost(
     }
 
 
+def shift_extras_cost(items: Any, total_shifts: int) -> dict[str, Any]:
+    """Plant billed per shift: quantity × unit rate × total shifts (no delivery)."""
+    shifts = max(0, int(total_shifts or 0))
+    lines: list[dict[str, Any]] = []
+    total = 0.0
+    for raw in items or []:
+        if not isinstance(raw, dict):
+            continue
+        qty = float(raw.get("quantity") or 0)
+        if qty <= 0:
+            continue
+        rate = float(raw.get("unit_rate") or 0)
+        name = (raw.get("name") or "Extra").strip() or "Extra"
+        line_total = qty * rate * shifts
+        total += line_total
+        lines.append(
+            {
+                "extra_id": raw.get("extra_id") or raw.get("id"),
+                "name": name,
+                "quantity": qty,
+                "unit_rate": money(rate),
+                "shifts": shifts,
+                "line_total": money(line_total),
+                "basis": "qty × rate × shifts",
+            }
+        )
+    return {
+        "lines": lines,
+        "shifts": shifts,
+        "extras_total": money(total),
+        "note": "Per-shift items (arrowboard, etc.): quantity × unit rate × total shifts. No pickup or delivery.",
+    }
+
+
 def _shift_type_for_date(
     work_date: date,
     *,
@@ -1024,7 +1058,8 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
         day_rate=float(payload.get("vms_day_rate", settings.vms_day_rate)),
     )
 
-    grand = site_crew + vms["vms_total"]
+    extras = shift_extras_cost(payload.get("shift_extras"), total_shifts)
+    grand = site_crew + vms["vms_total"] + extras["extras_total"]
     return {
         "mode": "standard",
         "inputs_echo": {
@@ -1050,6 +1085,7 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
             else False,
             "rdo_dates": sorted(str(x) for x in parse_date_list(payload.get("rdo_dates"))),
             "resources": (labour.get("allocation") or {}).get("requested"),
+            "shift_extras": extras["lines"],
         },
         "schedule": day_breakdown,
         "per_shift": labour,
@@ -1059,6 +1095,7 @@ def calculate_standard(payload: dict[str, Any], settings: Any, rates: list[Any])
         "site_allowances_total": money(site_allowances),
         "site_crew_total": money(site_crew),
         "vms": vms,
+        "shift_extras": extras,
         "site_traffic_total": money(grand),
     }
 
@@ -1239,8 +1276,11 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
     )
 
     for opt in (opt_3x8, opt_2x12):
+        extras = shift_extras_cost(payload.get("shift_extras"), opt["shifts_required"])
+        opt["shift_extras"] = extras
+        opt["extras_total"] = extras["extras_total"]
         opt["vms_total"] = vms["vms_total"]
-        opt["grand_total"] = money(opt["crew_total"] + vms["vms_total"])
+        opt["grand_total"] = money(opt["crew_total"] + vms["vms_total"] + extras["extras_total"])
 
     if opt_3x8["grand_total"] < opt_2x12["grand_total"]:
         cheaper = "3x8"
@@ -1278,6 +1318,7 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
             "resources": (opt_3x8.get("allocation") or {}).get("requested"),
         },
         "vms": vms,
+        "shift_extras": opt_3x8.get("shift_extras"),
         "option_3x8": opt_3x8,
         "option_2x12": opt_2x12,
         "booking_requirements": opt_3x8.get("booking_requirements") or [],
@@ -1291,10 +1332,10 @@ def calculate_closure_24h(payload: dict[str, Any], settings: Any, rates: list[An
                 f"BEST: {best_label}. "
                 f"8h pattern ${opt_3x8['grand_total']:,.2f} "
                 f"(pack ${opt_3x8['pack_labour_total']:,.2f} + travel ${opt_3x8['travel_total']:,.2f} "
-                f"+ {meal_note_8} + VMS ${opt_3x8['vms_total']:,.2f}) vs "
+                f"+ {meal_note_8} + VMS ${opt_3x8['vms_total']:,.2f} + extras ${opt_3x8['extras_total']:,.2f}) vs "
                 f"12h pattern ${opt_2x12['grand_total']:,.2f} "
                 f"(pack ${opt_2x12['pack_labour_total']:,.2f} + travel ${opt_2x12['travel_total']:,.2f} "
-                f"+ {meal_note_12} + VMS ${opt_2x12['vms_total']:,.2f})"
+                f"+ {meal_note_12} + VMS ${opt_2x12['vms_total']:,.2f} + extras ${opt_2x12['extras_total']:,.2f})"
                 + (f". Saves ${saving:,.2f}." if cheaper != "equal" else ".")
                 + " Travel applies every shift; meals only when shift length exceeds the meal threshold."
             ),

@@ -8,6 +8,7 @@ from app.cost_engine import (
     allocate_resource_packs,
     calculate_closure_24h,
     calculate_standard,
+    shift_extras_cost,
     unit_shift_cost,
 )
 
@@ -230,8 +231,8 @@ def test_closure_8h_no_meals_12h_has_meals_and_marks_best():
     assert opt12["travel_total"] > 0
     assert out["recommendation"]["best_label"]
     assert opt8["is_best"] or opt12["is_best"]
-    assert opt8["grand_total"] == opt8["pack_labour_total"] + opt8["travel_total"] + opt8["meal_total"] + opt8["vms_total"]
-    assert opt12["grand_total"] == opt12["pack_labour_total"] + opt12["travel_total"] + opt12["meal_total"] + opt12["vms_total"]
+    assert opt8["grand_total"] == opt8["pack_labour_total"] + opt8["travel_total"] + opt8["meal_total"] + opt8["vms_total"] + opt8["extras_total"]
+    assert opt12["grand_total"] == opt12["pack_labour_total"] + opt12["travel_total"] + opt12["meal_total"] + opt12["vms_total"] + opt12["extras_total"]
 
 
 def test_exports_build_bytes():
@@ -249,5 +250,80 @@ def test_exports_build_bytes():
     )
     xlsx = build_cost_workbook(out, title="Test closure")
     pdf = build_cost_pdf(out, title="Test closure")
+    assert xlsx[:2] == b"PK"
+    assert pdf.startswith(b"%PDF")
+
+
+def test_arrowboard_qty_times_rate_times_shifts():
+    extras = shift_extras_cost(
+        [{"name": "Arrowboard", "quantity": 2, "unit_rate": 54.27}],
+        5,
+    )
+    assert extras["extras_total"] == 542.70
+    assert extras["lines"][0]["line_total"] == 542.70
+    assert extras["lines"][0]["shifts"] == 5
+    assert extras["lines"][0]["quantity"] == 2
+    assert extras["lines"][0]["unit_rate"] == 54.27
+
+
+def test_shift_extras_skip_zero_quantity():
+    extras = shift_extras_cost(
+        [{"name": "Arrowboard", "quantity": 0, "unit_rate": 54.27}],
+        5,
+    )
+    assert extras["extras_total"] == 0
+    assert extras["lines"] == []
+
+
+def test_standard_includes_arrowboard_in_site_traffic_total():
+    out = calculate_standard(
+        {
+            "total_shifts": 5,
+            "days_of_work": 5,
+            "shifts_per_day": 1,
+            "shift_hours": 8,
+            "shift_type": "day",
+            "works_start": "2026-08-03",
+            "works_end": "2026-08-07",
+            "vms_quantity": 0,
+            "resources": {"people": 2, "vehicles": 1, "tmas": 0, "spotters": 0},
+            "shift_extras": [{"name": "Arrowboard", "quantity": 2, "unit_rate": 54.27}],
+        },
+        _settings(),
+        _default_rates(),
+    )
+    assert out["shift_extras"]["extras_total"] == 542.70
+    assert out["site_traffic_total"] == round(out["site_crew_total"] + 542.70, 2)
+
+
+def test_closure_extras_scale_with_each_option_shift_count():
+    out = calculate_closure_24h(
+        {
+            "closure_start": "2026-08-07T18:00:00",
+            "closure_end": "2026-08-08T18:00:00",
+            "vms_quantity": 0,
+            "resources": {"people": 2, "vehicles": 1, "tmas": 0, "spotters": 0},
+            "shift_extras": [{"name": "Arrowboard", "quantity": 2, "unit_rate": 54.27}],
+        },
+        _settings(),
+        _default_rates(),
+    )
+    opt8 = out["option_3x8"]
+    opt12 = out["option_2x12"]
+    assert opt8["extras_total"] == round(2 * 54.27 * opt8["shifts_required"], 2)
+    assert opt12["extras_total"] == round(2 * 54.27 * opt12["shifts_required"], 2)
+    assert opt8["extras_total"] != opt12["extras_total"]
+    assert opt8["grand_total"] == round(
+        opt8["pack_labour_total"]
+        + opt8["travel_total"]
+        + opt8["meal_total"]
+        + opt8["vms_total"]
+        + opt8["extras_total"],
+        2,
+    )
+    from app.cost_export import build_cost_pdf, build_cost_workbook
+
+    xlsx = build_cost_workbook(out, title="Extras")
+    pdf = build_cost_pdf(out, title="Extras")
     assert xlsx[:2] == b"PK"
     assert pdf.startswith(b"%PDF")
