@@ -697,7 +697,8 @@ function watchNumberInputs() {
 }
 
 export function stageLabel(meta, key) {
-  return meta?.workflow_stages?.find((s) => s.key === key)?.label || key || "—";
+  if (key == null || key === "") return "Not started";
+  return meta?.workflow_stages?.find((s) => s.key === key)?.label || key;
 }
 
 export function mustBandClass(band) {

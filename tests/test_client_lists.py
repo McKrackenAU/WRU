@@ -10,6 +10,7 @@ from app.calculations import (
     COUNCIL_NO_OBJECTION_BUSINESS_DAYS,
     client_list_bucket,
     council_wait_metrics,
+    current_stage_key,
     site_metrics,
     workflow_progress_pct,
 )
@@ -93,6 +94,44 @@ def test_progress_bar_pct_ignores_revision():
     )
     # 1 of 9 progress stages
     assert pct == round(100 * 1 / 9)
+
+
+def test_current_stage_none_when_nothing_complete():
+    site = _site([])
+    assert current_stage_key(site, WORKFLOW_STAGES) is None
+
+
+def test_current_stage_is_furthest_configured_not_first_incomplete():
+    site = _site(["tgs_markup_completed", "submitted_to_tmd", "moa_submitted"])
+    assert current_stage_key(site, WORKFLOW_STAGES) == "moa_submitted"
+
+
+def test_current_stage_ignores_orphan_step_keys():
+    site = _site(["tgs_markup_completed", "submitted_to_tmd"])
+    site.workflow_steps.append(SimpleNamespace(stage="legacy_orphan", completed=True))
+    assert current_stage_key(site, WORKFLOW_STAGES) == "submitted_to_tmd"
+
+
+def test_assign_stage_positions_keeps_payload_order():
+    from app.routers.stages import assign_stage_positions
+
+    assert assign_stage_positions([3, 1, 2], [1, 2, 3]) == {3: 10, 1: 20, 2: 30}
+    assert assign_stage_positions([2], [1, 2, 3]) == {2: 10, 1: 20, 3: 30}
+
+
+def test_progress_follows_configured_order_not_flag_count():
+    site = _site(["moa_submitted"])
+    progress = [k for k in WORKFLOW_STAGES if k != "revision_needed"]
+    idx = progress.index("moa_submitted")
+    pct = workflow_progress_pct(
+        site, stage_keys=WORKFLOW_STAGES, progress_keys=set(progress)
+    )
+    assert pct == round(100 * (idx + 1) / len(progress))
+    reordered = ["moa_submitted", "tgs_markup_completed", "ready_for_works"]
+    pct2 = workflow_progress_pct(
+        site, stage_keys=reordered, progress_keys=set(reordered)
+    )
+    assert pct2 == round(100 * 1 / 3)
 
 
 def test_business_days_skip_weekend():

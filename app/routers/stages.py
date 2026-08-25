@@ -57,9 +57,29 @@ class ProgramOut(BaseModel):
     active: bool
 
 
+class StageReorderIn(BaseModel):
+    ids: list[int] = Field(min_length=1)
+
+
 def _slug_key(label: str) -> str:
     key = re.sub(r"[^a-zA-Z0-9]+", "_", label.strip().lower()).strip("_")
     return key or "stage"
+
+
+def assign_stage_positions(ordered_ids: list[int], all_ids: list[int]) -> dict[int, int]:
+    """Map stage ids to 10, 20, 30… following ordered_ids then any leftovers."""
+    used: list[int] = []
+    seen: set[int] = set()
+    for sid in ordered_ids:
+        if sid in seen:
+            continue
+        used.append(sid)
+        seen.add(sid)
+    for sid in all_ids:
+        if sid not in seen:
+            used.append(sid)
+            seen.add(sid)
+    return {sid: (i + 1) * 10 for i, sid in enumerate(used)}
 
 
 def _backfill_stage_steps(db: Session, stage_key: str) -> None:
@@ -157,6 +177,27 @@ def update_stage(stage_id: int, payload: StageIn, db: Session = Depends(get_db))
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.put("/stages/order", response_model=list[StageOut])
+def reorder_stages(payload: StageReorderIn, db: Session = Depends(get_db)):
+    """Set workflow order. Register dropdown, progress bar, and status advance follow this."""
+    ensure_stage_seed(db)
+    rows = db.query(WorkflowStageDef).all()
+    by_id = {r.id: r for r in rows}
+    unknown = [sid for sid in payload.ids if sid not in by_id]
+    if unknown:
+        raise HTTPException(status_code=400, detail="Unknown stage id in order")
+    leftovers = sorted(rows, key=lambda r: (r.position, r.id))
+    positions = assign_stage_positions(payload.ids, [r.id for r in leftovers])
+    for row in rows:
+        row.position = positions[row.id]
+    db.commit()
+    return (
+        db.query(WorkflowStageDef)
+        .order_by(WorkflowStageDef.position.asc(), WorkflowStageDef.id.asc())
+        .all()
+    )
 
 
 @router.delete("/stages/{stage_id}", status_code=204)

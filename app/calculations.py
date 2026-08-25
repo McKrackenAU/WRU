@@ -109,6 +109,14 @@ def _stage_order(stage_keys: list[str] | None) -> dict[str, int]:
     return {stage: idx for idx, stage in enumerate(keys)}
 
 
+def _completion_map(site: Site) -> dict[str, bool]:
+    return {step.stage: bool(step.completed) for step in (site.workflow_steps or [])}
+
+
+def _ordered_keys(stage_keys: list[str] | None = None) -> list[str]:
+    return list(stage_keys or WORKFLOW_STAGES)
+
+
 def _ordered_workflow(site: Site, stage_keys: list[str] | None = None) -> list[WorkflowStep]:
     existing = {step.stage: step for step in (site.workflow_steps or [])}
     steps = list(existing.values())
@@ -117,21 +125,33 @@ def _ordered_workflow(site: Site, stage_keys: list[str] | None = None) -> list[W
 
 
 def current_stage_key(site: Site, stage_keys: list[str] | None = None) -> str | None:
-    steps = _ordered_workflow(site, stage_keys)
+    """Furthest completed stage in the configured order.
+
+    Ignore leftover / inactive step keys so the register dropdown can match an
+    option. Do not fall back to the first incomplete stage — that made every
+    unmatched site look like "TGS Markup Complete".
+    """
+    keys = _ordered_keys(stage_keys)
+    done = _completion_map(site)
+    if done.get("revision_needed") and "revision_needed" in keys:
+        return "revision_needed"
     last_done = None
-    first_open = None
-    for step in steps:
-        if step.completed:
-            last_done = step.stage
-        elif first_open is None:
-            first_open = step.stage
-    return last_done or first_open
+    for key in keys:
+        if key == "revision_needed":
+            continue
+        if done.get(key):
+            last_done = key
+    return last_done
 
 
 def next_stage_key(site: Site, stage_keys: list[str] | None = None) -> str | None:
-    for step in _ordered_workflow(site, stage_keys):
-        if not step.completed:
-            return step.stage
+    keys = _ordered_keys(stage_keys)
+    done = _completion_map(site)
+    for key in keys:
+        if key == "revision_needed":
+            continue
+        if not done.get(key):
+            return key
     return None
 
 
@@ -141,17 +161,22 @@ def workflow_progress_pct(
     stage_keys: list[str] | None = None,
     progress_keys: set[str] | None = None,
 ) -> int:
-    steps = _ordered_workflow(site, stage_keys)
-    if not steps:
-        return 0
+    """Percent complete from the furthest completed stage's place in the order."""
+    keys = _ordered_keys(stage_keys)
     if progress_keys is None:
-        linear = [s for s in steps if s.stage != "revision_needed"]
+        linear = [k for k in keys if k != "revision_needed"]
     else:
-        linear = [s for s in steps if s.stage in progress_keys]
+        linear = [k for k in keys if k in progress_keys]
     if not linear:
         return 0
-    done = sum(1 for s in linear if s.completed)
-    return round(100 * done / len(linear))
+    done = _completion_map(site)
+    last_idx = -1
+    for i, key in enumerate(linear):
+        if done.get(key):
+            last_idx = i
+    if last_idx < 0:
+        return 0
+    return round(100 * (last_idx + 1) / len(linear))
 
 
 def must_have_status(

@@ -84,7 +84,18 @@ function currentStageLabel(site) {
 }
 
 function currentStageKey(site) {
-  return site?.metrics?.current_stage || "";
+  const stages = state.meta.workflow_stages || [];
+  const known = new Set(stages.map((s) => s.key));
+  const fromMetrics = site?.metrics?.current_stage || "";
+  if (fromMetrics && known.has(fromMetrics)) return fromMetrics;
+  const wf = workflowMap(site);
+  if (wf.revision_needed && known.has("revision_needed")) return "revision_needed";
+  let last = "";
+  for (const s of stages) {
+    if (s.key === "revision_needed") continue;
+    if (wf[s.key]) last = s.key;
+  }
+  return last;
 }
 
 /** Spreadsheet-style master status: complete all stages up to (and including) target. */
@@ -92,6 +103,10 @@ function workflowAdvanceTo(targetKey) {
   const stages = state.meta.workflow_stages || [];
   const linear = stages.filter((s) => s.key !== "revision_needed");
   const workflow = {};
+  if (!targetKey) {
+    for (const s of stages) workflow[s.key] = false;
+    return workflow;
+  }
   if (targetKey === "revision_needed") {
     for (const s of stages) {
       workflow[s.key] = s.key === "revision_needed";
@@ -112,15 +127,16 @@ function workflowAdvanceTo(targetKey) {
 
 function statusSelectHtml(site) {
   const current = currentStageKey(site);
-  const currentLabel = stageLabel(state.meta, current);
-  const opts = (state.meta.workflow_stages || [])
-    .map(
+  const currentLabel = current ? stageLabel(state.meta, current) : "Not started";
+  const opts = [
+    `<option value="" ${current ? "" : "selected"}>Not started</option>`,
+    ...(state.meta.workflow_stages || []).map(
       (s) =>
         `<option value="${escapeHtml(s.key)}" ${s.key === current ? "selected" : ""}>${escapeHtml(
           s.label
         )}</option>`
-    )
-    .join("");
+    ),
+  ].join("");
   return `<label class="sr-only" for="status-${site.id}">Status for ${escapeHtml(
     site.road_name
   )}</label>
@@ -131,9 +147,9 @@ function statusSelectHtml(site) {
 
 async function quickSetStatus(siteId, stageKey, selectEl) {
   const site = state.sites.find((s) => s.id === Number(siteId));
-  if (!site || !stageKey) return;
+  if (!site) return;
   const prev = currentStageKey(site);
-  if (prev === stageKey) return;
+  if (prev === (stageKey || "")) return;
   if (selectEl) {
     selectEl.disabled = true;
     selectEl.classList.add("saving");
