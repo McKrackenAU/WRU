@@ -240,14 +240,30 @@ function commentSnippet(text) {
   return `<div class="site-comment">${escapeHtml(shown)}</div>`;
 }
 
+function moaWaitCell(moaWait) {
+  const wait = moaWait || {};
+  const days = wait.business_days_waiting;
+  if (days == null) {
+    return `<td class="mono">—</td>`;
+  }
+  const label = days === 1 ? "1 day" : `${days} days`;
+  const overSla = Boolean(wait.over_sla);
+  const title =
+    wait.status === "received"
+      ? `MoA approved after ${label}`
+      : overSla
+        ? `${label} waiting (over ${wait.sla_days}-day SLA)`
+        : `${label} since MoA submission`;
+  const cls = overSla ? "moa-wait over-sla" : "moa-wait";
+  return `<td class="mono"><span class="${cls}" title="${escapeHtml(title)}">${escapeHtml(label)}</span></td>`;
+}
+
 function siteRowHtml(site) {
   const m = site.metrics || {};
   const must = m.must_have_status || {};
   const mustDate = must.date || site.moa_must_have_received_date;
   const mustDisplay =
-    must.band === "received"
-      ? "Received"
-      : `${fmtDate(mustDate)}${must.label && must.label !== "—" ? ` · ${escapeHtml(must.label)}` : ""}`;
+    must.band === "received" ? "Received" : fmtDate(mustDate) || "—";
   const pct = m.workflow_progress_pct ?? 0;
   const highlight = state.highlightId === site.id ? "row-highlight" : "";
   const councils = (site.councils || []).slice(0, 2).join(", ");
@@ -275,7 +291,8 @@ function siteRowHtml(site) {
     </td>
     <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
     <td class="mono">${fmtDate(site.indicative_site_start_date) || "—"}</td>
-    <td class="mono"><span class="${mustBandClass(must.band)}">${mustDisplay || "—"}</span></td>
+    <td class="mono"><span class="${mustBandClass(must.band)}">${mustDisplay}</span></td>
+    ${moaWaitCell(m.moa_wait)}
     <td>${listBadge(m.client_list)}</td>
     <td class="mono">${escapeHtml(site.moa_number || "—")}</td>
     <td class="actions-col" onclick="event.stopPropagation()">
@@ -408,7 +425,7 @@ function ensureEmptyPlaceholder(tbody) {
   if (!hasRows && !empty) {
     tbody.insertAdjacentHTML(
       "beforeend",
-      `<tr class="register-empty-row"><td colspan="9"><span class="hint">Drop sites here</span></td></tr>`
+      `<tr class="register-empty-row"><td colspan="10"><span class="hint">Drop sites here</span></td></tr>`
     );
   }
   if (hasRows && empty) empty.remove();
@@ -678,6 +695,7 @@ function renderRegister() {
         <th>Pri</th>
         <th>Start</th>
         <th>Must-have</th>
+        <th>Wait time</th>
         <th>List</th>
         <th>MoA</th>
         <th class="actions-col"></th>

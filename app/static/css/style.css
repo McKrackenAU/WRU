@@ -1170,6 +1170,14 @@ html.dark .data-table th {
   border-radius: 0.35rem;
 }
 
+.moa-wait.over-sla {
+  color: var(--danger-fg);
+  font-weight: 700;
+  background: var(--danger-bg);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+}
+
 .stage-cell {
   width: 1.7rem;
   text-align: center;
@@ -2720,7 +2728,7 @@ html.dark .leaflet-control-scale-line {
 
 .register-table {
   width: 100%;
-  min-width: 58rem;
+  min-width: 62rem;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.9rem;
@@ -2770,22 +2778,27 @@ html.dark .leaflet-control-scale-line {
 .register-table td:nth-child(5),
 .register-table th:nth-child(6),
 .register-table td:nth-child(6) {
-  width: 7.5rem;
+  width: 7rem;
 }
 
 .register-table th:nth-child(7),
 .register-table td:nth-child(7) {
-  width: 5.5rem;
+  width: 6.5rem;
 }
 
 .register-table th:nth-child(8),
 .register-table td:nth-child(8) {
-  width: 6.5rem;
+  width: 5rem;
 }
 
 .register-table th:nth-child(9),
 .register-table td:nth-child(9) {
-  width: 12.5rem;
+  width: 6.5rem;
+}
+
+.register-table th:nth-child(10),
+.register-table td:nth-child(10) {
+  width: 12rem;
 }
 
 .register-row {
@@ -3118,9 +3131,9 @@ body.drawer-open {
     padding: 0.55rem 0.55rem;
   }
 
-  .register-table th:nth-child(9),
-  .register-table td:nth-child(9) {
-    width: 10.5rem;
+  .register-table th:nth-child(10),
+  .register-table td:nth-child(10) {
+    width: 10rem;
   }
 }
 
