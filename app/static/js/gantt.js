@@ -118,6 +118,7 @@ function applyBoardForm() {
   $("skipPh").value = b.skip_public_holidays ? "1" : "0";
   $("skipSun").value = b.skip_sunday_before_monday_ph ? "1" : "0";
   $("boardRdos").value = (b.rdo_dates || []).join(", ");
+  if ($("boardExclude")) $("boardExclude").value = (b.exclude_dates || []).join(", ");
 }
 
 function wireReorderList(root) {
@@ -262,6 +263,34 @@ async function loadBoard() {
     : "Bars use each site’s indicative start — drag to reorder and cascade";
 }
 
+
+function christmasShutdownRange(year) {
+  // Inclusive shutdown covering Christmas Eve through the day after New Year.
+  const dates = [];
+  const start = new Date(Date.UTC(year, 11, 24));
+  const end = new Date(Date.UTC(year + 1, 0, 2));
+  for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
+    dates.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+function mergeIsoDates(...lists) {
+  return [...new Set(lists.flat().filter(Boolean))].sort();
+}
+
+function addChristmasShutdown() {
+  const existing = parseDates($("boardExclude")?.value);
+  const year = Number(($("anchorStart")?.value || "").slice(0, 4)) || new Date().getFullYear();
+  const range = christmasShutdownRange(year);
+  const merged = mergeIsoDates(existing, range);
+  $("boardExclude").value = merged.join(", ");
+  const hint = $("xmasHint");
+  if (hint) {
+    hint.textContent = `Added ${range[0]} → ${range[range.length - 1]}. Save calendar settings to apply.`;
+  }
+}
+
 async function saveBoard() {
   state.board = await api(`/api/gantt/board?program=${encodeURIComponent(program())}`, {
     method: "PATCH",
@@ -271,6 +300,7 @@ async function saveBoard() {
       skip_public_holidays: $("skipPh").value === "1",
       skip_sunday_before_monday_ph: $("skipSun").value === "1",
       rdo_dates: parseDates($("boardRdos").value),
+      exclude_dates: parseDates($("boardExclude")?.value),
     }),
   });
   applyBoardForm();
@@ -317,6 +347,7 @@ async function init() {
   on("pdfAsphaltFilter", "change", syncPdfLink);
   on("pdfTrafficFilter", "change", syncPdfLink);
   on("btnSaveBoard", "click", () => saveBoard().catch((e) => { alertDialog(e.message); }));
+  on("btnXmasShutdown", "click", () => addChristmasShutdown());
   on("btnSyncSites", "click", async () => {
     state.board = await api(
       `/api/gantt/board/sync-program-sites?program=${encodeURIComponent(program())}`,

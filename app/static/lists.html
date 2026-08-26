@@ -30,6 +30,21 @@
         </div>
       </div>
 
+      <section class="panel-card lists-filters" aria-label="List filters">
+        <div class="lists-filter-block">
+          <span class="lists-filter-label">Priority</span>
+          <div class="lists-check-row" id="filterPriority"></div>
+        </div>
+        <div class="lists-filter-block">
+          <span class="lists-filter-label">Program</span>
+          <div class="lists-check-row" id="filterProgram"></div>
+        </div>
+        <div class="lists-filter-actions">
+          <button type="button" class="btn btn-sm" id="btnFiltersAll">Show all</button>
+          <button type="button" class="btn btn-sm" id="btnFiltersClear">Clear</button>
+        </div>
+      </section>
+
       <div class="split-2 lists-layout">
         <section class="panel-card">
           <div class="page-head lists-panel-head">
@@ -45,23 +60,27 @@
           </div>
           <div class="table-card lists-table-card">
             <div class="table-scroll">
-              <table class="data-table lists-table">
+              <table class="data-table lists-table" data-list="permits">
                 <colgroup>
                   <col class="col-pri" />
                   <col class="col-road" />
                   <col class="col-site" />
                   <col class="col-program" />
+                  <col class="col-start" />
                   <col class="col-council" />
                   <col class="col-moa" />
+                  <col class="col-open" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Pri</th>
-                    <th>Road</th>
-                    <th>Site #</th>
-                    <th>Program</th>
-                    <th>Council wait</th>
-                    <th>MoA #</th>
+                    <th><button type="button" class="th-sort" data-sort="pri">Pri</button></th>
+                    <th><button type="button" class="th-sort" data-sort="road">Road</button></th>
+                    <th><button type="button" class="th-sort" data-sort="site">Site #</button></th>
+                    <th><button type="button" class="th-sort" data-sort="program">Program</button></th>
+                    <th><button type="button" class="th-sort is-active" data-sort="start" data-dir="asc">Start</button></th>
+                    <th><button type="button" class="th-sort" data-sort="council">Council wait</button></th>
+                    <th><button type="button" class="th-sort" data-sort="moa">MoA #</button></th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="permitsBody"></tbody>
@@ -84,23 +103,27 @@
           </div>
           <div class="table-card lists-table-card">
             <div class="table-scroll">
-              <table class="data-table lists-table">
+              <table class="data-table lists-table" data-list="trims">
                 <colgroup>
                   <col class="col-pri" />
                   <col class="col-road" />
                   <col class="col-site" />
                   <col class="col-program" />
+                  <col class="col-start" />
                   <col class="col-council" />
                   <col class="col-moa" />
+                  <col class="col-open" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Pri</th>
-                    <th>Road</th>
-                    <th>Site #</th>
-                    <th>Program</th>
-                    <th>Council wait</th>
-                    <th>MoA #</th>
+                    <th><button type="button" class="th-sort" data-sort="pri">Pri</button></th>
+                    <th><button type="button" class="th-sort" data-sort="road">Road</button></th>
+                    <th><button type="button" class="th-sort" data-sort="site">Site #</button></th>
+                    <th><button type="button" class="th-sort" data-sort="program">Program</button></th>
+                    <th><button type="button" class="th-sort is-active" data-sort="start" data-dir="asc">Start</button></th>
+                    <th><button type="button" class="th-sort" data-sort="council">Council wait</button></th>
+                    <th><button type="button" class="th-sort" data-sort="moa">MoA #</button></th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="trimsBody"></tbody>

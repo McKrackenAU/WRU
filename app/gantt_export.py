@@ -10,9 +10,12 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Flowable, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .pdf_brand import GREEN, GREEN_MID, MUTED, ROW_ALT, RULE, branded_margins, draw_branded_page
+
+# Keep timeline chunks within a landscape frame after the summary table.
+ROWS_PER_TIMELINE_PAGE = 18
 
 
 def _parse_iso(value: str | None) -> date | None:
@@ -40,6 +43,8 @@ class GanttTimeline(Flowable):
         width: float,
         row_h: float = 16,
         label_w: float = 95 * mm,
+        span: tuple[date, date] | None = None,
+        start_index: int = 0,
     ):
         super().__init__()
         self.items = items
@@ -47,11 +52,13 @@ class GanttTimeline(Flowable):
         self.row_h = row_h
         self.label_w = label_w
         self.header_h = 22
-        self._span = self._compute_span()
+        self.start_index = start_index
+        self._span = span or self._compute_span(items)
 
-    def _compute_span(self) -> tuple[date, date]:
-        starts = [_parse_iso(i.get("planned_start")) for i in self.items]
-        ends = [_parse_iso(i.get("planned_end")) for i in self.items]
+    @staticmethod
+    def _compute_span(items: list[dict[str, Any]]) -> tuple[date, date]:
+        starts = [_parse_iso(i.get("planned_start")) for i in items]
+        ends = [_parse_iso(i.get("planned_end")) for i in items]
         valid_s = [d for d in starts if d]
         valid_e = [d for d in ends if d]
         if not valid_s or not valid_e:
@@ -61,13 +68,39 @@ class GanttTimeline(Flowable):
         end = max(valid_e)
         if end < start:
             end = start
-        # pad a day each side
         return start - timedelta(days=1), end + timedelta(days=1)
 
     def wrap(self, availWidth, availHeight):
         self.width = min(self.width, availWidth)
         h = self.header_h + max(1, len(self.items)) * self.row_h + 4
         return self.width, h
+
+    def split(self, availWidth, availHeight):
+        """Paginate tall boards so ReportLab does not raise LayoutError."""
+        if not self.items:
+            return []
+        min_h = self.header_h + self.row_h + 4
+        if availHeight < min_h:
+            # Not enough room for even one row — ask for a page break.
+            return []
+        width = min(self.width, availWidth)
+        max_rows = max(1, int((availHeight - self.header_h - 4) // self.row_h))
+        if len(self.items) <= max_rows:
+            return []
+        chunks: list[GanttTimeline] = []
+        for offset in range(0, len(self.items), max_rows):
+            part = self.items[offset : offset + max_rows]
+            chunks.append(
+                GanttTimeline(
+                    part,
+                    width=width,
+                    row_h=self.row_h,
+                    label_w=self.label_w,
+                    span=self._span,
+                    start_index=self.start_index + offset,
+                )
+            )
+        return chunks
 
     def draw(self):
         c = self.canv
@@ -111,7 +144,7 @@ class GanttTimeline(Flowable):
 
             road = (item.get("site_road_name") or "Site")[:34]
             site_no = item.get("site_number") or ""
-            label = f"{idx + 1}. {road}"
+            label = f"{self.start_index + idx + 1}. {road}"
             c.setFillColor(colors.HexColor("#1a1a1a"))
             c.setFont("Helvetica", 7)
             c.drawString(3, y + 5, label)
@@ -241,15 +274,29 @@ def build_gantt_pdf(
         style_cmds.append(("SPAN", (0, 1), (-1, 1)))
     table.setStyle(TableStyle(style_cmds))
 
-    story: list[Any] = [
-        table,
-        Spacer(1, 5 * mm),
-        GanttTimeline(items, width=usable_w),
-        Spacer(1, 4 * mm),
+    span = GanttTimeline._compute_span(items)
+    story: list[Any] = [table]
+    if items:
+        # Start the chart on a fresh page so it is not crushed under the table.
+        story.append(PageBreak())
+        for offset in range(0, len(items), ROWS_PER_TIMELINE_PAGE):
+            part = items[offset : offset + ROWS_PER_TIMELINE_PAGE]
+            if offset:
+                story.append(PageBreak())
+            story.append(
+                GanttTimeline(
+                    part,
+                    width=usable_w,
+                    span=span,
+                    start_index=offset,
+                )
+            )
+    story.append(Spacer(1, 4 * mm))
+    story.append(
         Paragraph(
             f"Exported {datetime.now().strftime('%d/%m/%Y %H:%M')} · Ventia confidential works sequence.",
             styles["FootNote"],
-        ),
-    ]
+        )
+    )
     doc.build(story, onFirstPage=draw_branded_page, onLaterPages=draw_branded_page)
     return buf.getvalue()
