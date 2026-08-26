@@ -290,6 +290,86 @@ function fillFilterOptions() {
     "filter-council"
   );
   checkRow("filterList", lists, state.selectedLists, "filter-list");
+  syncFilterDropLabels();
+}
+
+function setFilterDropOpen(drop, open) {
+  if (!drop) return;
+  drop.classList.toggle("is-open", open);
+  const btn = drop.querySelector(".filter-drop-btn");
+  if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+  const panel = drop.querySelector(".filter-drop-panel");
+  if (panel) {
+    panel.style.left = "0";
+    panel.style.right = "auto";
+    if (open) {
+      requestAnimationFrame(() => {
+        const rect = panel.getBoundingClientRect();
+        if (rect.right > window.innerWidth - 8) {
+          panel.style.left = "auto";
+          panel.style.right = "0";
+        }
+      });
+    }
+  }
+}
+
+function closeFilterDrops(except) {
+  document.querySelectorAll(".filter-drop.is-open").forEach((drop) => {
+    if (drop !== except) setFilterDropOpen(drop, false);
+  });
+}
+
+function syncFilterDropLabels() {
+  const specs = [
+    ["priority", state.selectedPriorities, 2],
+    ["program", state.selectedPrograms, state._knownPrograms.size],
+    ["stage", state.selectedStages, state._knownStages.size],
+    ["council", state.selectedCouncils, state._knownCouncils.size],
+    ["list", state.selectedLists, 3],
+  ];
+  for (const [key, selected, total] of specs) {
+    const meta = document.querySelector(`[data-drop-meta="${key}"]`);
+    const btn = document.querySelector(`[data-drop="${key}"] .filter-drop-btn`);
+    const n = selected.size;
+    if (meta) {
+      if (!total) meta.textContent = "";
+      else if (n === 0) meta.textContent = "none";
+      else if (n === total) meta.textContent = "all";
+      else meta.textContent = `${n}/${total}`;
+    }
+    if (btn) btn.classList.toggle("is-filtered", Boolean(total) && n !== total);
+  }
+}
+
+function setFilterDropSelection(key, all) {
+  if (key === "priority") state.selectedPriorities = all ? new Set(["1", "2"]) : new Set();
+  else if (key === "program") state.selectedPrograms = all ? new Set(state._knownPrograms) : new Set();
+  else if (key === "stage") state.selectedStages = all ? new Set(state._knownStages) : new Set();
+  else if (key === "council") state.selectedCouncils = all ? new Set(state._knownCouncils) : new Set();
+  else if (key === "list") state.selectedLists = all ? new Set(["permits", "trims", "none"]) : new Set();
+  else return;
+  fillFilterOptions();
+  renderRegister();
+}
+
+function bindFilterDrops() {
+  document.addEventListener("click", (ev) => {
+    const selectBtn = ev.target.closest("[data-drop-select]");
+    if (selectBtn) {
+      setFilterDropSelection(selectBtn.dataset.dropKey, selectBtn.dataset.dropSelect === "all");
+      return;
+    }
+    const btn = ev.target.closest(".filter-drop-btn");
+    if (btn) {
+      const drop = btn.closest(".filter-drop");
+      const open = !drop.classList.contains("is-open");
+      closeFilterDrops(drop);
+      setFilterDropOpen(drop, open);
+      return;
+    }
+    if (!ev.target.closest(".filter-drop")) closeFilterDrops();
+  });
 }
 
 function siteMatchesFilters(site) {
@@ -1610,6 +1690,7 @@ function bindEvents() {
       const value = box.getAttribute(`data-${attr}`);
       if (box.checked) state[key].add(value);
       else state[key].delete(value);
+      syncFilterDropLabels();
       renderRegister();
       return;
     }
@@ -1632,6 +1713,7 @@ function bindEvents() {
     fillFilterOptions();
     renderRegister();
   });
+  bindFilterDrops();
 
   document.addEventListener("click", (ev) => {
     const btn = ev.target.closest("[data-close-dialog]");
@@ -1642,7 +1724,12 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && $("siteDrawer") && !$("siteDrawer").hidden) closeDrawer();
+    if (ev.key !== "Escape") return;
+    if (document.querySelector(".filter-drop.is-open")) {
+      closeFilterDrops();
+      return;
+    }
+    if ($("siteDrawer") && !$("siteDrawer").hidden) closeDrawer();
   });
 
   on("btnAddCouncil", "click", () => {

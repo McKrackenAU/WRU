@@ -22,9 +22,20 @@ def test_register_filters_are_checkboxes():
     assert 'id="filterStage"' in INDEX
     assert 'id="filterCouncil"' in INDEX
     assert 'id="filterList"' in INDEX
+    assert 'class="filter-drop"' in INDEX
+    assert "filter-drop-panel" in INDEX
+    assert 'data-drop="priority"' in INDEX
+    assert 'data-drop="program"' in INDEX
+    assert 'data-drop="stage"' in INDEX
+    assert 'data-drop="council"' in INDEX
+    assert 'data-drop="list"' in INDEX
+    assert "register-check-filters" not in INDEX
     assert "priorityFilter" not in INDEX
     assert "siteMatchesFilters" in APP_JS
     assert "selectedStages" in APP_JS
+    assert "bindFilterDrops" in APP_JS
+    assert "setFilterDropSelection" in APP_JS
+    assert "syncFilterDropLabels" in APP_JS
     assert 'id="btnFiltersAll"' in INDEX
 
 

@@ -44,38 +44,79 @@
       </div>
 
       <div class="register-controls-sticky" id="registerControls">
-        <div class="filter-bar">
+        <div class="filter-bar register-filter-bar">
           <input id="search" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
+          <div class="filter-drop" data-drop="priority">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">Priority</span>
+              <span class="filter-drop-meta" data-drop-meta="priority"></span>
+            </button>
+            <div class="filter-drop-panel" role="group" aria-label="Priority">
+              <div class="filter-drop-tools">
+                <button type="button" class="filter-drop-tool" data-drop-select="all" data-drop-key="priority">All</button>
+                <button type="button" class="filter-drop-tool" data-drop-select="none" data-drop-key="priority">None</button>
+              </div>
+              <div class="filter-drop-col" id="filterPriority"></div>
+            </div>
+          </div>
+          <div class="filter-drop" data-drop="program">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">Program</span>
+              <span class="filter-drop-meta" data-drop-meta="program"></span>
+            </button>
+            <div class="filter-drop-panel" role="group" aria-label="Program">
+              <div class="filter-drop-tools">
+                <button type="button" class="filter-drop-tool" data-drop-select="all" data-drop-key="program">All</button>
+                <button type="button" class="filter-drop-tool" data-drop-select="none" data-drop-key="program">None</button>
+              </div>
+              <div class="filter-drop-col" id="filterProgram"></div>
+            </div>
+          </div>
+          <div class="filter-drop" data-drop="stage">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">Stage</span>
+              <span class="filter-drop-meta" data-drop-meta="stage"></span>
+            </button>
+            <div class="filter-drop-panel" role="group" aria-label="Stage">
+              <div class="filter-drop-tools">
+                <button type="button" class="filter-drop-tool" data-drop-select="all" data-drop-key="stage">All</button>
+                <button type="button" class="filter-drop-tool" data-drop-select="none" data-drop-key="stage">None</button>
+              </div>
+              <div class="filter-drop-col" id="filterStage"></div>
+            </div>
+          </div>
+          <div class="filter-drop" data-drop="council">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">Council</span>
+              <span class="filter-drop-meta" data-drop-meta="council"></span>
+            </button>
+            <div class="filter-drop-panel" role="group" aria-label="Council">
+              <div class="filter-drop-tools">
+                <button type="button" class="filter-drop-tool" data-drop-select="all" data-drop-key="council">All</button>
+                <button type="button" class="filter-drop-tool" data-drop-select="none" data-drop-key="council">None</button>
+              </div>
+              <div class="filter-drop-col" id="filterCouncil"></div>
+            </div>
+          </div>
+          <div class="filter-drop" data-drop="list">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">List</span>
+              <span class="filter-drop-meta" data-drop-meta="list"></span>
+            </button>
+            <div class="filter-drop-panel" role="group" aria-label="List">
+              <div class="filter-drop-tools">
+                <button type="button" class="filter-drop-tool" data-drop-select="all" data-drop-key="list">All</button>
+                <button type="button" class="filter-drop-tool" data-drop-select="none" data-drop-key="list">None</button>
+              </div>
+              <div class="filter-drop-col" id="filterList"></div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm" id="btnFiltersAll">Show all</button>
+          <button type="button" class="btn btn-sm" id="btnFiltersClear">Clear</button>
           <button type="button" class="btn" id="btnDensity" aria-pressed="true">Compact</button>
           <button type="button" class="btn" id="btnCollapseAll">Collapse all</button>
           <button type="button" class="btn" id="btnExpandAll">Expand all</button>
         </div>
-        <section class="panel-card lists-filters register-check-filters" aria-label="Register filters">
-          <div class="lists-filter-block">
-            <span class="lists-filter-label">Priority</span>
-            <div class="lists-check-row" id="filterPriority"></div>
-          </div>
-          <div class="lists-filter-block">
-            <span class="lists-filter-label">Program</span>
-            <div class="lists-check-row" id="filterProgram"></div>
-          </div>
-          <div class="lists-filter-block">
-            <span class="lists-filter-label">Stage</span>
-            <div class="lists-check-row" id="filterStage"></div>
-          </div>
-          <div class="lists-filter-block">
-            <span class="lists-filter-label">Council</span>
-            <div class="lists-check-row" id="filterCouncil"></div>
-          </div>
-          <div class="lists-filter-block">
-            <span class="lists-filter-label">List</span>
-            <div class="lists-check-row" id="filterList"></div>
-          </div>
-          <div class="lists-filter-actions">
-            <button type="button" class="btn btn-sm" id="btnFiltersAll">Show all</button>
-            <button type="button" class="btn btn-sm" id="btnFiltersClear">Clear</button>
-          </div>
-        </section>
         <nav class="register-jump" id="registerJump" aria-label="Jump to program" hidden></nav>
       </div>
 
