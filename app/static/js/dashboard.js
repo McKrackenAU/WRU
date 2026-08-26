@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, onLiveSitesChanged } from "./common.js";
+import { $, api, escapeHtml, injectChrome, onLiveSitesChanged, syncLiveRevision } from "./common.js";
 
 function barRows(items, max) {
   const m = max || Math.max(1, ...items.map((i) => i.count));
@@ -55,13 +55,10 @@ async function loadDashboard() {
 }
 
 async function init() {
-  injectChrome({ active: "/dashboard" });
-  let liveTimer = null;
-  onLiveSitesChanged(() => {
-    clearTimeout(liveTimer);
-    liveTimer = setTimeout(() => loadDashboard().catch(() => {}), 400);
-  });
+  await injectChrome({ active: "/dashboard" });
+  onLiveSitesChanged(() => loadDashboard().catch(() => {}));
   await loadDashboard();
+  await syncLiveRevision();
 }
 
 init().catch((err) => {

@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, alertDialog, onLiveSitesChanged } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, onLiveSitesChanged, syncLiveRevision } from "./common.js";
 
 function progressBar(pct) {
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
@@ -49,14 +49,11 @@ async function loadLists() {
   renderRows("trimsBody", trims);
 }
 
-let listsLiveTimer = null;
 async function init() {
-  injectChrome({ active: "/lists" });
-  onLiveSitesChanged(() => {
-    clearTimeout(listsLiveTimer);
-    listsLiveTimer = setTimeout(() => loadLists().catch(() => {}), 400);
-  });
+  await injectChrome({ active: "/lists" });
+  onLiveSitesChanged(() => loadLists().catch(() => {}));
   await loadLists();
+  await syncLiveRevision();
 }
 
 init().catch((e) => { alertDialog(e.message); });

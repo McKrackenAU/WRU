@@ -15,6 +15,7 @@ import {
   stageLabel,
   userName,
   onLiveSitesChanged,
+  syncLiveRevision,
 } from "./common.js";
 
 const state = {
@@ -165,6 +166,7 @@ async function quickSetStatus(siteId, stageKey, selectEl) {
     if (idx >= 0) state.sites[idx] = updated;
     else await loadAll();
     renderRegister();
+    await syncLiveRevision();
     setStatus(`Updated status → ${stageLabel(state.meta, stageKey)}`);
   } catch (err) {
     if (selectEl) selectEl.value = prev;
@@ -510,6 +512,7 @@ async function persistRegisterOrder(program, siteIds) {
   });
   state.dndCommitted = true;
   await loadAll();
+  await syncLiveRevision();
   setStatus(`Updated ${target}`);
 }
 
@@ -1091,6 +1094,7 @@ async function saveSite(ev) {
       });
     }
     await loadAll();
+    await syncLiveRevision();
     openSiteDrawer(saved);
     $("autosaveStatus").hidden = false;
     $("autosaveStatus").textContent = `Saved ${new Date().toLocaleTimeString()}`;
@@ -1120,6 +1124,7 @@ function scheduleAutosave() {
       if (idx >= 0) state.sites[idx] = updated;
       else await loadAll();
       renderRegister();
+      await syncLiveRevision();
       $("siteDialogTitle").textContent = updated.road_name;
       $("drawerKicker").textContent = `${updated.site_number}${
         updated.moa_number ? ` · MoA ${updated.moa_number}` : ""
@@ -1144,6 +1149,7 @@ async function archiveSite() {
   state.selectedIds.delete(Number(id));
   closeDrawer();
   await loadAll();
+  await syncLiveRevision();
 }
 
 async function bulkArchiveSelected() {
@@ -1159,6 +1165,7 @@ async function bulkArchiveSelected() {
   });
   state.selectedIds.clear();
   await loadAll();
+  await syncLiveRevision();
 }
 
 function renderColumnList() {
@@ -1550,7 +1557,6 @@ function showLoadError(err) {
 }
 
 
-let remoteRefreshTimer = null;
 let remoteBanner = null;
 
 function clearRemoteBanner() {
@@ -1584,6 +1590,7 @@ function showRemoteBanner(detail) {
 }
 
 function showLiveToast(detail) {
+  if (!detail || detail.reason === "poll") return;
   let el = document.getElementById("liveToast");
   if (!el) {
     el = document.createElement("div");
@@ -1597,13 +1604,6 @@ function showLiveToast(detail) {
   el.classList.add("is-visible");
   clearTimeout(showLiveToast._t);
   showLiveToast._t = setTimeout(() => el.classList.remove("is-visible"), 2800);
-}
-
-function scheduleRemoteRefresh(detail) {
-  clearTimeout(remoteRefreshTimer);
-  remoteRefreshTimer = setTimeout(() => {
-    applyRemoteRefresh(detail).catch((err) => console.warn("Live refresh failed", err));
-  }, 400);
 }
 
 async function applyRemoteRefresh(detail) {
@@ -1624,15 +1624,16 @@ async function applyRemoteRefresh(detail) {
 
 async function init() {
   try {
-    injectChrome({ active: "/", mode: "ops" });
+    await injectChrome({ active: "/", mode: "ops" });
     loadRegisterPrefs();
     syncDensityButton();
     const params = new URLSearchParams(location.search);
     const hl = params.get("highlight");
     if (hl && Number(hl)) state.highlightId = Number(hl);
     bindEvents();
-    onLiveSitesChanged(scheduleRemoteRefresh);
+    onLiveSitesChanged(applyRemoteRefresh);
     await loadAll();
+    await syncLiveRevision();
   } catch (err) {
     showLoadError(err);
   }
