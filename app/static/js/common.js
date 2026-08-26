@@ -268,7 +268,7 @@ export const OPS_NAV = [
   { href: "/dashboard", label: "Dashboard", hint: "Program health" },
   { href: "/", label: "Sites", hint: "TGS / MoA register" },
   { href: "/lists", label: "Client lists", hint: "Permits & TRIMS" },
-  { href: "/tracking", label: "Tracking", hint: "Activity log" },
+  { href: "/tracking", label: "Activity", hint: "Who changed what" },
   { href: "/costs", label: "Traffic costs", hint: "TM estimates" },
   { href: "/asphalt", label: "Asphalt costs", hint: "Subcontractor rates" },
   { href: "/spend", label: "Actual spend", hint: "Traffic & pavements" },

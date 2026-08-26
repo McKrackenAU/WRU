@@ -8,10 +8,10 @@ LISTS_JS = (ROOT / "app/static/js/lists.js").read_text(encoding="utf-8")
 
 
 def test_lists_page_has_open_and_start_columns():
-    assert LISTS_HTML.count("data-sort=\"start\"") == 2
+    assert LISTS_HTML.count('data-sort="start"') == 2
     assert 'href="/?highlight=${s.id}"' in LISTS_JS or 'href="/?highlight=' in LISTS_JS
     assert "Open" in LISTS_JS
-    assert "colspan=\"8\"" in LISTS_JS
+    assert 'colspan="8"' in LISTS_JS
 
 
 def test_lists_checkbox_filters_and_sort():
@@ -21,3 +21,12 @@ def test_lists_checkbox_filters_and_sort():
     assert "selectedPrograms" in LISTS_JS
     assert 'sortKey: "start"' in LISTS_JS
     assert "th-sort" in LISTS_HTML
+    assert "setSort" in LISTS_JS
+    # Unchecked / Clear must hide rows (empty set is not "show all")
+    assert "Empty selection = show none" in LISTS_JS
+    assert "if (!state.selectedPriorities.has(pri)) return false;" in LISTS_JS
+    assert "if (!state.selectedPrograms.has(programKey(site))) return false;" in LISTS_JS
+    # Document-level listeners survive filter re-renders
+    assert 'document.addEventListener("change"' in LISTS_JS
+    assert 'document.addEventListener("click"' in LISTS_JS
+    assert 'closest("[data-sort]")' in LISTS_JS

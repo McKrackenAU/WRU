@@ -26,6 +26,7 @@ from .financial_year import fy_choices
 from .migrate import run_migrations
 from .models import DOC_CATEGORIES, LookupItem, Site, SiteCouncil, User
 from .routers import (
+    activity,
     asphalt,
     auth as auth_router,
     columns,
@@ -70,6 +71,7 @@ run_migrations()
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
 app.include_router(live.router)
+app.include_router(activity.router)
 app.include_router(sites.router)
 app.include_router(columns.router)
 app.include_router(tracking.router)

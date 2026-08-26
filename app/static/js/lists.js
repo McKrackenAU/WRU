@@ -18,6 +18,8 @@ const state = {
   selectedPriorities: new Set(["1", "2"]),
   sortKey: "start",
   sortDir: "asc",
+  _programsInitialized: false,
+  _knownPrograms: new Set(),
 };
 
 function progressBar(pct) {
@@ -40,7 +42,7 @@ function councilWait(site) {
 
 function councilSortValue(site) {
   const wait = site.metrics?.max_council_business_days_waiting;
-  return wait == null ? -1 : Number(wait);
+  return wait == null ? Number.NEGATIVE_INFINITY : Number(wait);
 }
 
 function sortValue(site, key) {
@@ -78,11 +80,15 @@ function compareSites(a, b) {
   return state.sortDir === "desc" ? -cmp : cmp;
 }
 
+function programKey(site) {
+  return (site.program || "").trim() || "Unassigned";
+}
+
 function passesFilters(site) {
-  const pri = String(site.today_priority || "");
-  if (state.selectedPriorities.size && !state.selectedPriorities.has(pri)) return false;
-  const program = (site.program || "").trim() || "Unassigned";
-  if (state.selectedPrograms.size && !state.selectedPrograms.has(program)) return false;
+  // Unchecked = hidden. Empty selection = show none.
+  const pri = String(site.today_priority ?? "");
+  if (!state.selectedPriorities.has(pri)) return false;
+  if (!state.selectedPrograms.has(programKey(site))) return false;
   return true;
 }
 
@@ -92,6 +98,7 @@ function visibleSites(all) {
 
 function renderRows(tbodyId, sites) {
   const tbody = $(tbodyId);
+  if (!tbody) return [];
   const rows = visibleSites(sites);
   if (!rows.length) {
     tbody.innerHTML = `<tr><td class="empty" colspan="8">No applications match these filters.</td></tr>`;
@@ -122,42 +129,42 @@ function renderFilterControls() {
   if (priHost) {
     priHost.innerHTML = [...state.priorities]
       .sort()
-      .map(
-        (p) => `<label class="lists-check">
-          <input type="checkbox" data-filter-pri="${escapeHtml(p)}" ${
-            state.selectedPriorities.has(p) ? "checked" : ""
-          } /> Pri ${escapeHtml(p)}
-        </label>`
-      )
+      .map((p) => {
+        const checked = state.selectedPriorities.has(p) ? "checked" : "";
+        return `<label class="lists-check">
+          <input type="checkbox" data-filter-pri="${escapeHtml(p)}" ${checked} />
+          <span>Pri ${escapeHtml(p)}</span>
+        </label>`;
+      })
       .join("");
   }
   if (progHost) {
     const programs = [...state.programs].sort((a, b) => a.localeCompare(b));
     progHost.innerHTML = programs.length
       ? programs
-          .map(
-            (p) => `<label class="lists-check">
-              <input type="checkbox" data-filter-program="${escapeHtml(p)}" ${
-                state.selectedPrograms.has(p) ? "checked" : ""
-              } /> ${escapeHtml(p)}
-            </label>`
-          )
+          .map((p) => {
+            const checked = state.selectedPrograms.has(p) ? "checked" : "";
+            return `<label class="lists-check">
+              <input type="checkbox" data-filter-program="${escapeHtml(p)}" ${checked} />
+              <span>${escapeHtml(p)}</span>
+            </label>`;
+          })
           .join("")
       : `<span class="hint">No programs yet</span>`;
   }
 }
 
 function syncSortHeaders() {
-  document.querySelectorAll(".th-sort").forEach((btn) => {
-    const key = btn.dataset.sort;
+  document.querySelectorAll(".lists-table [data-sort]").forEach((el) => {
+    const key = el.getAttribute("data-sort");
     const active = key === state.sortKey;
-    btn.classList.toggle("is-active", active);
+    el.classList.toggle("is-active", active);
     if (active) {
-      btn.dataset.dir = state.sortDir;
-      btn.setAttribute("aria-sort", state.sortDir === "asc" ? "ascending" : "descending");
+      el.setAttribute("data-dir", state.sortDir);
+      el.setAttribute("aria-sort", state.sortDir === "asc" ? "ascending" : "descending");
     } else {
-      btn.removeAttribute("data-dir");
-      btn.removeAttribute("aria-sort");
+      el.removeAttribute("data-dir");
+      el.removeAttribute("aria-sort");
     }
   });
 }
@@ -165,8 +172,12 @@ function syncSortHeaders() {
 function renderAll() {
   const permitsVisible = renderRows("permitsBody", state.permits);
   const trimsVisible = renderRows("trimsBody", state.trims);
-  $("permitsHint").textContent = `${permitsVisible.length} of ${state.permits.length} with the Permits team`;
-  $("trimsHint").textContent = `${trimsVisible.length} of ${state.trims.length} with the TRIMS team`;
+  if ($("permitsHint")) {
+    $("permitsHint").textContent = `${permitsVisible.length} of ${state.permits.length} with the Permits team`;
+  }
+  if ($("trimsHint")) {
+    $("trimsHint").textContent = `${trimsVisible.length} of ${state.trims.length} with the TRIMS team`;
+  }
   syncSortHeaders();
 }
 
@@ -175,7 +186,7 @@ function rebuildProgramUniverse() {
   const known = state._knownPrograms || new Set();
   state.programs = new Set();
   for (const site of [...state.permits, ...state.trims]) {
-    state.programs.add((site.program || "").trim() || "Unassigned");
+    state.programs.add(programKey(site));
   }
   if (!state._programsInitialized) {
     state.selectedPrograms = new Set(state.programs);
@@ -202,22 +213,34 @@ async function loadLists() {
   renderAll();
 }
 
+function setSort(key) {
+  if (!key) return;
+  if (state.sortKey === key) {
+    state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+  } else {
+    state.sortKey = key;
+    state.sortDir = "asc";
+  }
+  renderAll();
+}
+
 function bindFilters() {
-  $("filterPriority")?.addEventListener("change", (ev) => {
-    const box = ev.target.closest("[data-filter-pri]");
-    if (!box) return;
-    const pri = box.getAttribute("data-filter-pri");
-    if (box.checked) state.selectedPriorities.add(pri);
-    else state.selectedPriorities.delete(pri);
-    renderAll();
-  });
-  $("filterProgram")?.addEventListener("change", (ev) => {
-    const box = ev.target.closest("[data-filter-program]");
-    if (!box) return;
-    const program = box.getAttribute("data-filter-program");
-    if (box.checked) state.selectedPrograms.add(program);
-    else state.selectedPrograms.delete(program);
-    renderAll();
+  document.addEventListener("change", (ev) => {
+    const pri = ev.target.closest("input[data-filter-pri]");
+    if (pri) {
+      const value = pri.getAttribute("data-filter-pri");
+      if (pri.checked) state.selectedPriorities.add(value);
+      else state.selectedPriorities.delete(value);
+      renderAll();
+      return;
+    }
+    const program = ev.target.closest("input[data-filter-program]");
+    if (program) {
+      const value = program.getAttribute("data-filter-program");
+      if (program.checked) state.selectedPrograms.add(value);
+      else state.selectedPrograms.delete(value);
+      renderAll();
+    }
   });
   $("btnFiltersAll")?.addEventListener("click", () => {
     state.selectedPriorities = new Set(state.priorities);
@@ -235,20 +258,13 @@ function bindFilters() {
 
 function bindSorting() {
   document.addEventListener("click", (ev) => {
-    const btn = ev.target.closest(".th-sort");
-    if (btn) {
-      const key = btn.dataset.sort;
-      if (!key) return;
-      if (state.sortKey === key) {
-        state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
-      } else {
-        state.sortKey = key;
-        state.sortDir = "asc";
-      }
-      renderAll();
+    const sortEl = ev.target.closest("[data-sort]");
+    if (sortEl && sortEl.closest(".lists-table")) {
+      ev.preventDefault();
+      setSort(sortEl.getAttribute("data-sort"));
       return;
     }
-    if (ev.target.closest("a, button, input, label")) return;
+    if (ev.target.closest("a, button, input, label, .lists-filters")) return;
     const row = ev.target.closest("[data-open-id]");
     if (row?.dataset.openId) {
       location.href = `/?highlight=${encodeURIComponent(row.dataset.openId)}`;

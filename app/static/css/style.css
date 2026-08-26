@@ -771,6 +771,21 @@ html.dark .bar-fill {
   content: " ▼";
 }
 
+.activity-table .activity-when {
+  white-space: nowrap;
+  width: 11rem;
+  vertical-align: top;
+}
+
+.activity-table .activity-message {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.activity-table .hint {
+  margin-top: 0.15rem;
+}
+
 
 .page-lists .lists-table th,
 .page-lists .lists-table td {
