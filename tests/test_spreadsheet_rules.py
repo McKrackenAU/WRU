@@ -59,3 +59,26 @@ def test_moa_wait_over_sla():
     m = moa_wait_metrics(site, today=date(2026, 7, 6), rules=Rules(moa_wait_sla_business_days=20))
     assert m["status"] == "waiting"
     assert m["over_sla"] is True
+
+
+def test_moa_wait_keeps_final_days_after_approval():
+    # Submitted Mon 1 Jun; received after 10 business days (Mon 15 Jun).
+    site = _site(
+        moa_submission_date=date(2026, 6, 1),
+        moa_received_date=date(2026, 6, 15),
+    )
+    m = moa_wait_metrics(site, today=date(2026, 8, 26), rules=Rules())
+    assert m["status"] == "received"
+    assert m["business_days_waiting"] == 10
+    assert m["over_sla"] is False
+
+
+def test_moa_wait_final_days_can_exceed_sla():
+    site = _site(
+        moa_submission_date=date(2026, 6, 1),
+        moa_received_date=date(2026, 9, 14),  # long wait, then approved
+    )
+    m = moa_wait_metrics(site, today=date(2026, 9, 20), rules=Rules(moa_wait_sla_business_days=20))
+    assert m["status"] == "received"
+    assert m["business_days_waiting"] == 75
+    assert m["over_sla"] is False  # SLA highlight only while still waiting
