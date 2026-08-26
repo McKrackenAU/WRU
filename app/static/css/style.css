@@ -3501,3 +3501,19 @@ html.dark .gantt-bar {
     grid-template-columns: 1fr;
   }
 }
+
+
+.archive-row {
+  cursor: pointer;
+}
+
+.archive-row:hover td {
+  background: color-mix(in srgb, var(--ventia-green) 10%, transparent);
+}
+
+#siteForm.is-readonly input:disabled,
+#siteForm.is-readonly select:disabled,
+#siteForm.is-readonly textarea:disabled {
+  opacity: 0.92;
+  cursor: default;
+}

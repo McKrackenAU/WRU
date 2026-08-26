@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
@@ -17,6 +17,8 @@ from ..asphalt_engine import (
     rate_card_matrix,
     weekend_rate,
 )
+from ..activity import actor_name, log_cost_added
+from ..live_hub import notify_from_request
 from ..auth import require_admin
 from ..database import get_db
 from ..models import AsphaltEstimate, AsphaltRate, AsphaltSubcontractor, Site, User
@@ -421,7 +423,7 @@ def list_estimates(site_id: int | None = None, db: Session = Depends(get_db)):
 
 
 @router.post("/estimates", status_code=201)
-def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
+def save_estimate(payload: EstimateSave, request: Request, db: Session = Depends(get_db)):
     from ..spend_from_estimates import upsert_spend_from_estimate
 
     site = db.get(Site, payload.site_id)
@@ -432,6 +434,7 @@ def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
     total = payload.summary_total
     if total is None:
         total = (payload.results or {}).get("total")
+    who = actor_name(request, fallback=payload.created_by)
     row = AsphaltEstimate(
         site_id=payload.site_id,
         subcontractor_id=payload.subcontractor_id,
@@ -440,7 +443,7 @@ def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
         summary_total=total,
         inputs=payload.inputs or {},
         results=payload.results or {},
-        created_by=payload.created_by,
+        created_by=who,
     )
     db.add(row)
     db.flush()
@@ -452,10 +455,12 @@ def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
         estimate_id=row.id,
         estimate_name=row.name,
         asphalt_subcontractor_id=payload.subcontractor_id,
-        created_by=payload.created_by,
+        created_by=who,
     )
+    log_cost_added(db, site, kind="asphalt", who=who)
     db.commit()
     db.refresh(row)
+    notify_from_request(request, site_ids=[site.id], reason="cost")
     return _estimate_out(row)
 
 

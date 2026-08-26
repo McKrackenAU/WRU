@@ -46,12 +46,12 @@ async function loadDashboard() {
         .map(
           (e) => `
       <li>
-        <div class="top">${escapeHtml(e.road_name || "")} · ${escapeHtml(e.site_number || "")} · ${new Date(e.created_at).toLocaleString()}</div>
-        <p><strong>${escapeHtml(e.event_type)}</strong> — ${escapeHtml(e.message)}</p>
+        <div class="top">${new Date(e.created_at).toLocaleString()}</div>
+        <p>${escapeHtml(e.message)}</p>
       </li>`
         )
         .join("")
-    : `<li><p class="meta">No recent tracking.</p></li>`;
+    : `<li><p class="meta">No recent activity.</p></li>`;
 }
 
 async function init() {

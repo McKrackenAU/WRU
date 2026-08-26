@@ -54,7 +54,7 @@ function renderRows(sites) {
     ? sites
         .map((s) => {
           const checked = state.selectedIds.has(s.id) ? "checked" : "";
-          return `<tr>
+          return `<tr class="archive-row" data-view-row="${s.id}" title="Open details">
           <td class="select-col">
             <input type="checkbox" class="site-select" data-select-id="${s.id}" ${checked} aria-label="Select ${escapeHtml(s.road_name)}" />
           </td>
@@ -67,6 +67,7 @@ function renderRows(sites) {
           <td class="mono">${escapeHtml(s.tgs_reference || "")}</td>
           <td class="mono">${s.archived_at ? new Date(s.archived_at).toLocaleDateString() : ""}</td>
           <td class="row-actions">
+            <button type="button" class="btn btn-primary" data-view="${s.id}">Open</button>
             <button type="button" class="btn" data-restore="${s.id}">Restore</button>
             <button type="button" class="btn btn-danger" data-purge="${s.id}" data-purge-name="${escapeHtml(s.road_name)}">Purge</button>
           </td>
@@ -135,6 +136,18 @@ async function init() {
     syncBulkBar();
   });
   $("tbody").addEventListener("click", async (ev) => {
+    if (ev.target.closest("input, button, a, label")) {
+      /* handled below */
+    }
+    const viewBtn = ev.target.closest("[data-view]");
+    const viewRow = !viewBtn && !ev.target.closest("input, button, a, label")
+      ? ev.target.closest("[data-view-row]")
+      : null;
+    const viewId = viewBtn?.dataset.view || viewRow?.getAttribute("data-view-row");
+    if (viewId) {
+      location.href = `/?view=${encodeURIComponent(viewId)}`;
+      return;
+    }
     const restore = ev.target.closest("[data-restore]");
     if (restore) {
       try {

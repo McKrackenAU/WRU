@@ -264,9 +264,17 @@ async function init() {
   state.traffic = Array.isArray(traffic) ? traffic : [];
   state.asphalt = Array.isArray(asphalt) ? asphalt : [];
   state.rates = Array.isArray(rates) ? rates : [];
-  fillSelects();
   const params = new URLSearchParams(location.search);
   const siteFromUrl = params.get("site_id");
+  if (siteFromUrl && !state.sites.some((s) => String(s.id) === String(siteFromUrl))) {
+    try {
+      const extra = await api(`/api/sites/${siteFromUrl}`);
+      if (extra?.id) state.sites = [extra, ...state.sites];
+    } catch {
+      /* ignore */
+    }
+  }
+  fillSelects();
   if (siteFromUrl && $("filterSite")) $("filterSite").value = siteFromUrl;
   if (siteFromUrl && $("spendSite")) $("spendSite").value = siteFromUrl;
   syncModeFields();

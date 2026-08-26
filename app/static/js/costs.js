@@ -825,8 +825,15 @@ async function init() {
   await api("/api/costs/rates?active_only=true");
   extraCatalogue = await api("/api/costs/shift-extras?active_only=true");
   seedDefaultExtras();
-  sites = await api("/api/sites?archived=false");
-
+    sites = await api("/api/sites?archived=false");
+  if (preselect && !sites.some((s) => s.id === preselect)) {
+    try {
+      const extra = await api(`/api/sites/${preselect}`);
+      if (extra?.id) sites = [extra, ...sites];
+    } catch {
+      /* ignore missing */
+    }
+  }
   fillSiteSelect(preselect);
 
   $("sOt").value = settings.overtime_after_hours;
