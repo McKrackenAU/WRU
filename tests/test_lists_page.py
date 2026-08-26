@@ -34,3 +34,6 @@ def test_lists_checkbox_filters_and_sort():
     # Header buttons must fill the cell so neighboring columns cannot steal clicks
     assert ".th-sort" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "min-width: 44rem" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
+    # Export links follow the Show-top cap and current filters
+    assert "syncExportLinks" in LISTS_JS
+    assert "js-list-export" in LISTS_HTML

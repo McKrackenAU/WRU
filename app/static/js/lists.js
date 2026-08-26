@@ -219,6 +219,29 @@ function renderAll() {
     $("trimsHint").textContent = listCountHint(trimsVisible.length, state.trims.length, "TRIMS team");
   }
   syncSortHeaders();
+  syncExportLinks();
+}
+
+function exportQuery() {
+  const params = new URLSearchParams();
+  if (state.cap != null) params.set("limit", String(state.cap));
+  if (state.sortKey) params.set("sort", state.sortKey);
+  params.set("dir", state.sortDir === "desc" ? "desc" : "asc");
+  if (state.selectedPriorities.size === 0) params.append("priority", "");
+  else [...state.selectedPriorities].forEach((p) => params.append("priority", p));
+  if (state.selectedPrograms.size === 0) params.append("program", "");
+  else [...state.selectedPrograms].forEach((p) => params.append("program", p));
+  return params.toString();
+}
+
+function syncExportLinks() {
+  const q = exportQuery();
+  const label = state.cap != null ? `Export top ${state.cap} matching this page` : "Export all matching this page";
+  document.querySelectorAll(".js-list-export[data-export]").forEach((a) => {
+    const base = a.getAttribute("data-export");
+    a.href = q ? `${base}?${q}` : base;
+    a.title = label;
+  });
 }
 
 function rebuildProgramUniverse() {

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import csv
 import io
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response, StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -25,8 +26,100 @@ from ..stage_registry import stage_labels_map
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
+SORT_KEYS = {"pri", "road", "site", "program", "start", "council", "moa"}
 
-def _client_list_rows(db: Session, *, team: str) -> list[dict]:
+
+@dataclass(frozen=True)
+class ClientListView:
+    limit: int | None = None
+    sort: str | None = None
+    direction: str = "asc"
+    priorities: set[str] | None = None
+    programs: set[str] | None = None
+
+
+def client_list_view(
+    limit: int | None = Query(default=None, ge=1, le=500),
+    sort: str | None = Query(default=None),
+    direction: str = Query(default="asc", alias="dir"),
+    priority: list[str] | None = Query(default=None),
+    program: list[str] | None = Query(default=None),
+) -> ClientListView:
+    key = (sort or "").strip().lower() or None
+    if key not in SORT_KEYS:
+        key = None
+    return ClientListView(
+        limit=limit,
+        sort=key,
+        direction="desc" if str(direction).lower() == "desc" else "asc",
+        priorities=None if priority is None else {p for p in priority if p != ""},
+        programs=None if program is None else {p for p in program if p != ""},
+    )
+
+
+def _program_key(row: dict) -> str:
+    return (row.get("program") or "").strip() or "Unassigned"
+
+
+def _sort_value(row: dict, key: str):
+    if key == "pri":
+        try:
+            return int(row.get("priority") or 99)
+        except (TypeError, ValueError):
+            return 99
+    if key == "road":
+        return (row.get("road_name") or "").lower()
+    if key == "site":
+        return (row.get("site_number") or "").lower()
+    if key == "program":
+        return _program_key(row).lower()
+    if key == "start":
+        return row.get("indicative_start") or "9999-99-99"
+    if key == "council":
+        wait = row.get("business_days_waiting")
+        if wait == "" or wait is None:
+            return float("-inf")
+        try:
+            return float(wait)
+        except (TypeError, ValueError):
+            return float("-inf")
+    if key == "moa":
+        return (row.get("moa_number") or "").lower()
+    return ""
+
+
+def apply_client_list_view(rows: list[dict], view: ClientListView | None = None) -> list[dict]:
+    """Filter / sort / cap a client list the same way the lists page does."""
+    view = view or ClientListView()
+    out = list(rows)
+    if view.priorities is not None:
+        out = [r for r in out if str(r.get("priority") or "") in view.priorities]
+    if view.programs is not None:
+        out = [r for r in out if _program_key(r) in view.programs]
+    if view.sort:
+        reverse = view.direction == "desc"
+
+        def decorated(row: dict):
+            val = _sort_value(row, view.sort)
+            numeric = isinstance(val, (int, float)) and not isinstance(val, bool)
+            road = (row.get("road_name") or "").lower()
+            return (0 if numeric else 1, val, road)
+
+        out.sort(key=decorated, reverse=reverse)
+    else:
+        out.sort(key=lambda r: (r.get("priority") or 99, r.get("rank") if r.get("rank") is not None else 999999))
+    if view.limit is not None:
+        out = out[: view.limit]
+    return out
+
+
+def _view_caption(view: ClientListView | None, team_label: str, count: int) -> str:
+    if view and view.limit is not None:
+        return f"{team_label} · top {view.limit} · {count} site(s)"
+    return f"{team_label} · {count} site(s)"
+
+
+def _client_list_rows(db: Session, *, team: str, view: ClientListView | None = None) -> list[dict]:
     """team: permits | trims"""
     labels = stage_labels_map(db)
     sites = db.query(Site).filter(Site.archived.is_(False)).all()
@@ -84,8 +177,7 @@ def _client_list_rows(db: Session, *, team: str) -> list[dict]:
                 "comments": (site.comments or "").replace("\n", " "),
             }
         )
-    rows.sort(key=lambda r: (r["priority"], r["rank"] if r["rank"] is not None else 999999))
-    return rows
+    return apply_client_list_view(rows, view)
 
 
 CLIENT_FIELDS = [
@@ -122,17 +214,19 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     )
 
 
-def _xlsx_bytes(rows: list[dict], sheet_name: str, title: str) -> bytes:
+def _xlsx_bytes(rows: list[dict], sheet_name: str, title: str, view: ClientListView | None = None) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = sheet_name[:31]
     ws.cell(1, 1, title).font = Font(bold=True, size=13)
-    ws.cell(
-        2,
-        1,
-        f"Exported {date.today().isoformat()} · Council no-objection assumed after "
-        f"{COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days without response",
+    cap = "Exported " + date.today().isoformat()
+    if view and view.limit is not None:
+        cap += f" · top {view.limit}"
+    cap += (
+        f" · Council no-objection assumed after "
+        f"{COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days without response"
     )
+    ws.cell(2, 1, cap)
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="0B3D2E")
     for col, h in enumerate(CLIENT_FIELDS, 1):
@@ -162,7 +256,7 @@ def _pdf_cell(text: Any, style: ParagraphStyle) -> Paragraph:
     return Paragraph(safe or "—", style)
 
 
-def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
+def _pdf_bytes(rows: list[dict], *, title: str, team_label: str, view: ClientListView | None = None) -> bytes:
     """Landscape A4 priority list with Ventia / VenInspect-style branding."""
     from ..pdf_brand import (
         GREEN,
@@ -181,15 +275,16 @@ def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
         title=title,
         **branded_margins(landscape_mode=True),
     )
+    caption = _view_caption(view, team_label, len(rows))
     doc.brand_eyebrow = "PRIORITY LIST"
     doc.brand_title = title
     doc.brand_subtitle = (
-        f"{team_label} · {len(rows)} site(s) · "
+        f"{caption} · "
         f"Council no-objection after {COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days"
     )
     doc.brand_doc_kind = "Priority List"
     doc.brand_product = "WRU TGS TRACKER"
-    doc.brand_footer_meta = f"{team_label} · {len(rows)} site(s)"
+    doc.brand_footer_meta = caption
 
     styles = getSampleStyleSheet()
     styles.add(
@@ -321,28 +416,40 @@ def _pdf_bytes(rows: list[dict], *, title: str, team_label: str) -> bytes:
 
 
 @router.get("/priority-list.csv")
-def export_permits_priority_csv(db: Session = Depends(get_db)):
+def export_permits_priority_csv(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
     """Legacy alias — Permits team client list."""
-    rows = _client_list_rows(db, team="permits")
+    rows = _client_list_rows(db, team="permits", view=view)
     return _csv_response(rows, f"WRU_Permits_priority_{date.today().isoformat()}.csv")
 
 
 @router.get("/permits-list.csv")
-def export_permits_csv(db: Session = Depends(get_db)):
-    rows = _client_list_rows(db, team="permits")
+def export_permits_csv(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
+    rows = _client_list_rows(db, team="permits", view=view)
     return _csv_response(rows, f"WRU_Permits_list_{date.today().isoformat()}.csv")
 
 
 @router.get("/trims-list.csv")
-def export_trims_csv(db: Session = Depends(get_db)):
-    rows = _client_list_rows(db, team="trims")
+def export_trims_csv(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
+    rows = _client_list_rows(db, team="trims", view=view)
     return _csv_response(rows, f"WRU_TRIMS_list_{date.today().isoformat()}.csv")
 
 
 @router.get("/permits-list.xlsx")
-def export_permits_xlsx(db: Session = Depends(get_db)):
-    rows = _client_list_rows(db, team="permits")
-    data = _xlsx_bytes(rows, "Permits", "WRU TGS Tracker — Permits team priority list")
+def export_permits_xlsx(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
+    rows = _client_list_rows(db, team="permits", view=view)
+    data = _xlsx_bytes(rows, "Permits", "WRU TGS Tracker — Permits team priority list", view)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -353,9 +460,12 @@ def export_permits_xlsx(db: Session = Depends(get_db)):
 
 
 @router.get("/trims-list.xlsx")
-def export_trims_xlsx(db: Session = Depends(get_db)):
-    rows = _client_list_rows(db, team="trims")
-    data = _xlsx_bytes(rows, "TRIMS", "WRU TGS Tracker — TRIMS team priority list")
+def export_trims_xlsx(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
+    rows = _client_list_rows(db, team="trims", view=view)
+    data = _xlsx_bytes(rows, "TRIMS", "WRU TGS Tracker — TRIMS team priority list", view)
     return Response(
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -366,12 +476,16 @@ def export_trims_xlsx(db: Session = Depends(get_db)):
 
 
 @router.get("/permits-list.pdf")
-def export_permits_pdf(db: Session = Depends(get_db)):
-    rows = _client_list_rows(db, team="permits")
+def export_permits_pdf(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
+    rows = _client_list_rows(db, team="permits", view=view)
     data = _pdf_bytes(
         rows,
         title="DTP — Permits priority list",
         team_label="Permits team",
+        view=view,
     )
     return Response(
         content=data,
@@ -383,12 +497,16 @@ def export_permits_pdf(db: Session = Depends(get_db)):
 
 
 @router.get("/trims-list.pdf")
-def export_trims_pdf(db: Session = Depends(get_db)):
-    rows = _client_list_rows(db, team="trims")
+def export_trims_pdf(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
+    rows = _client_list_rows(db, team="trims", view=view)
     data = _pdf_bytes(
         rows,
         title="DTP — TRIMS priority list",
         team_label="TRIMS team",
+        view=view,
     )
     return Response(
         content=data,
@@ -400,9 +518,12 @@ def export_trims_pdf(db: Session = Depends(get_db)):
 
 
 @router.get("/priority-list.pdf")
-def export_permits_priority_pdf(db: Session = Depends(get_db)):
+def export_permits_priority_pdf(
+    view: ClientListView = Depends(client_list_view),
+    db: Session = Depends(get_db),
+):
     """Legacy alias — Permits team PDF."""
-    return export_permits_pdf(db)
+    return export_permits_pdf(view=view, db=db)
 
 
 @router.get("/sites.csv")
