@@ -1392,11 +1392,25 @@ html.dark .data-table th {
 }
 
 .register-check-filters {
-  margin-bottom: 0.55rem;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  align-content: flex-start;
+  gap: 0.45rem 0.9rem;
+  flex: none;
+  min-height: 0;
+  margin: 0 0 0.55rem;
+  padding: 0.55rem 0.75rem;
 }
 
 .register-check-filters .lists-filter-block {
-  max-width: min(100%, 28rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(100%, 36rem);
 }
 
 .register-table td.select-col,

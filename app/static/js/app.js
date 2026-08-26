@@ -870,6 +870,12 @@ function renderRegister() {
   }
 
   const { groups, order } = groupedSites();
+  if (!order.length) {
+    root.innerHTML = `<div class="register-empty">No active sites match these filters.</div>`;
+    renderJumpNav([], new Map());
+    syncRegisterSticky();
+    return;
+  }
   const searching = Boolean($("search")?.value?.trim());
   renderJumpNav(order, groups);
 
