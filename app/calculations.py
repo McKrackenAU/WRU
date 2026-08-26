@@ -116,6 +116,9 @@ def compute_today_priority(
     days_until(must_have) <= 14.
     """
     r = _rules(rules)
+    manual = getattr(site, "priority_manual", None)
+    if manual in (1, 2):
+        return int(manual)
     thr = threshold_days if threshold_days is not None else r.priority_must_have_days
     if moa_is_received(site):
         return 2

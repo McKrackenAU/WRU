@@ -387,7 +387,7 @@ function siteRowHtml(site) {
         <div class="progress-bar thin" title="${pct}% complete" aria-hidden="true"><span style="width:${pct}%"></span></div>
       </div>
     </td>
-    <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
+    <td><span class="priority p${site.today_priority}${site.priority_manual ? " is-manual" : ""}" title="${site.priority_manual ? "Manual priority" : "Auto priority"}">${site.today_priority}</span></td>
     <td class="mono">${fmtDate(site.indicative_site_start_date) || "—"}</td>
     <td class="mono"><span class="${mustBandClass(must.band)}" title="${escapeHtml(must.label || "")}">${mustDisplay}</span></td>
     ${moaWaitCell(m.moa_wait)}
@@ -1155,6 +1155,13 @@ async function openSiteDrawer(site = null) {
   $("fStart").value = site?.indicative_site_start_date || "";
   $("fMustHave").value = site?.moa_must_have_received_date || "";
   $("fMustManual").checked = !!site?.must_have_manual;
+  $("fPriority").value = site?.priority_manual ? String(site.priority_manual) : "";
+  if ($("priorityHint")) {
+    const autoPri = site?.priority_manual ? "" : site?.today_priority;
+    $("priorityHint").textContent = site?.priority_manual
+      ? `Locked to Priority ${site.priority_manual} for other teams. Choose Auto to follow the must-have date.`
+      : `Auto is currently Priority ${autoPri || "—"}. Choose 1 or 2 to lock it for other teams.`;
+  }
   $("fMoaNo").value = site?.moa_number || "";
   $("fMoaSub").value = site?.moa_submission_date || "";
   $("fMoaRec").value = site?.moa_received_date || "";
@@ -1237,6 +1244,7 @@ function collectSitePayload() {
     indicative_site_start_date: $("fStart").value || null,
     moa_must_have_received_date: $("fMustHave").value || null,
     must_have_manual: $("fMustManual").checked,
+    priority_manual: $("fPriority").value ? Number($("fPriority").value) : null,
     moa_number: $("fMoaNo").value.trim() || null,
     moa_submission_date: $("fMoaSub").value || null,
     moa_received_date: $("fMoaRec").value || null,

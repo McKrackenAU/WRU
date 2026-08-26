@@ -22,6 +22,7 @@ def _site(**kwargs):
         indicative_site_start_date=None,
         moa_must_have_received_date=None,
         must_have_manual=False,
+        priority_manual=None,
         moa_received_date=None,
         moa_submission_date=None,
     )
@@ -44,6 +45,17 @@ def test_priority_uses_must_have_not_start():
         must_have_manual=True,
     )
     assert compute_today_priority(site, rules=Rules(priority_must_have_days=14)) == 1
+
+
+def test_priority_manual_override_wins():
+    site = _site(
+        indicative_site_start_date=date(2027, 1, 1),
+        moa_received_date=date(2026, 7, 1),  # would auto to 2
+        priority_manual=1,
+    )
+    assert compute_today_priority(site, rules=Rules()) == 1
+    site.priority_manual = 2
+    assert compute_today_priority(site, rules=Rules()) == 2
 
 
 def test_must_have_received_label_when_moa_received():

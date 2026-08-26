@@ -59,6 +59,7 @@ def run_migrations() -> None:
     ensure_column("sites", "archived_at", "archived_at TIMESTAMPTZ")
     ensure_column("sites", "archived_fy", "archived_fy VARCHAR(16)")
     ensure_column("sites", "must_have_manual", "must_have_manual BOOLEAN NOT NULL DEFAULT FALSE")
+    ensure_column("sites", "priority_manual", "priority_manual INTEGER")
     ensure_column("sites", "moa_received_date", "moa_received_date DATE")
     ensure_column("sites", "moa_start_date", "moa_start_date DATE")
     ensure_column("sites", "moa_expiry_date", "moa_expiry_date DATE")

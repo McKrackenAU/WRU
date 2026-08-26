@@ -152,6 +152,7 @@ class Site(Base):
     indicative_site_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     moa_must_have_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     must_have_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    priority_manual: Mapped[int | None] = mapped_column(Integer, nullable=True)
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
     moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     moa_submission_date: Mapped[date | None] = mapped_column(Date, nullable=True)

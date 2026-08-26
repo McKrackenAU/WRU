@@ -74,6 +74,7 @@ class SiteBase(BaseModel):
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
     must_have_manual: bool = False
+    priority_manual: int | None = Field(default=None, ge=1, le=2)
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None
@@ -104,6 +105,7 @@ class SiteCreate(BaseModel):
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
     must_have_manual: bool = False
+    priority_manual: int | None = Field(default=None, ge=1, le=2)
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None
@@ -136,6 +138,7 @@ class SiteUpdate(BaseModel):
     indicative_site_start_date: date | None = None
     moa_must_have_received_date: date | None = None
     must_have_manual: bool | None = None
+    priority_manual: int | None = Field(default=None, ge=1, le=2)
     comments: str | None = None
     moa_number: str | None = None
     moa_submission_date: date | None = None

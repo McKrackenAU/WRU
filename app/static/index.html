@@ -121,51 +121,101 @@
         <datalist id="roadList"></datalist>
 
         <section class="tab-panel active" data-panel="overview">
-          <div class="form-grid">
-            <label>Road name<input id="fRoad" list="roadList" required maxlength="255" /></label>
-            <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
-            <label>Program
-              <select id="fProgram"><option value="">Select…</option></select>
-            </label>
-            <label>TGS reference<input id="fTgs" maxlength="128" /></label>
-            <label>Indicative start<input id="fStart" type="date" /></label>
-            <label>MoA must-have
-              <input id="fMustHave" type="date" />
-            </label>
-            <label class="full"><span><input id="fMustManual" type="checkbox" /> Lock must-have (don’t auto-calc)</span></label>
-            <label class="full">Comments<textarea id="fComments" rows="8" placeholder="Ops notes / correspondence summary"></textarea></label>
-            <label class="full"><span><input id="fInclude" type="checkbox" checked /> Include in dashboard totals</span></label>
-            <label class="full"><span><input id="fGenericMoa" type="checkbox" /> Generic MoA / TGS</span></label>
-            <label class="full">Link generic MoA
-              <select id="fLinkedGeneric"><option value="">None</option></select>
-            </label>
-            <label class="full">Markup KML<input id="fKml" type="file" accept=".kml,.xml" /></label>
-            <fieldset class="full" id="customFieldsEdit">
-              <legend>Custom fields</legend>
-              <div id="customFieldsGrid" class="form-grid"></div>
-            </fieldset>
+          <div class="form-section">
+            <h3>Site</h3>
+            <div class="form-grid">
+              <label>Road name<input id="fRoad" list="roadList" required maxlength="255" /></label>
+              <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
+              <label>Program
+                <select id="fProgram"><option value="">Select…</option></select>
+              </label>
+              <label>TGS reference<input id="fTgs" maxlength="128" /></label>
+            </div>
+          </div>
+          <div class="form-section">
+            <h3>Schedule &amp; priority</h3>
+            <div class="form-grid">
+              <label>Indicative start<input id="fStart" type="date" /></label>
+              <label>MoA must-have
+                <input id="fMustHave" type="date" />
+              </label>
+              <label>Register priority
+                <select id="fPriority">
+                  <option value="">Auto (from must-have)</option>
+                  <option value="1">Priority 1</option>
+                  <option value="2">Priority 2</option>
+                </select>
+              </label>
+              <p class="hint full" id="priorityHint">Auto follows the must-have date. Choose 1 or 2 to lock it for other teams.</p>
+              <label class="check-row full" for="fMustManual">
+                <input id="fMustManual" type="checkbox" />
+                <span>
+                  <strong>Lock must-have date</strong>
+                  <em>Don’t auto-calculate from the start date</em>
+                </span>
+              </label>
+            </div>
+          </div>
+          <div class="form-section">
+            <h3>Notes</h3>
+            <div class="form-grid">
+              <label class="full">Comments<textarea id="fComments" rows="6" placeholder="Ops notes / correspondence summary"></textarea></label>
+            </div>
+          </div>
+          <div class="form-section">
+            <h3>Options</h3>
+            <div class="form-grid">
+              <label class="check-row full" for="fInclude">
+                <input id="fInclude" type="checkbox" checked />
+                <span>
+                  <strong>Include in dashboard totals</strong>
+                </span>
+              </label>
+              <label class="check-row full" for="fGenericMoa">
+                <input id="fGenericMoa" type="checkbox" />
+                <span>
+                  <strong>Generic MoA / TGS</strong>
+                </span>
+              </label>
+              <label class="full">Link generic MoA
+                <select id="fLinkedGeneric"><option value="">None</option></select>
+              </label>
+              <label class="full">Markup KML<input id="fKml" type="file" accept=".kml,.xml" /></label>
+              <fieldset class="full" id="customFieldsEdit">
+                <legend>Custom fields</legend>
+                <div id="customFieldsGrid" class="form-grid"></div>
+              </fieldset>
+            </div>
           </div>
         </section>
 
         <section class="tab-panel" data-panel="moa">
-          <div class="form-grid">
-            <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
-            <label>Submitted<input id="fMoaSub" type="date" /></label>
-            <label>Received<input id="fMoaRec" type="date" /></label>
-            <label>Valid from<input id="fMoaStart" type="date" /></label>
-            <label>Expiry<input id="fMoaExp" type="date" /></label>
-            <label>Extension / change
-              <select id="fExtFlag">
-                <option value="No">No</option>
-                <option value="Yes">Yes</option>
-                <option value="N/A">N/A</option>
-              </select>
-            </label>
-            <label>Ext. submitted<input id="fExtSub" type="date" /></label>
-            <label>Ext. received<input id="fExtRec" type="date" /></label>
-            <label>Ext. start<input id="fExtStart" type="date" /></label>
-            <label>Ext. expiry<input id="fExtExp" type="date" /></label>
-            <label>Job completed<input id="fJobDone" type="date" /></label>
+          <div class="form-section">
+            <h3>MoA</h3>
+            <div class="form-grid">
+              <label>MoA number<input id="fMoaNo" maxlength="64" /></label>
+              <label>Submitted<input id="fMoaSub" type="date" /></label>
+              <label>Received<input id="fMoaRec" type="date" /></label>
+              <label>Valid from<input id="fMoaStart" type="date" /></label>
+              <label>Expiry<input id="fMoaExp" type="date" /></label>
+              <label>Job completed<input id="fJobDone" type="date" /></label>
+            </div>
+          </div>
+          <div class="form-section">
+            <h3>Extension / change</h3>
+            <div class="form-grid">
+              <label>Extension
+                <select id="fExtFlag">
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                  <option value="N/A">N/A</option>
+                </select>
+              </label>
+              <label>Ext. submitted<input id="fExtSub" type="date" /></label>
+              <label>Ext. received<input id="fExtRec" type="date" /></label>
+              <label>Ext. start<input id="fExtStart" type="date" /></label>
+              <label>Ext. expiry<input id="fExtExp" type="date" /></label>
+            </div>
           </div>
         </section>
 
