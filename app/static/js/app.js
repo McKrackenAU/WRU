@@ -38,6 +38,15 @@ const state = {
   readOnlyArchive: false,
   sortKey: null,
   sortDir: "asc",
+  selectedPriorities: new Set(["1", "2"]),
+  selectedPrograms: new Set(),
+  selectedStages: new Set(),
+  selectedCouncils: new Set(),
+  selectedLists: new Set(["permits", "trims", "none"]),
+  _filtersInitialized: false,
+  _knownPrograms: new Set(),
+  _knownStages: new Set(),
+  _knownCouncils: new Set(),
 };
 
 const DENSITY_KEY = "wru-register-density";
@@ -198,39 +207,107 @@ async function quickSetStatus(siteId, stageKey, selectEl) {
 }
 
 function fillFilterOptions() {
-  const stageSel = $("stageFilter");
-  const councilSel = $("councilFilter");
-  const programSel = $("programFilter");
-  if (stageSel) {
-    const cur = stageSel.value;
-    stageSel.innerHTML =
-      `<option value="">All stages</option>` +
-      state.meta.workflow_stages
-        .map((s) => `<option value="${s.key}">${escapeHtml(s.label)}</option>`)
-        .join("");
-    stageSel.value = cur;
+  const stages = [
+    { key: "not_started", label: "Not started" },
+    ...(state.meta.workflow_stages || []),
+  ];
+  const programs = [...(state.meta.programs || [])];
+  for (const s of state.sites) {
+    const p = programKey(s.program);
+    if (!programs.includes(p)) programs.push(p);
   }
-  if (programSel) {
-    const cur = programSel.value;
-    programSel.innerHTML =
-      `<option value="">All programs</option>` +
-      (state.meta.programs || [])
-        .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
-        .join("");
-    programSel.value = cur;
+  const councils = new Set([...(state.meta.councils || [])]);
+  for (const s of state.sites) {
+    const names = (s.councils || []).map((c) => (typeof c === "string" ? c : c?.council_name || "")).filter(Boolean);
+    if (!names.length) councils.add("Unassigned");
+    else names.forEach((n) => councils.add(n));
   }
-  if (councilSel) {
-    const cur = councilSel.value;
-    const councils = new Set([...(state.meta.councils || [])]);
-    for (const s of state.sites) for (const c of s.councils || []) councils.add(c);
-    councilSel.innerHTML =
-      `<option value="">All councils</option>` +
-      [...councils]
-        .sort()
-        .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
-        .join("");
-    councilSel.value = cur;
+  const lists = [
+    { key: "permits", label: "Permits" },
+    { key: "trims", label: "TRIMS" },
+    { key: "none", label: "Not on lists" },
+  ];
+
+  if (!state._filtersInitialized) {
+    state.selectedPrograms = new Set(programs);
+    state.selectedStages = new Set(stages.map((s) => s.key));
+    state.selectedCouncils = new Set(councils);
+    state._filtersInitialized = true;
+  } else {
+    for (const p of programs) {
+      if (!state._knownPrograms.has(p)) state.selectedPrograms.add(p);
+    }
+    for (const s of stages) {
+      if (!state._knownStages.has(s.key)) state.selectedStages.add(s.key);
+    }
+    for (const c of councils) {
+      if (!state._knownCouncils.has(c)) state.selectedCouncils.add(c);
+    }
+    state.selectedPrograms = new Set([...state.selectedPrograms].filter((p) => programs.includes(p)));
+    const stageKeys = new Set(stages.map((s) => s.key));
+    state.selectedStages = new Set([...state.selectedStages].filter((k) => stageKeys.has(k)));
+    state.selectedCouncils = new Set([...state.selectedCouncils].filter((c) => councils.has(c)));
   }
+  state._knownPrograms = new Set(programs);
+  state._knownStages = new Set(stages.map((s) => s.key));
+  state._knownCouncils = new Set(councils);
+
+  const checkRow = (hostId, items, selected, attr) => {
+    const host = $(hostId);
+    if (!host) return;
+    host.innerHTML = items
+      .map((item) => {
+        const key = typeof item === "string" ? item : item.key;
+        const label = typeof item === "string" ? item : item.label;
+        const checked = selected.has(key) ? "checked" : "";
+        return `<label class="lists-check">
+          <input type="checkbox" data-${attr}="${escapeHtml(key)}" ${checked} />
+          <span>${escapeHtml(label)}</span>
+        </label>`;
+      })
+      .join("");
+  };
+  checkRow(
+    "filterPriority",
+    [
+      { key: "1", label: "Pri 1" },
+      { key: "2", label: "Pri 2" },
+    ],
+    state.selectedPriorities,
+    "filter-pri"
+  );
+  checkRow(
+    "filterProgram",
+    programs.sort((a, b) => a.localeCompare(b)),
+    state.selectedPrograms,
+    "filter-program"
+  );
+  checkRow("filterStage", stages, state.selectedStages, "filter-stage");
+  checkRow(
+    "filterCouncil",
+    [...councils].sort((a, b) => a.localeCompare(b)),
+    state.selectedCouncils,
+    "filter-council"
+  );
+  checkRow("filterList", lists, state.selectedLists, "filter-list");
+}
+
+function siteMatchesFilters(site) {
+  const pri = String(site.today_priority ?? "");
+  if (!state.selectedPriorities.has(pri)) return false;
+  if (!state.selectedPrograms.has(programKey(site.program))) return false;
+  const stage = currentStageKey(site) || "not_started";
+  if (!state.selectedStages.has(stage)) return false;
+  const names = (site.councils || [])
+    .map((c) => (typeof c === "string" ? c : c?.council_name || ""))
+    .filter(Boolean);
+  const councilHit = names.length
+    ? names.some((n) => state.selectedCouncils.has(n))
+    : state.selectedCouncils.has("Unassigned");
+  if (!councilHit) return false;
+  const list = site.metrics?.client_list || "none";
+  if (!state.selectedLists.has(list)) return false;
+  return true;
 }
 
 function listBadge(list) {
@@ -312,11 +389,11 @@ function siteRowHtml(site) {
     </td>
     <td><span class="priority p${site.today_priority}">${site.today_priority}</span></td>
     <td class="mono">${fmtDate(site.indicative_site_start_date) || "—"}</td>
-    <td class="mono"><span class="${mustBandClass(must.band)}">${mustDisplay}</span></td>
+    <td class="mono"><span class="${mustBandClass(must.band)}" title="${escapeHtml(must.label || "")}">${mustDisplay}</span></td>
     ${moaWaitCell(m.moa_wait)}
     <td>${listBadge(m.client_list)}</td>
     <td class="mono">${escapeHtml(site.moa_number || "—")}</td>
-    <td class="actions-col" onclick="event.stopPropagation()">
+    <td class="actions-col">
       <div class="register-actions">
         <button type="button" class="btn btn-primary btn-sm" data-action="open" data-id="${site.id}">Open</button>
         <a class="btn btn-sm register-extra-action" href="/costs?site_id=${site.id}">Traffic</a>
@@ -476,6 +553,7 @@ function sortHeader(key, label) {
 function groupedSites() {
   const groups = new Map();
   for (const site of state.sites) {
+    if (!siteMatchesFilters(site)) continue;
     const key = programKey(site.program);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(site);
@@ -871,17 +949,7 @@ function renderRegister() {
 async function loadAll() {
   const params = new URLSearchParams({ archived: "false" });
   const q = $("search")?.value?.trim() || "";
-  const priority = $("priorityFilter")?.value || "";
-  const stage = $("stageFilter")?.value || "";
-  const council = $("councilFilter")?.value || "";
-  const program = $("programFilter")?.value || "";
-  const list = $("listFilter")?.value || "";
   if (q) params.set("q", q);
-  if (priority) params.set("priority", priority);
-  if (stage) params.set("stage", stage);
-  if (council) params.set("council", council);
-  if (program) params.set("program", program);
-  if (list) params.set("client_list", list);
 
   setStatus("Loading active TGS / MoA jobs…");
   const [meta, columns, sites, generics] = await Promise.all([
@@ -898,9 +966,6 @@ async function loadAll() {
   fillProgramSelect();
   fillGenericSelect();
   fillRoadList();
-  const days = meta.priority_must_have_days ?? meta.priority_threshold_days ?? 14;
-  const priOpt = $("priorityFilter")?.querySelector('option[value="1"]');
-  if (priOpt) priOpt.textContent = `Priority 1 (≤ ${days}d)`;
   renderRegister();
   maybeScrollHighlight();
   const pri = state.sites.filter((s) => s.metrics?.on_permits_priority_list).length;
@@ -1517,8 +1582,41 @@ function bindEvents() {
     if ($("colOptionsWrap")) $("colOptionsWrap").hidden = $("colType").value !== "select";
   });
   on("search", "input", debounce(() => loadAll().catch(showLoadError), 250));
-  ["priorityFilter", "stageFilter", "councilFilter", "programFilter", "listFilter"].forEach((id) => {
-    on(id, "change", () => loadAll().catch(showLoadError));
+  document.addEventListener("change", (ev) => {
+    const map = [
+      ["filter-pri", "selectedPriorities"],
+      ["filter-program", "selectedPrograms"],
+      ["filter-stage", "selectedStages"],
+      ["filter-council", "selectedCouncils"],
+      ["filter-list", "selectedLists"],
+    ];
+    for (const [attr, key] of map) {
+      const box = ev.target.closest(`input[data-${attr}]`);
+      if (!box) continue;
+      const value = box.getAttribute(`data-${attr}`);
+      if (box.checked) state[key].add(value);
+      else state[key].delete(value);
+      renderRegister();
+      return;
+    }
+  });
+  $("btnFiltersAll")?.addEventListener("click", () => {
+    state.selectedPriorities = new Set(["1", "2"]);
+    state.selectedPrograms = new Set(state._knownPrograms);
+    state.selectedStages = new Set(state._knownStages);
+    state.selectedCouncils = new Set(state._knownCouncils);
+    state.selectedLists = new Set(["permits", "trims", "none"]);
+    fillFilterOptions();
+    renderRegister();
+  });
+  $("btnFiltersClear")?.addEventListener("click", () => {
+    state.selectedPriorities = new Set();
+    state.selectedPrograms = new Set();
+    state.selectedStages = new Set();
+    state.selectedCouncils = new Set();
+    state.selectedLists = new Set();
+    fillFilterOptions();
+    renderRegister();
   });
 
   document.addEventListener("click", (ev) => {
@@ -1569,10 +1667,11 @@ function bindEvents() {
       return;
     }
     if (state.suppressRowOpen) return;
-    if (ev.target.closest("[data-status-select], .status-col, .select-col, .actions-col, a.btn, .drag-grip, .register-select-program"))
+    if (ev.target.closest("[data-status-select], .status-col, .select-col, a.btn, .drag-grip, .register-select-program, input, select, label"))
       return;
     const btn = ev.target.closest("[data-action='open']");
     if (!btn) return;
+    ev.preventDefault();
     const id = Number(btn.dataset.id);
     const site = state.sites.find((s) => s.id === id);
     if (site) openSiteDrawer(site);

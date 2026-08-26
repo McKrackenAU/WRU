@@ -24,7 +24,7 @@ async function loadDashboard() {
     ["Permits list", data.permits_priority_count],
     ["TRIMS list", data.trims_priority_count || 0],
     ["Must-have overdue", data.must_have.overdue],
-    ["Must-have late (14+)", data.must_have.late],
+    ["Must-have not submitted", data.must_have.late],
     ["Documents", data.totals.documents],
   ]
     .map(

@@ -59,6 +59,31 @@ def moa_is_received(site: Site, stage_keys: list[str] | None = None) -> bool:
     return False
 
 
+_SUBMITTED_OR_LATER = (
+    "moa_submitted",
+    "moa_with_trims",
+    "revision_needed",
+    "moa_received",
+    "ready_for_works",
+)
+
+
+def moa_has_been_submitted(site: Site) -> bool:
+    """True once the job has reached MoA Submitted (or any later stage)."""
+    if getattr(site, "moa_submission_date", None):
+        return True
+    by_stage = {}
+    for step in site.workflow_steps or []:
+        key = getattr(step, "stage", None)
+        done = bool(getattr(step, "completed", False))
+        if key is None and isinstance(step, dict):
+            key = step.get("stage")
+            done = bool(step.get("completed"))
+        if key:
+            by_stage[key] = done
+    return any(by_stage.get(key) for key in _SUBMITTED_OR_LATER)
+
+
 def compute_must_have_date(
     site: Site,
     *,
@@ -221,30 +246,57 @@ def must_have_status(
     *,
     rules: Rules | None = None,
 ) -> dict:
+    """Must-have cell colour:
+
+    - green (received): MoA received
+    - yellow (ok): submitted, and not past the must-have date
+    - red (late/overdue): past must-have, or not yet submitted
+    """
     r = _rules(rules)
     today = today or date.today()
     if moa_is_received(site):
-        return {"band": "received", "days": None, "label": "Received", "date": None}
+        return {
+            "band": "received",
+            "days": None,
+            "label": "Received",
+            "date": None,
+            "reason": "received",
+        }
     must = compute_must_have_date(site, rules=r)
+    submitted = moa_has_been_submitted(site)
     delta = days_until(must, today)
-    if delta is None:
-        return {"band": "none", "days": None, "label": "—", "date": None}
-    # Spreadsheet CF: green=Received; yellow within 7–14d past; red >7d past
+    if not submitted:
+        return {
+            "band": "late",
+            "days": delta,
+            "label": "Not submitted",
+            "date": must.isoformat() if must else None,
+            "reason": "not_submitted",
+        }
+    if must is None or delta is None:
+        return {
+            "band": "ok",
+            "days": None,
+            "label": "Submitted",
+            "date": None,
+            "reason": "submitted",
+        }
     if delta < 0:
         overdue = abs(delta)
-        if overdue > r.must_have_critical_days:
-            band = "overdue"
-        else:
-            band = "warn"
         return {
-            "band": band,
+            "band": "overdue",
             "days": delta,
             "label": f"{overdue}d overdue",
             "date": must.isoformat(),
+            "reason": "past_due",
         }
-    if delta <= r.must_have_warn_days:
-        return {"band": "ok", "days": delta, "label": f"{delta}d", "date": must.isoformat()}
-    return {"band": "late", "days": delta, "label": f"{delta}d", "date": must.isoformat()}
+    return {
+        "band": "ok",
+        "days": delta,
+        "label": f"{delta}d",
+        "date": must.isoformat(),
+        "reason": "submitted",
+    }
 
 
 def start_status(site: Site, today: date | None = None) -> dict:

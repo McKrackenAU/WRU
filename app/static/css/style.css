@@ -1297,16 +1297,13 @@ html.dark .data-table th {
 }
 
 .must-have.soon {
-  color: var(--ok);
-  font-weight: 600;
+  color: var(--warn);
+  font-weight: 650;
 }
 
 .must-have.late {
   color: var(--danger-fg);
   font-weight: 700;
-  background: var(--danger-bg);
-  padding: 0.1rem 0.35rem;
-  border-radius: 0.35rem;
 }
 
 .moa-wait.over-sla {
@@ -1374,10 +1371,32 @@ html.dark .data-table th {
   line-height: 1.2;
 }
 
-.register-table td.actions-col,
-.register-table th.actions-col {
-  border-left: none;
-  white-space: normal;
+.register-table th.actions-col,
+.register-table td.actions-col {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: var(--panel);
+  box-shadow: -8px 0 10px -10px color-mix(in srgb, #000 45%, transparent);
+  width: 5.6rem;
+  min-width: 5.6rem;
+  text-align: right;
+}
+
+.register-row:nth-child(even) td.actions-col {
+  background: color-mix(in srgb, var(--ventia-border) 16%, var(--panel));
+}
+
+.register-row:hover td.actions-col {
+  background: color-mix(in srgb, var(--ventia-green) 8%, var(--panel));
+}
+
+.register-check-filters {
+  margin-bottom: 0.55rem;
+}
+
+.register-check-filters .lists-filter-block {
+  max-width: min(100%, 28rem);
 }
 
 .register-table td.select-col,
@@ -2947,7 +2966,7 @@ html.dark .leaflet-control-scale-line {
 
 .register-table th:nth-child(10),
 .register-table td:nth-child(10) {
-  width: 12rem;
+  width: 5.6rem;
 }
 
 .register-row {

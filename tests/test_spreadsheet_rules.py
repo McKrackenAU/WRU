@@ -53,6 +53,40 @@ def test_must_have_received_label_when_moa_received():
     assert st["label"] == "Received"
 
 
+def test_must_have_yellow_when_submitted_and_not_due():
+    site = _site(
+        moa_submission_date=date(2026, 8, 1),
+        moa_must_have_received_date=date(2026, 10, 1),
+        must_have_manual=True,
+        workflow_steps=[SimpleNamespace(stage="moa_submitted", completed=True)],
+    )
+    st = must_have_status(site, today=date(2026, 8, 26), rules=Rules(auto_compute_must_have=False))
+    assert st["band"] == "ok"
+    assert st["reason"] == "submitted"
+
+
+def test_must_have_red_when_not_submitted():
+    site = _site(
+        indicative_site_start_date=date(2026, 10, 12),
+        workflow_steps=[SimpleNamespace(stage="plan_received", completed=True)],
+    )
+    st = must_have_status(site, today=date(2026, 8, 26), rules=Rules())
+    assert st["band"] == "late"
+    assert st["reason"] == "not_submitted"
+
+
+def test_must_have_red_when_past_due():
+    site = _site(
+        moa_submission_date=date(2026, 7, 1),
+        moa_must_have_received_date=date(2026, 8, 1),
+        must_have_manual=True,
+        workflow_steps=[SimpleNamespace(stage="moa_submitted", completed=True)],
+    )
+    st = must_have_status(site, today=date(2026, 8, 26), rules=Rules(auto_compute_must_have=False))
+    assert st["band"] == "overdue"
+    assert st["reason"] == "past_due"
+
+
 def test_moa_wait_over_sla():
     site = _site(moa_submission_date=date(2026, 6, 1))  # Monday
     # > 20 business days later
