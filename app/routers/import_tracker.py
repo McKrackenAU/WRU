@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import require_admin
 from ..database import DATA_DIR, get_db
+from ..live_hub import notify_from_request
 from ..tracker_import import import_tracker_rows, parse_tracker_workbook
 from ..upload_limits import configure_multipart_limits
 
@@ -219,19 +220,23 @@ def run_tracker_import(
 
 @router.post("/tracker")
 async def import_tracker_excel(
+    request: Request,
     file: UploadFile = File(...),
     update_existing: bool = Query(default=True),
     dry_run: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     content = await file.read()
-    return run_tracker_import(
+    result = run_tracker_import(
         db,
         content,
         filename=file.filename or "tracker.xlsm",
         update_existing=update_existing,
         dry_run=dry_run,
     )
+    if not dry_run:
+        notify_from_request(request, site_ids=None, reason="import")
+    return result
 
 
 @router.post("/tracker/session")
@@ -305,6 +310,7 @@ async def upload_tracker_chunk(upload_id: str, index: int, request: Request):
 @router.post("/tracker/session/{upload_id}/commit")
 def commit_tracker_session(
     upload_id: str,
+    request: Request,
     update_existing: bool = Query(default=True),
     dry_run: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -321,12 +327,15 @@ def commit_tracker_session(
         )
     try:
         content = assemble_chunks(folder, int(meta.get("size") or 0))
-        return run_tracker_import(
+        result = run_tracker_import(
             db,
             content,
             filename=str(meta.get("filename") or "tracker.xlsm"),
             update_existing=update_existing,
             dry_run=dry_run,
         )
+        if not dry_run:
+            notify_from_request(request, site_ids=None, reason="import")
+        return result
     finally:
         shutil.rmtree(folder, ignore_errors=True)

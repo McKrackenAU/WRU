@@ -128,10 +128,13 @@ export async function api(path, options = {}) {
   const timeoutMs = options.timeoutMs ?? 45000;
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
+    const headers = new Headers(options.headers || {});
+    if (!headers.has("X-WRU-Client-Id")) headers.set("X-WRU-Client-Id", liveClientId());
     const res = await fetch(path, {
       cache: "no-store",
       credentials: "include",
       ...options,
+      headers,
       signal: options.signal || ctrl.signal,
     });
     if (res.status === 401 && !String(path).startsWith("/api/auth/")) {
@@ -490,6 +493,85 @@ function wireNavToggle() {
   syncNavChrome();
 }
 
+const LIVE_CLIENT_KEY = "wru-live-client-id";
+const liveHandlers = new Set();
+let liveSource = null;
+let liveRetryTimer = null;
+let liveRetryMs = 1500;
+
+export function liveClientId() {
+  try {
+    let id = sessionStorage.getItem(LIVE_CLIENT_KEY);
+    if (!id) {
+      id =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `c-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem(LIVE_CLIENT_KEY, id);
+    }
+    return id;
+  } catch {
+    return `c-${Date.now()}`;
+  }
+}
+
+/**
+ * Subscribe to live site invalidation events (SSE).
+ * Handler receives { type, site_ids, reason, actor_name, client_id, ts }.
+ * Returns an unsubscribe function.
+ */
+export function onLiveSitesChanged(handler) {
+  if (typeof handler !== "function") return () => {};
+  liveHandlers.add(handler);
+  ensureLiveSync();
+  return () => liveHandlers.delete(handler);
+}
+
+function dispatchLiveEvent(event) {
+  if (!event || event.type !== "sites_changed") return;
+  if (event.client_id && event.client_id === liveClientId()) return;
+  for (const handler of [...liveHandlers]) {
+    try {
+      handler(event);
+    } catch (err) {
+      console.warn("Live sync handler failed", err);
+    }
+  }
+}
+
+export function ensureLiveSync() {
+  if (liveSource || typeof EventSource === "undefined") return;
+  if (document.body?.classList.contains("must-change-password")) return;
+  const url = `/api/live/events?client_id=${encodeURIComponent(liveClientId())}`;
+  const es = new EventSource(url, { withCredentials: true });
+  liveSource = es;
+  es.onopen = () => {
+    liveRetryMs = 1500;
+  };
+  es.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data);
+      dispatchLiveEvent(data);
+    } catch {
+      /* ignore malformed */
+    }
+  };
+  es.onerror = () => {
+    try {
+      es.close();
+    } catch {
+      /* ignore */
+    }
+    liveSource = null;
+    if (liveRetryTimer) clearTimeout(liveRetryTimer);
+    liveRetryTimer = setTimeout(() => {
+      liveRetryTimer = null;
+      if (liveHandlers.size) ensureLiveSync();
+    }, liveRetryMs);
+    liveRetryMs = Math.min(liveRetryMs * 1.7, 20000);
+  };
+}
+
 /**
  * Inject accessible app chrome (sidebar + compact top bar).
  * @param {{ active?: string, mode?: 'ops'|'admin' }} opts
@@ -597,6 +679,9 @@ export async function injectChrome({ active, mode } = {}) {
     logout();
   });
   enhanceNumberInputs(document);
+  if (!document.body.classList.contains("must-change-password") && location.pathname !== "/login") {
+    ensureLiveSync();
+  }
   watchNumberInputs();
 }
 

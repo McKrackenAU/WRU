@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome } from "./common.js";
+import { $, api, escapeHtml, injectChrome, onLiveSitesChanged } from "./common.js";
 
 function barRows(items, max) {
   const m = max || Math.max(1, ...items.map((i) => i.count));
@@ -14,8 +14,7 @@ function barRows(items, max) {
     .join("");
 }
 
-async function init() {
-  injectChrome({ active: "/dashboard" });
+async function loadDashboard() {
   const data = await api("/api/dashboard");
   $("statGrid").innerHTML = [
     ["Active sites", data.totals.active_sites],
@@ -53,6 +52,16 @@ async function init() {
         )
         .join("")
     : `<li><p class="meta">No recent tracking.</p></li>`;
+}
+
+async function init() {
+  injectChrome({ active: "/dashboard" });
+  let liveTimer = null;
+  onLiveSitesChanged(() => {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => loadDashboard().catch(() => {}), 400);
+  });
+  await loadDashboard();
 }
 
 init().catch((err) => {
