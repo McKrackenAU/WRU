@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, userName, onLiveSitesChanged } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, userName, onLiveSitesChanged, syncLiveRevision } from "./common.js";
 
 const BASEMAP_KEY = "wru-map-basemap";
 
@@ -337,12 +337,8 @@ async function init() {
     throw new Error("Map library failed to load. Hard-refresh the page and try again.");
   }
 
-  injectChrome({ active: "/map" });
-  let liveTimer = null;
-  onLiveSitesChanged(() => {
-    clearTimeout(liveTimer);
-    liveTimer = setTimeout(() => refreshMap().catch(() => {}), 600);
-  });
+  await injectChrome({ active: "/map" });
+  onLiveSitesChanged(() => refreshMap().catch(() => {}));
   await waitForLayout();
 
   const canvas = $("mapCanvas");

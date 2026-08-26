@@ -7,11 +7,27 @@ route handlers can publish after commits.
 from __future__ import annotations
 
 import queue
+import secrets
 import threading
 import time
 from typing import Any
 
 from starlette.requests import Request
+
+_revision = 0
+_revision_lock = threading.Lock()
+
+
+def bump_revision() -> int:
+    global _revision
+    with _revision_lock:
+        _revision += 1
+        return _revision
+
+
+def current_revision() -> int:
+    with _revision_lock:
+        return _revision
 
 
 class LiveHub:
@@ -26,21 +42,24 @@ class LiveHub:
         *,
         user_id: int | None = None,
         username: str | None = None,
-    ) -> queue.Queue:
+    ) -> tuple[str, queue.Queue]:
+        """Return (connection_id, queue). Each SSE connection gets its own conn id."""
+        conn_id = secrets.token_urlsafe(16)
         q: queue.Queue = queue.Queue(maxsize=64)
         with self._lock:
-            self._subs[client_id] = q
-            self._meta[client_id] = {
+            self._subs[conn_id] = q
+            self._meta[conn_id] = {
+                "client_id": client_id,
                 "user_id": user_id,
                 "username": username,
                 "connected_at": time.time(),
             }
-        return q
+        return conn_id, q
 
-    def unsubscribe(self, client_id: str) -> None:
+    def unsubscribe(self, conn_id: str) -> None:
         with self._lock:
-            self._subs.pop(client_id, None)
-            self._meta.pop(client_id, None)
+            self._subs.pop(conn_id, None)
+            self._meta.pop(conn_id, None)
 
     def subscriber_count(self) -> int:
         with self._lock:
@@ -55,15 +74,17 @@ class LiveHub:
         """Fan out to all subscribers. Returns how many queues accepted the event."""
         with self._lock:
             items = list(self._subs.items())
+            meta_by_conn = dict(self._meta)
         sent = 0
-        for client_id, q in items:
-            if skip_client_id and client_id == skip_client_id:
-                continue
+        for conn_id, q in items:
+            if skip_client_id:
+                meta = meta_by_conn.get(conn_id) or {}
+                if meta.get("client_id") == skip_client_id:
+                    continue
             try:
                 q.put_nowait(event)
                 sent += 1
             except queue.Full:
-                # Drop oldest then retry so a stalled tab does not block others
                 try:
                     q.get_nowait()
                 except queue.Empty:
@@ -103,6 +124,7 @@ def notify_sites_changed(
     client_id: str | None = None,
 ) -> int:
     """Broadcast a soft invalidate. ``site_ids=None`` means full reload."""
+    revision = bump_revision()
     event = {
         "type": "sites_changed",
         "site_ids": site_ids,
@@ -110,6 +132,7 @@ def notify_sites_changed(
         "actor_user_id": actor_user_id,
         "actor_name": actor_name,
         "client_id": client_id,
+        "revision": revision,
         "ts": time.time(),
     }
     return hub.publish(event, skip_client_id=client_id)

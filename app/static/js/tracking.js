@@ -7,6 +7,7 @@ import {
   mustBandClass,
   stageLabel,
   onLiveSitesChanged,
+  syncLiveRevision,
 } from "./common.js";
 
 let meta = { workflow_stages: [], councils: [], programs: [] };
@@ -61,12 +62,8 @@ async function load() {
 }
 
 async function init() {
-  injectChrome({ active: "/tracking" });
-  let liveTimer = null;
-  onLiveSitesChanged(() => {
-    clearTimeout(liveTimer);
-    liveTimer = setTimeout(() => load().catch(() => {}), 400);
-  });
+  await injectChrome({ active: "/tracking" });
+  onLiveSitesChanged(() => load().catch(() => {}));
   meta = await api("/api/meta");
   $("stageFilter").innerHTML =
     `<option value="">All stages</option>` +
@@ -89,6 +86,7 @@ async function init() {
   }
   $("search").addEventListener("input", debounce(load, 250));
   await load();
+  await syncLiveRevision();
 }
 
 init().catch((err) => {

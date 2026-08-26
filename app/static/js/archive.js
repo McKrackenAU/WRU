@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, confirmDialog, promptDialog, alertDialog, errorMessage, onLiveSitesChanged } from "./common.js";
+import { $, api, escapeHtml, injectChrome, confirmDialog, promptDialog, alertDialog, errorMessage, onLiveSitesChanged, syncLiveRevision } from "./common.js";
 
 const state = {
   sites: [],
@@ -116,12 +116,8 @@ async function purgeIds(ids, label) {
 }
 
 async function init() {
-  injectChrome({ active: "/archive" });
-  let liveTimer = null;
-  onLiveSitesChanged(() => {
-    clearTimeout(liveTimer);
-    liveTimer = setTimeout(() => load().catch(() => {}), 400);
-  });
+  await injectChrome({ active: "/archive" });
+  onLiveSitesChanged(() => load().catch(() => {}));
   const meta = await api("/api/meta");
   $("fyFilter").innerHTML =
     `<option value="">All years</option>` +
@@ -178,6 +174,7 @@ async function init() {
     }
   });
   await load();
+  await syncLiveRevision();
 }
 
 init().catch((err) => {

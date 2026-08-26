@@ -496,8 +496,18 @@ function wireNavToggle() {
 const LIVE_CLIENT_KEY = "wru-live-client-id";
 const liveHandlers = new Set();
 let liveSource = null;
+let liveConnecting = false;
 let liveRetryTimer = null;
 let liveRetryMs = 1500;
+let livePollTimer = null;
+let liveBootstrapped = false;
+let knownRevision = 0;
+let refreshDebounce = null;
+let refreshRunning = false;
+let refreshPending = null;
+
+const LIVE_POLL_MS = 6000;
+const LIVE_REFRESH_DEBOUNCE_MS = 650;
 
 export function liveClientId() {
   try {
@@ -515,48 +525,140 @@ export function liveClientId() {
   }
 }
 
+/** Record the revision this tab has already rendered (after a local load/save). */
+export function markLiveRevision(revision) {
+  if (typeof revision === "number" && revision >= knownRevision) {
+    knownRevision = revision;
+  }
+}
+
+/** Fetch current server revision — used on boot and as SSE fallback. */
+export async function syncLiveRevision() {
+  try {
+    const data = await api("/api/live/revision");
+    if (typeof data?.revision === "number") {
+      markLiveRevision(data.revision);
+    }
+    return data?.revision ?? knownRevision;
+  } catch {
+    return knownRevision;
+  }
+}
+
 /**
- * Subscribe to live site invalidation events (SSE).
- * Handler receives { type, site_ids, reason, actor_name, client_id, ts }.
- * Returns an unsubscribe function.
+ * Subscribe to coalesced live refresh events (SSE + revision polling).
+ * Handler receives { type, site_ids, reason, actor_name, client_id, revision, ts }.
  */
 export function onLiveSitesChanged(handler) {
   if (typeof handler !== "function") return () => {};
   liveHandlers.add(handler);
-  ensureLiveSync();
+  bootstrapLiveSync();
   return () => liveHandlers.delete(handler);
 }
 
-function dispatchLiveEvent(event) {
-  if (!event || event.type !== "sites_changed") return;
-  if (event.client_id && event.client_id === liveClientId()) return;
-  for (const handler of [...liveHandlers]) {
-    try {
-      handler(event);
-    } catch (err) {
-      console.warn("Live sync handler failed", err);
+function bootstrapLiveSync() {
+  if (!liveBootstrapped) {
+    liveBootstrapped = true;
+    startLivePoll();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      checkLiveRevision().catch(() => {});
+      if (!liveSource && !liveConnecting) ensureLiveSync();
+    });
+  }
+  ensureLiveSync();
+}
+
+function startLivePoll() {
+  if (livePollTimer) return;
+  livePollTimer = setInterval(() => {
+    checkLiveRevision().catch(() => {});
+  }, LIVE_POLL_MS);
+}
+
+async function checkLiveRevision() {
+  const data = await api("/api/live/revision");
+  const rev = data?.revision;
+  if (typeof rev !== "number" || rev <= knownRevision) return;
+  knownRevision = rev;
+  queueLiveRefresh({ type: "sites_changed", reason: "poll", revision: rev });
+}
+
+function queueLiveRefresh(event) {
+  refreshPending = event;
+  clearTimeout(refreshDebounce);
+  refreshDebounce = setTimeout(() => {
+    flushLiveRefresh().catch((err) => console.warn("Live refresh failed", err));
+  }, LIVE_REFRESH_DEBOUNCE_MS);
+}
+
+async function flushLiveRefresh() {
+  if (refreshRunning) return;
+  if (!refreshPending) return;
+  const event = refreshPending;
+  refreshPending = null;
+  refreshRunning = true;
+  try {
+    for (const handler of [...liveHandlers]) {
+      await handler(event);
+    }
+    if (typeof event?.revision === "number") {
+      markLiveRevision(event.revision);
+    }
+  } finally {
+    refreshRunning = false;
+    if (refreshPending) {
+      await flushLiveRefresh();
     }
   }
 }
 
+function ingestLivePayload(data) {
+  if (!data || typeof data !== "object") return;
+  if (data.type === "hello") {
+    if (typeof data.revision === "number") markLiveRevision(data.revision);
+    return;
+  }
+  if (data.type === "ping") {
+    if (typeof data.revision === "number" && data.revision > knownRevision) {
+      knownRevision = data.revision;
+      queueLiveRefresh({ type: "sites_changed", reason: "poll", revision: data.revision });
+    }
+    return;
+  }
+  if (data.type !== "sites_changed") return;
+  if (data.client_id && data.client_id === liveClientId()) return;
+  if (typeof data.revision === "number") {
+    if (data.revision <= knownRevision) return;
+    knownRevision = data.revision;
+  }
+  queueLiveRefresh(data);
+}
+
 export function ensureLiveSync() {
-  if (liveSource || typeof EventSource === "undefined") return;
+  if (liveSource || liveConnecting || typeof EventSource === "undefined") return;
   if (document.body?.classList.contains("must-change-password")) return;
+  if (location.pathname === "/login") return;
+
+  liveConnecting = true;
   const url = `/api/live/events?client_id=${encodeURIComponent(liveClientId())}`;
   const es = new EventSource(url, { withCredentials: true });
   liveSource = es;
+
   es.onopen = () => {
+    liveConnecting = false;
     liveRetryMs = 1500;
+    checkLiveRevision().catch(() => {});
   };
   es.onmessage = (msg) => {
     try {
-      const data = JSON.parse(msg.data);
-      dispatchLiveEvent(data);
+      ingestLivePayload(JSON.parse(msg.data));
     } catch {
       /* ignore malformed */
     }
   };
   es.onerror = () => {
+    liveConnecting = false;
     try {
       es.close();
     } catch {
@@ -568,7 +670,7 @@ export function ensureLiveSync() {
       liveRetryTimer = null;
       if (liveHandlers.size) ensureLiveSync();
     }, liveRetryMs);
-    liveRetryMs = Math.min(liveRetryMs * 1.7, 20000);
+    liveRetryMs = Math.min(liveRetryMs * 1.7, 15000);
   };
 }
 
@@ -679,9 +781,6 @@ export async function injectChrome({ active, mode } = {}) {
     logout();
   });
   enhanceNumberInputs(document);
-  if (!document.body.classList.contains("must-change-password") && location.pathname !== "/login") {
-    ensureLiveSync();
-  }
   watchNumberInputs();
 }
 
