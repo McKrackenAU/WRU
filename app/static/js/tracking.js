@@ -6,6 +6,7 @@ import {
   injectChrome,
   mustBandClass,
   stageLabel,
+  onLiveSitesChanged,
 } from "./common.js";
 
 let meta = { workflow_stages: [], councils: [], programs: [] };
@@ -61,6 +62,11 @@ async function load() {
 
 async function init() {
   injectChrome({ active: "/tracking" });
+  let liveTimer = null;
+  onLiveSitesChanged(() => {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => load().catch(() => {}), 400);
+  });
   meta = await api("/api/meta");
   $("stageFilter").innerHTML =
     `<option value="">All stages</option>` +

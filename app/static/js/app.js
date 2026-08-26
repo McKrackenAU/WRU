@@ -14,6 +14,7 @@ import {
   showPageError,
   stageLabel,
   userName,
+  onLiveSitesChanged,
 } from "./common.js";
 
 const state = {
@@ -931,6 +932,7 @@ function closeDrawer() {
   d.hidden = true;
   d.setAttribute("aria-hidden", "true");
   document.body.classList.remove("drawer-open");
+  clearRemoteBanner();
   state.suppressAutosave = true;
   state.detailSiteId = null;
 }
@@ -1547,6 +1549,79 @@ function showLoadError(err) {
   showPageError("registerList", err, "Could not load sites");
 }
 
+
+let remoteRefreshTimer = null;
+let remoteBanner = null;
+
+function clearRemoteBanner() {
+  remoteBanner?.remove();
+  remoteBanner = null;
+}
+
+function showRemoteBanner(detail) {
+  clearRemoteBanner();
+  const head = document.querySelector(".drawer-head");
+  if (!head) return;
+  const who = detail?.actor_name ? escapeHtml(detail.actor_name) : "Someone else";
+  const bar = document.createElement("div");
+  bar.className = "live-remote-banner";
+  bar.innerHTML = `<span>${who} updated this site.</span>
+    <button type="button" class="btn btn-sm btn-primary" data-live-reload>Reload form</button>`;
+  head.insertAdjacentElement("afterend", bar);
+  remoteBanner = bar;
+  bar.querySelector("[data-live-reload]")?.addEventListener("click", async () => {
+    const id = Number($("siteId")?.value || 0);
+    if (!id) return;
+    try {
+      const site = await api(`/api/sites/${id}`);
+      openSiteDrawer(site);
+      clearRemoteBanner();
+      setStatus("Form reloaded with latest data");
+    } catch (err) {
+      alertDialog(errorMessage(err, "Could not reload site"));
+    }
+  });
+}
+
+function showLiveToast(detail) {
+  let el = document.getElementById("liveToast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "liveToast";
+    el.className = "live-toast";
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  const who = detail?.actor_name || "A teammate";
+  el.textContent = `${who} saved — register updated`;
+  el.classList.add("is-visible");
+  clearTimeout(showLiveToast._t);
+  showLiveToast._t = setTimeout(() => el.classList.remove("is-visible"), 2800);
+}
+
+function scheduleRemoteRefresh(detail) {
+  clearTimeout(remoteRefreshTimer);
+  remoteRefreshTimer = setTimeout(() => {
+    applyRemoteRefresh(detail).catch((err) => console.warn("Live refresh failed", err));
+  }, 400);
+}
+
+async function applyRemoteRefresh(detail) {
+  const drawer = $("siteDrawer");
+  const drawerOpen = Boolean(drawer && !drawer.hidden);
+  const editingId = Number($("siteId")?.value || 0);
+  const ids = detail?.site_ids;
+  const touchesOpen =
+    drawerOpen &&
+    editingId &&
+    (ids == null || (Array.isArray(ids) && ids.map(Number).includes(editingId)));
+
+  await loadAll();
+  showLiveToast(detail);
+  if (touchesOpen) showRemoteBanner(detail);
+  else clearRemoteBanner();
+}
+
 async function init() {
   try {
     injectChrome({ active: "/", mode: "ops" });
@@ -1556,6 +1631,7 @@ async function init() {
     const hl = params.get("highlight");
     if (hl && Number(hl)) state.highlightId = Number(hl);
     bindEvents();
+    onLiveSitesChanged(scheduleRemoteRefresh);
     await loadAll();
   } catch (err) {
     showLoadError(err);

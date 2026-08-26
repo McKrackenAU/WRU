@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import UPLOAD_DIR, get_db
 from ..financial_year import australian_financial_year
+from ..live_hub import notify_from_request
 from ..models import CostEstimate, MapFeature, MapLayer, Site, SiteCouncil
 from ..schemas import (
     SiteArchiveRequest,
@@ -229,7 +230,11 @@ def list_generic_moas(db: Session = Depends(get_db)):
 
 
 @router.post("/bulk-archive", response_model=SiteBulkArchiveOut)
-def bulk_archive_sites(payload: SiteBulkArchiveRequest, db: Session = Depends(get_db)):
+def bulk_archive_sites(
+    payload: SiteBulkArchiveRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     ids = sorted({int(i) for i in payload.site_ids if int(i) > 0})
     if not ids:
         raise HTTPException(status_code=400, detail="No site ids provided")
@@ -247,11 +252,16 @@ def bulk_archive_sites(payload: SiteBulkArchiveRequest, db: Session = Depends(ge
         site.financial_year = site.financial_year or fy
         archived_ids.append(site.id)
     db.commit()
+    notify_from_request(request, site_ids=archived_ids, reason="archive")
     return SiteBulkArchiveOut(archived=len(archived_ids), site_ids=archived_ids, financial_year=fy_used)
 
 
 @router.post("/bulk-purge", response_model=SiteBulkPurgeOut)
-def bulk_purge_sites(payload: SiteBulkPurgeRequest, db: Session = Depends(get_db)):
+def bulk_purge_sites(
+    payload: SiteBulkPurgeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     ids = sorted({int(i) for i in payload.site_ids if int(i) > 0})
     if not ids:
         raise HTTPException(status_code=400, detail="No site ids provided")
@@ -259,6 +269,7 @@ def bulk_purge_sites(payload: SiteBulkPurgeRequest, db: Session = Depends(get_db
     if not sites:
         raise HTTPException(status_code=404, detail="No matching archived sites found")
     purged = purge_archived_sites(db, sites)
+    notify_from_request(request, site_ids=purged, reason="purge")
     return SiteBulkPurgeOut(purged=len(purged), site_ids=purged)
 
 
@@ -274,7 +285,11 @@ def _program_filter(program: str | None):
 
 
 @router.post("/reorder", response_model=SiteReorderOut)
-def reorder_sites(payload: SiteReorderRequest, db: Session = Depends(get_db)):
+def reorder_sites(
+    payload: SiteReorderRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Persist register row order within a program (and move sites into that program if needed)."""
     target = _program_key(payload.program)
     ids = [int(i) for i in payload.site_ids if int(i) > 0]
@@ -306,11 +321,12 @@ def reorder_sites(payload: SiteReorderRequest, db: Session = Depends(get_db)):
         site.register_order = base + offset * 10
 
     db.commit()
+    notify_from_request(request, site_ids=ids, reason="reorder")
     return SiteReorderOut(program=program_value, site_ids=ids)
 
 
 @router.post("", response_model=SiteOut, status_code=201)
-def create_site(payload: SiteCreate, db: Session = Depends(get_db)):
+def create_site(payload: SiteCreate, request: Request, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"councils", "workflow", "geometry", "geometry_name", "linked_generic_moa_id", "custom_fields"})
     for key in ("road_name", "site_number", "program", "tgs_reference", "moa_number", "extension_flag", "comments"):
         if isinstance(data.get(key), str):
@@ -345,6 +361,7 @@ def create_site(payload: SiteCreate, db: Session = Depends(get_db)):
     _attach_geometry(db, site, payload.geometry, payload.geometry_name)
     db.commit()
     db.refresh(site)
+    notify_from_request(request, site_ids=[site.id], reason="create")
     return site_to_dict(site, db=db)
 
 
@@ -357,7 +374,7 @@ def get_site(site_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{site_id}", response_model=SiteOut)
-def update_site(site_id: int, payload: SiteUpdate, db: Session = Depends(get_db)):
+def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session = Depends(get_db)):
     site = db.get(Site, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -413,12 +430,14 @@ def update_site(site_id: int, payload: SiteUpdate, db: Session = Depends(get_db)
             detail="Could not save site (database conflict — check council names are unique).",
         ) from exc
     db.refresh(site)
+    notify_from_request(request, site_ids=[site.id], reason="update")
     return site_to_dict(site, db=db)
 
 
 @router.post("/{site_id}/archive", response_model=SiteOut)
 def archive_site(
     site_id: int,
+    request: Request,
     payload: SiteArchiveRequest | None = None,
     db: Session = Depends(get_db),
 ):
@@ -432,11 +451,12 @@ def archive_site(
     site.financial_year = site.financial_year or fy
     db.commit()
     db.refresh(site)
+    notify_from_request(request, site_ids=[site.id], reason="archive")
     return site_to_dict(site, db=db)
 
 
 @router.post("/{site_id}/restore", response_model=SiteOut)
-def restore_site(site_id: int, db: Session = Depends(get_db)):
+def restore_site(site_id: int, request: Request, db: Session = Depends(get_db)):
     site = db.get(Site, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -445,11 +465,13 @@ def restore_site(site_id: int, db: Session = Depends(get_db)):
     site.archived_fy = None
     db.commit()
     db.refresh(site)
+    notify_from_request(request, site_ids=[site.id], reason="restore")
     return site_to_dict(site, db=db)
 
 
 @router.delete("/{site_id}", status_code=204)
-def delete_site(site_id: int, db: Session = Depends(get_db)):
+def delete_site(site_id: int, request: Request, db: Session = Depends(get_db)):
     site = _purge_query(db).filter(Site.id == site_id).first()
     require_archived_for_purge(site)
-    purge_archived_sites(db, [site])
+    purged = purge_archived_sites(db, [site])
+    notify_from_request(request, site_ids=purged, reason="purge")

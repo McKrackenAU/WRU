@@ -35,6 +35,7 @@ from .routers import (
     export,
     gantt,
     import_tracker,
+    live,
     map_layers,
     settings_admin,
     sites,
@@ -68,6 +69,7 @@ run_migrations()
 
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
+app.include_router(live.router)
 app.include_router(sites.router)
 app.include_router(columns.router)
 app.include_router(tracking.router)

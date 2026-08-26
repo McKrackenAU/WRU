@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, userName } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog, userName, onLiveSitesChanged } from "./common.js";
 
 const BASEMAP_KEY = "wru-map-basemap";
 
@@ -338,6 +338,11 @@ async function init() {
   }
 
   injectChrome({ active: "/map" });
+  let liveTimer = null;
+  onLiveSitesChanged(() => {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => refreshMap().catch(() => {}), 600);
+  });
   await waitForLayout();
 
   const canvas = $("mapCanvas");

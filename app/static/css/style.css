@@ -3028,6 +3028,42 @@ body.drawer-open {
   to { transform: translateX(0); opacity: 1; }
 }
 
+
+.live-remote-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 1.15rem;
+  background: color-mix(in srgb, var(--warn) 16%, var(--panel));
+  color: var(--warn);
+  border-bottom: 1px solid var(--ventia-border);
+  font-size: 0.86rem;
+}
+
+.live-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%) translateY(120%);
+  z-index: 80;
+  background: color-mix(in srgb, var(--panel) 92%, var(--ventia-green-tint));
+  color: var(--text);
+  border: 1px solid var(--ventia-border);
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  font-size: 0.86rem;
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 28%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.live-toast.is-visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
 .drawer-head {
   display: flex;
   align-items: flex-start;

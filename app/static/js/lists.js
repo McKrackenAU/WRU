@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, alertDialog } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, onLiveSitesChanged } from "./common.js";
 
 function progressBar(pct) {
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
@@ -38,8 +38,7 @@ function renderRows(tbodyId, sites) {
     .join("");
 }
 
-async function init() {
-  injectChrome({ active: "/lists" });
+async function loadLists() {
   const [permits, trims] = await Promise.all([
     api("/api/sites?archived=false&client_list=permits"),
     api("/api/sites?archived=false&client_list=trims"),
@@ -48,6 +47,16 @@ async function init() {
   $("trimsHint").textContent = `${trims.length} application${trims.length === 1 ? "" : "s"} with the TRIMS team`;
   renderRows("permitsBody", permits);
   renderRows("trimsBody", trims);
+}
+
+let listsLiveTimer = null;
+async function init() {
+  injectChrome({ active: "/lists" });
+  onLiveSitesChanged(() => {
+    clearTimeout(listsLiveTimer);
+    listsLiveTimer = setTimeout(() => loadLists().catch(() => {}), 400);
+  });
+  await loadLists();
 }
 
 init().catch((e) => { alertDialog(e.message); });
