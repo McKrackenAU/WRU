@@ -8,10 +8,14 @@ STYLE_CSS = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
 
 
 def test_register_has_wait_time_column_header():
-    assert "<th>Must-have</th>" in APP_JS
-    assert "<th>Wait time</th>" in APP_JS
-    assert APP_JS.index("<th>Must-have</th>") < APP_JS.index("<th>Wait time</th>")
-    assert APP_JS.index("<th>Wait time</th>") < APP_JS.index("<th>List</th>")
+    assert 'sortHeader("must", "Must-have")' in APP_JS
+    assert 'sortHeader("wait", "Wait time")' in APP_JS
+    assert APP_JS.index('sortHeader("must", "Must-have")') < APP_JS.index(
+        'sortHeader("wait", "Wait time")'
+    )
+    assert APP_JS.index('sortHeader("wait", "Wait time")') < APP_JS.index(
+        'sortHeader("list", "List")'
+    )
 
 
 def test_register_rows_use_moa_wait_not_must_have_days():

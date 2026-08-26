@@ -36,19 +36,36 @@ const state = {
   compact: true,
   collapsedPrograms: new Set(),
   readOnlyArchive: false,
+  sortKey: null,
+  sortDir: "asc",
 };
 
 const DENSITY_KEY = "wru-register-density";
 const COLLAPSED_KEY = "wru-register-collapsed";
+const SORT_KEY = "wru-register-sort";
 
 function loadRegisterPrefs() {
   try {
     state.compact = localStorage.getItem(DENSITY_KEY) !== "comfortable";
     const raw = JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "[]");
     state.collapsedPrograms = new Set(Array.isArray(raw) ? raw.map(String) : []);
+    const sort = JSON.parse(localStorage.getItem(SORT_KEY) || "null");
+    if (sort && typeof sort.key === "string") {
+      state.sortKey = sort.key;
+      state.sortDir = sort.dir === "desc" ? "desc" : "asc";
+    }
   } catch {
     state.compact = true;
     state.collapsedPrograms = new Set();
+  }
+}
+
+function saveRegisterSort() {
+  try {
+    if (!state.sortKey) localStorage.removeItem(SORT_KEY);
+    else localStorage.setItem(SORT_KEY, JSON.stringify({ key: state.sortKey, dir: state.sortDir }));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -276,7 +293,7 @@ function siteRowHtml(site) {
   const metaBits = [councils ? `${escapeHtml(councils)}${escapeHtml(more)}` : ""]
     .filter(Boolean)
     .join("");
-  return `<tr class="register-row ${highlight}" draggable="true" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
+  return `<tr class="register-row ${highlight}" draggable="${state.sortKey ? "false" : "true"}" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
     <td class="select-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
@@ -379,12 +396,94 @@ function syncRegisterSticky() {
   document.documentElement.style.setProperty("--register-sticky-top", `${top + extra}px`);
 }
 
+function compareNullable(av, bv) {
+  const aMissing = av == null || av === "";
+  const bMissing = bv == null || bv === "";
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  if (typeof av === "number" && typeof bv === "number") return av - bv;
+  return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function registerSortValue(site, key) {
+  const m = site.metrics || {};
+  switch (key) {
+    case "site":
+      return `${site.road_name || ""} ${site.site_number || ""}`.toLowerCase();
+    case "status": {
+      const stages = state.meta.workflow_stages || [];
+      const current = currentStageKey(site);
+      const idx = stages.findIndex((s) => s.key === current);
+      return idx < 0 ? 99 : idx;
+    }
+    case "pri":
+      return Number(site.today_priority) || 99;
+    case "start":
+      return site.indicative_site_start_date || null;
+    case "must": {
+      const must = m.must_have_status || {};
+      if (must.band === "received") return "0000-00-00";
+      return must.date || site.moa_must_have_received_date || null;
+    }
+    case "wait": {
+      const days = m.moa_wait?.business_days_waiting;
+      return days == null ? null : Number(days);
+    }
+    case "list": {
+      const list = m.client_list || "";
+      if (list === "permits") return 1;
+      if (list === "trims") return 2;
+      return 3;
+    }
+    case "moa":
+      return (site.moa_number || "").toLowerCase();
+    default:
+      return null;
+  }
+}
+
+function compareRegisterSites(a, b) {
+  let cmp = compareNullable(registerSortValue(a, state.sortKey), registerSortValue(b, state.sortKey));
+  if (cmp === 0) {
+    cmp = String(a.road_name || "").localeCompare(String(b.road_name || ""), undefined, {
+      sensitivity: "base",
+    });
+  }
+  return state.sortDir === "desc" ? -cmp : cmp;
+}
+
+function setRegisterSort(key) {
+  if (!key) return;
+  if (state.sortKey === key) {
+    state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+  } else {
+    state.sortKey = key;
+    state.sortDir = "asc";
+  }
+  saveRegisterSort();
+  renderRegister();
+}
+
+function sortHeader(key, label) {
+  const active = state.sortKey === key;
+  const dir = active ? ` data-dir="${state.sortDir}"` : "";
+  const cls = active ? "th-sort is-active" : "th-sort";
+  const aria = active ? ` aria-sort="${state.sortDir === "asc" ? "ascending" : "descending"}"` : "";
+  return `<th><button type="button" class="${cls}" data-sort="${key}"${dir}${aria}>${label}</button></th>`;
+}
+
 function groupedSites() {
   const groups = new Map();
   for (const site of state.sites) {
     const key = programKey(site.program);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(site);
+  }
+  if (state.sortKey) {
+    for (const [key, rows] of groups) {
+      groups.set(key, [...rows].sort(compareRegisterSites));
+    }
   }
   const order = [];
   for (const p of state.meta.programs || []) {
@@ -547,6 +646,10 @@ function wireProgramDragDrop() {
   root.dataset.programDndWired = "1";
 
   root.addEventListener("dragstart", (ev) => {
+    if (state.sortKey) {
+      ev.preventDefault();
+      return;
+    }
     const row = ev.target.closest("tr.register-row");
     if (!row || !root.contains(row)) return;
     if (ev.target.closest("input, select, button, a, .actions-col, .status-col, .select-col")) {
@@ -679,6 +782,7 @@ function renderRegister() {
   const root = $("registerList");
   if (!root) return;
   root.classList.toggle("is-compact", state.compact);
+  root.classList.toggle("is-sorted", Boolean(state.sortKey));
   syncDensityButton();
   if (!state.sites.length) {
     root.innerHTML = `<div class="register-empty">No active sites match these filters.</div>`;
@@ -695,14 +799,14 @@ function renderRegister() {
     <thead>
       <tr>
         <th class="select-col"></th>
-        <th>Site</th>
-        <th>Status</th>
-        <th>Pri</th>
-        <th>Start</th>
-        <th>Must-have</th>
-        <th>Wait time</th>
-        <th>List</th>
-        <th>MoA</th>
+        ${sortHeader("site", "Site")}
+        ${sortHeader("status", "Status")}
+        ${sortHeader("pri", "Pri")}
+        ${sortHeader("start", "Start")}
+        ${sortHeader("must", "Must-have")}
+        ${sortHeader("wait", "Wait time")}
+        ${sortHeader("list", "List")}
+        ${sortHeader("moa", "MoA")}
         <th class="actions-col"></th>
       </tr>
     </thead>`;
@@ -1445,6 +1549,14 @@ function bindEvents() {
   on("siteForm", "change", scheduleAutosave);
 
   on("registerList", "click", (ev) => {
+    const sortEl =
+      ev.target.closest(".register-table [data-sort]") ||
+      ev.target.closest(".register-table thead th")?.querySelector("[data-sort]");
+    if (sortEl) {
+      ev.preventDefault();
+      setRegisterSort(sortEl.getAttribute("data-sort"));
+      return;
+    }
     const toggle = ev.target.closest("[data-toggle-program]");
     if (toggle) {
       ev.preventDefault();

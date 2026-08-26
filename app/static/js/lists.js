@@ -9,6 +9,8 @@ import {
   syncLiveRevision,
 } from "./common.js";
 
+const CAP_KEY = "wru-lists-cap";
+
 const state = {
   permits: [],
   trims: [],
@@ -18,9 +20,38 @@ const state = {
   selectedPriorities: new Set(["1", "2"]),
   sortKey: "start",
   sortDir: "asc",
+  cap: null,
   _programsInitialized: false,
   _knownPrograms: new Set(),
 };
+
+function parseCap(raw) {
+  const n = Number.parseInt(String(raw ?? "").trim(), 10);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.min(500, n);
+}
+
+function loadCapPref() {
+  try {
+    state.cap = parseCap(localStorage.getItem(CAP_KEY));
+  } catch {
+    state.cap = null;
+  }
+}
+
+function saveCapPref() {
+  try {
+    if (state.cap == null) localStorage.removeItem(CAP_KEY);
+    else localStorage.setItem(CAP_KEY, String(state.cap));
+  } catch {
+    /* ignore */
+  }
+}
+
+function syncCapInput() {
+  const el = $("listCap");
+  if (el) el.value = state.cap == null ? "" : String(state.cap);
+}
 
 function progressBar(pct) {
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
@@ -93,7 +124,16 @@ function passesFilters(site) {
 }
 
 function visibleSites(all) {
-  return [...all].filter(passesFilters).sort(compareSites);
+  const rows = [...all].filter(passesFilters).sort(compareSites);
+  if (state.cap != null) return rows.slice(0, state.cap);
+  return rows;
+}
+
+function listCountHint(shown, total, team) {
+  if (state.cap != null && shown < total) {
+    return `${shown} of ${total} with the ${team} (top ${state.cap})`;
+  }
+  return `${shown} of ${total} with the ${team}`;
 }
 
 function renderRows(tbodyId, sites) {
@@ -173,10 +213,10 @@ function renderAll() {
   const permitsVisible = renderRows("permitsBody", state.permits);
   const trimsVisible = renderRows("trimsBody", state.trims);
   if ($("permitsHint")) {
-    $("permitsHint").textContent = `${permitsVisible.length} of ${state.permits.length} with the Permits team`;
+    $("permitsHint").textContent = listCountHint(permitsVisible.length, state.permits.length, "Permits team");
   }
   if ($("trimsHint")) {
-    $("trimsHint").textContent = `${trimsVisible.length} of ${state.trims.length} with the TRIMS team`;
+    $("trimsHint").textContent = listCountHint(trimsVisible.length, state.trims.length, "TRIMS team");
   }
   syncSortHeaders();
 }
@@ -240,7 +280,18 @@ function bindFilters() {
       if (program.checked) state.selectedPrograms.add(value);
       else state.selectedPrograms.delete(value);
       renderAll();
+      return;
     }
+    if (ev.target.id === "listCap") {
+      state.cap = parseCap(ev.target.value);
+      saveCapPref();
+      renderAll();
+    }
+  });
+  $("listCap")?.addEventListener("input", () => {
+    state.cap = parseCap($("listCap").value);
+    saveCapPref();
+    renderAll();
   });
   $("btnFiltersAll")?.addEventListener("click", () => {
     state.selectedPriorities = new Set(state.priorities);
@@ -275,6 +326,8 @@ function bindSorting() {
 
 async function init() {
   await injectChrome({ active: "/lists" });
+  loadCapPref();
+  syncCapInput();
   bindFilters();
   bindSorting();
   onLiveSitesChanged(() => loadLists().catch(() => {}));

@@ -32,5 +32,5 @@ def test_lists_checkbox_filters_and_sort():
     assert 'closest(".lists-table thead th")' in LISTS_JS
     assert 'querySelector("[data-sort]")' in LISTS_JS
     # Header buttons must fill the cell so neighboring columns cannot steal clicks
-    assert ".page-lists .th-sort" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
+    assert ".th-sort" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "min-width: 44rem" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
