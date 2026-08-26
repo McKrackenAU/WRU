@@ -258,8 +258,9 @@ function bindFilters() {
 
 function bindSorting() {
   document.addEventListener("click", (ev) => {
-    const sortEl = ev.target.closest("[data-sort]");
-    if (sortEl && sortEl.closest(".lists-table")) {
+    const th = ev.target.closest(".lists-table thead th");
+    const sortEl = th?.querySelector("[data-sort]") || ev.target.closest(".lists-table [data-sort]");
+    if (sortEl) {
       ev.preventDefault();
       setSort(sortEl.getAttribute("data-sort"));
       return;
