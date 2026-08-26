@@ -74,6 +74,14 @@
           Board RDO dates <span class="hint">(comma-separated ISO)</span>
           <input id="boardRdos" placeholder="2026-08-04, 2026-09-01" />
         </label>
+        <label class="full">
+          Skip / shutdown dates <span class="hint">(Christmas shutdown, misc non-work days — comma-separated ISO)</span>
+          <input id="boardExclude" placeholder="2025-12-24, 2025-12-29, 2026-01-02" />
+        </label>
+        <div class="full toolbar" style="gap:0.5rem;flex-wrap:wrap">
+          <button type="button" class="btn" id="btnXmasShutdown">Add Christmas shutdown</button>
+          <span class="hint" id="xmasHint">Adds 24 Dec – 2 Jan (inclusive) for the relevant year; public holidays still skipped separately when enabled.</span>
+        </div>
       </section>
 
       <section class="panel-card" style="margin-top:1rem">
