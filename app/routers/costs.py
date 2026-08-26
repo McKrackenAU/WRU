@@ -5,12 +5,14 @@ from datetime import date
 from pathlib import Path
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..activity import actor_name, log_cost_added
+from ..live_hub import notify_from_request
 from ..auth import require_admin
 from ..cost_engine import (
     build_work_schedule,
@@ -718,13 +720,14 @@ def get_estimate(estimate_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/estimates", status_code=201)
-def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
+def save_estimate(payload: EstimateSave, request: Request, db: Session = Depends(get_db)):
     from ..spend_from_estimates import upsert_spend_from_estimate
 
     site = db.get(Site, payload.site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
     summary = _summary_total(payload.mode, payload.results or {})
+    who = actor_name(request, fallback=payload.created_by)
     row = CostEstimate(
         site_id=site.id,
         name=payload.name.strip(),
@@ -734,7 +737,7 @@ def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
         summary_total=summary,
         inputs=payload.inputs,
         results=payload.results,
-        created_by=payload.created_by,
+        created_by=who,
     )
     db.add(row)
     db.flush()
@@ -745,10 +748,12 @@ def save_estimate(payload: EstimateSave, db: Session = Depends(get_db)):
         amount=summary,
         estimate_id=row.id,
         estimate_name=row.name,
-        created_by=payload.created_by,
+        created_by=who,
     )
+    log_cost_added(db, site, kind="traffic", who=who)
     db.commit()
     db.refresh(row)
+    notify_from_request(request, site_ids=[site.id], reason="cost")
     return _estimate_out(row, include_results=True)
 
 

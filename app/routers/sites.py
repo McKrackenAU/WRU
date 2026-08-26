@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import UPLOAD_DIR, get_db
 from ..financial_year import australian_financial_year
+from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
 from ..models import CostEstimate, MapFeature, MapLayer, Site, SiteCouncil
 from ..schemas import (
@@ -378,6 +379,11 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     site = db.get(Site, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
+    if site.archived:
+        raise HTTPException(
+            status_code=400,
+            detail="This site is archived — restore it before editing, or open it read-only from Archive.",
+        )
 
     data = payload.model_dump(exclude_unset=True)
     workflow = data.pop("workflow", None)
@@ -386,6 +392,9 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     geometry = data.pop("geometry", None)
     geometry_name = data.pop("geometry_name", None)
     linked_id = data.pop("linked_generic_moa_id", None) if "linked_generic_moa_id" in data else ...
+
+    before_stage = snapshot_stage(site, db)
+    who = actor_name(request)
 
     for key, value in data.items():
         # Never blank out required identity fields during partial autosave
@@ -421,6 +430,11 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     sync_computed_fields(site, db)
     if geometry is not None:
         _attach_geometry(db, site, geometry, geometry_name)
+
+    after_stage = snapshot_stage(site, db)
+    if workflow is not None:
+        log_stage_change(db, site, before_key=before_stage, after_key=after_stage, who=who)
+
     try:
         db.commit()
     except IntegrityError as exc:
@@ -449,6 +463,14 @@ def archive_site(
     site.archived_at = datetime.now(timezone.utc)
     site.archived_fy = fy
     site.financial_year = site.financial_year or fy
+    who = actor_name(request)
+    log_site_activity(
+        db,
+        site,
+        event_type="archive",
+        created_by=who,
+        message=f"{who} archived {site_label(site)}",
+    )
     db.commit()
     db.refresh(site)
     notify_from_request(request, site_ids=[site.id], reason="archive")
@@ -463,6 +485,14 @@ def restore_site(site_id: int, request: Request, db: Session = Depends(get_db)):
     site.archived = False
     site.archived_at = None
     site.archived_fy = None
+    who = actor_name(request)
+    log_site_activity(
+        db,
+        site,
+        event_type="restore",
+        created_by=who,
+        message=f"{who} restored {site_label(site)}",
+    )
     db.commit()
     db.refresh(site)
     notify_from_request(request, site_ids=[site.id], reason="restore")

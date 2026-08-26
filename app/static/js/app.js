@@ -35,6 +35,7 @@ const state = {
   dndCommitted: false,
   compact: true,
   collapsedPrograms: new Set(),
+  readOnlyArchive: false,
 };
 
 const DENSITY_KEY = "wru-register-density";
@@ -938,14 +939,38 @@ function closeDrawer() {
   clearRemoteBanner();
   state.suppressAutosave = true;
   state.detailSiteId = null;
+  state.readOnlyArchive = false;
+  setDrawerReadOnly(false);
+}
+
+function setDrawerReadOnly(readOnly) {
+  state.readOnlyArchive = Boolean(readOnly);
+  const form = $("siteForm");
+  if (form) form.classList.toggle("is-readonly", state.readOnlyArchive);
+  for (const el of form?.querySelectorAll("input, select, textarea") || []) {
+    if (el.type === "hidden") continue;
+    el.disabled = state.readOnlyArchive;
+  }
+  if ($("btnSaveSite")) $("btnSaveSite").hidden = state.readOnlyArchive;
+  if ($("btnArchiveSite")) $("btnArchiveSite").hidden = state.readOnlyArchive || !$("siteId")?.value;
+  const compose = document.querySelector(".track-compose");
+  if (compose) compose.hidden = state.readOnlyArchive;
+  const upload = document.querySelector("#activityBody .upload-row");
+  if (upload) upload.hidden = state.readOnlyArchive;
+  document.querySelectorAll("[data-del-track], [data-del-doc]").forEach((btn) => {
+    btn.hidden = state.readOnlyArchive;
+  });
 }
 
 async function openSiteDrawer(site = null) {
   state.suppressAutosave = true;
   state.detailSiteId = site?.id || null;
-  $("siteDialogTitle").textContent = site ? site.road_name : "Add site";
+  const archived = Boolean(site?.archived);
+  $("siteDialogTitle").textContent = site
+    ? `${site.road_name}${archived ? " (archived)" : ""}`
+    : "Add site";
   $("drawerKicker").textContent = site
-    ? `${site.site_number}${site.moa_number ? ` · MoA ${site.moa_number}` : ""}`
+    ? `${site.site_number}${site.moa_number ? ` · MoA ${site.moa_number}` : ""}${archived ? " · read only" : ""}`
     : "New register row";
   $("siteId").value = site ? site.id : "";
   $("fRoad").value = site?.road_name || "";
@@ -978,9 +1003,14 @@ async function openSiteDrawer(site = null) {
   }
   buildWorkflowChecks(site ? workflowMap(site) : {});
   buildCustomFields(site?.custom_fields || {});
-  $("btnArchiveSite").hidden = !site;
-  $("autosaveStatus").hidden = !site;
-  $("autosaveStatus").textContent = site ? "Edits autosave." : "";
+  $("btnArchiveSite").hidden = !site || archived;
+  $("autosaveStatus").hidden = !site || archived;
+  $("autosaveStatus").textContent = archived
+    ? "Archived — view only. Restore from Archive to edit."
+    : site
+      ? "Edits autosave."
+      : "";
+  if ($("autosaveStatus") && archived) $("autosaveStatus").hidden = false;
   setTab("overview");
   if (site) {
     $("activityHint").hidden = true;
@@ -992,8 +1022,9 @@ async function openSiteDrawer(site = null) {
     $("activityBody").hidden = true;
   }
   openDrawer();
+  setDrawerReadOnly(archived);
   queueMicrotask(() => {
-    state.suppressAutosave = false;
+    state.suppressAutosave = archived;
   });
 }
 
@@ -1104,7 +1135,7 @@ async function saveSite(ev) {
 }
 
 function scheduleAutosave() {
-  if (state.suppressAutosave) return;
+  if (state.suppressAutosave || state.readOnlyArchive) return;
   const id = $("siteId")?.value;
   if (!id || $("siteDrawer")?.hidden) return;
   clearTimeout(state.autosaveTimer);
@@ -1280,25 +1311,27 @@ async function refreshCosts() {
 async function refreshTracking() {
   if (!state.detailSiteId) return;
   const events = await api(`/api/sites/${state.detailSiteId}/tracking`);
+  const canDelete = !state.readOnlyArchive;
   $("trackList").innerHTML = events.length
     ? events
         .map(
           (e) => `
       <li>
         <div class="top">
-          <span>${escapeHtml(e.event_type)} · ${escapeHtml(e.created_by || "anon")} · ${new Date(e.created_at).toLocaleString()}</span>
-          <button type="button" class="btn btn-sm" data-del-track="${e.id}">Delete</button>
+          <span>${new Date(e.created_at).toLocaleString()}</span>
+          ${canDelete ? `<button type="button" class="btn btn-sm" data-del-track="${e.id}">Delete</button>` : ""}
         </div>
         <p>${escapeHtml(e.message)}</p>
       </li>`
         )
         .join("")
-    : `<li><p class="meta">No tracking yet.</p></li>`;
+    : `<li><p class="meta">No activity yet.</p></li>`;
 }
 
 async function refreshDocuments() {
   if (!state.detailSiteId) return;
   const docs = await api(`/api/sites/${state.detailSiteId}/documents`);
+  const canDelete = !state.readOnlyArchive;
   $("docList").innerHTML = docs.length
     ? docs
         .map(
@@ -1306,7 +1339,7 @@ async function refreshDocuments() {
       <li>
         <div class="top">
           <span><span class="doc-cat">${escapeHtml(d.category)}</span> · ${(d.size_bytes / 1024).toFixed(1)} KB</span>
-          <button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>
+          ${canDelete ? `<button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>` : ""}
         </div>
         <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></p>
       </li>`
@@ -1622,6 +1655,20 @@ async function applyRemoteRefresh(detail) {
   else clearRemoteBanner();
 }
 
+
+async function openArchivedOrActiveSite(id) {
+  let site = state.sites.find((s) => s.id === Number(id));
+  if (!site) {
+    try {
+      site = await api(`/api/sites/${id}`);
+    } catch (err) {
+      await alertDialog(errorMessage(err, "Could not open site"));
+      return;
+    }
+  }
+  await openSiteDrawer(site);
+}
+
 async function init() {
   try {
     await injectChrome({ active: "/", mode: "ops" });
@@ -1629,11 +1676,15 @@ async function init() {
     syncDensityButton();
     const params = new URLSearchParams(location.search);
     const hl = params.get("highlight");
+    const viewId = params.get("view");
     if (hl && Number(hl)) state.highlightId = Number(hl);
     bindEvents();
     onLiveSitesChanged(applyRemoteRefresh);
     await loadAll();
     await syncLiveRevision();
+    if (viewId && Number(viewId)) {
+      await openArchivedOrActiveSite(Number(viewId));
+    }
   } catch (err) {
     showLoadError(err);
   }

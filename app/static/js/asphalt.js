@@ -290,6 +290,14 @@ async function init() {
     api("/api/asphalt/rates?active_only=true"),
   ]);
   state.sites = sites;
+  if (siteId && !state.sites.some((s) => String(s.id) === String(siteId))) {
+    try {
+      const extra = await api(`/api/sites/${siteId}`);
+      if (extra?.id) state.sites = [extra, ...state.sites];
+    } catch {
+      /* ignore */
+    }
+  }
   state.subcontractors = subs;
   state.rates = rates;
   fillSites(siteId);
