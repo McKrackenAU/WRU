@@ -743,9 +743,10 @@ html.dark .bar-fill {
 }
 
 .lists-cap-field input {
-  width: 5.2rem;
+  width: 4.6rem;
   min-height: 2rem;
-  padding: 0.2rem 0.45rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.86rem;
 }
 
 .lists-filter-actions {
@@ -805,6 +806,13 @@ html.dark .bar-fill {
 
 .th-sort.is-active[data-dir="desc"]::after {
   content: " ▼";
+}
+
+.register-table .th-sort:not(.is-active)::after {
+  content: " ⇅";
+  font-size: 0.75em;
+  opacity: 0.4;
+  font-weight: 500;
 }
 
 .activity-table .activity-when {

@@ -25,6 +25,7 @@ def test_register_column_headers_are_sortable():
     assert "compareRegisterSites" in APP_JS
     assert "wru-register-sort" in APP_JS
     assert 'closest(".register-table [data-sort]")' in APP_JS
+    assert ".register-table .th-sort:not(.is-active)::after" in STYLE
 
 
 def test_lists_has_show_top_cap():
