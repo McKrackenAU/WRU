@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
-from ..gantt_engine import recompute_board_dates
+from ..gantt_engine import normalize_shift_type, recompute_board_dates
 from ..gantt_export import build_gantt_pdf
 from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site, TrafficContractor
 from ..services import sync_computed_fields
@@ -34,6 +34,7 @@ class BoardPatch(BaseModel):
 class ItemIn(BaseModel):
     site_id: int
     shifts_count: int = Field(default=1, ge=1, le=365)
+    shift_type: str = Field(default="day", pattern="^(day|night)$")
     link_mode: str = Field(default="after_previous", pattern="^(after_previous|fixed_start)$")
     fixed_start: date | None = None
     subcontractor_id: int | None = None
@@ -47,6 +48,7 @@ class ItemIn(BaseModel):
 
 class ItemPatch(BaseModel):
     shifts_count: int | None = Field(default=None, ge=1, le=365)
+    shift_type: str | None = Field(default=None, pattern="^(day|night)$")
     link_mode: str | None = Field(default=None, pattern="^(after_previous|fixed_start)$")
     fixed_start: date | None = None
     subcontractor_id: int | None = None
@@ -237,6 +239,7 @@ def add_item(
         site_id=payload.site_id,
         position=pos,
         shifts_count=payload.shifts_count,
+        shift_type=normalize_shift_type(payload.shift_type),
         link_mode=link_mode,
         fixed_start=fixed if link_mode == "fixed_start" else payload.fixed_start,
         subcontractor_id=payload.subcontractor_id,
@@ -263,6 +266,8 @@ def patch_item(
     if not item or item.board_id != board.id:
         raise HTTPException(status_code=404, detail="Gantt item not found")
     data = payload.model_dump(exclude_unset=True)
+    if "shift_type" in data and data["shift_type"] is not None:
+        data["shift_type"] = normalize_shift_type(data["shift_type"])
     if "subcontractor_id" in data and data["subcontractor_id"] is not None:
         if not db.get(AsphaltSubcontractor, data["subcontractor_id"]):
             raise HTTPException(status_code=404, detail="Subcontractor not found")

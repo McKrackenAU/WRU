@@ -624,6 +624,8 @@ class GanttItem(Base):
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     shifts_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # day | night — night shifts finish the following calendar morning
+    shift_type: Mapped[str] = mapped_column(String(16), nullable=False, default="day")
     # after_previous | fixed_start
     link_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="after_previous")
     fixed_start: Mapped[date | None] = mapped_column(Date, nullable=True)

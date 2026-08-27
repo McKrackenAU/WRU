@@ -15,8 +15,6 @@ const state = {
   meta: null,
   board: null,
   sites: [],
-  subcontractors: [],
-  trafficContractors: [],
   dragId: null,
 };
 
@@ -55,55 +53,10 @@ function fillAddControls() {
         )
         .join("")
     : `<option value="">No sites left to add</option>`;
-  $("addSub").innerHTML =
-    `<option value="">Board calendar</option>` +
-    state.subcontractors
-      .filter((s) => s.active)
-      .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
-      .join("");
-  if ($("addTraffic")) {
-    $("addTraffic").innerHTML =
-      `<option value="">None</option>` +
-      state.trafficContractors
-        .filter((s) => s.active)
-        .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
-        .join("");
-  }
-  fillPdfFilters();
-}
-
-function fillPdfFilters() {
-  const asphalt = $("pdfAsphaltFilter");
-  const traffic = $("pdfTrafficFilter");
-  if (asphalt) {
-    const cur = asphalt.value;
-    asphalt.innerHTML =
-      `<option value="">Whole board</option>` +
-      state.subcontractors
-        .filter((s) => s.active)
-        .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
-        .join("");
-    asphalt.value = cur;
-  }
-  if (traffic) {
-    const cur = traffic.value;
-    traffic.innerHTML =
-      `<option value="">Whole board</option>` +
-      state.trafficContractors
-        .filter((s) => s.active)
-        .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
-        .join("");
-    traffic.value = cur;
-  }
 }
 
 function pdfExportHref() {
-  const params = new URLSearchParams({ program: program() });
-  const asphalt = $("pdfAsphaltFilter")?.value || "";
-  const traffic = $("pdfTrafficFilter")?.value || "";
-  if (asphalt) params.set("subcontractor_id", asphalt);
-  if (traffic) params.set("traffic_contractor_id", traffic);
-  return `/api/gantt/board/export.pdf?${params}`;
+  return `/api/gantt/board/export.pdf?${new URLSearchParams({ program: program() })}`;
 }
 
 function syncPdfLink() {
@@ -181,7 +134,7 @@ function renderChart(items) {
           <div class="gantt-track">
             <div class="gantt-bar" style="left:${left}%;width:${width}%" title="${fmtDate(
               item.planned_start
-            )} – ${fmtDate(item.planned_end)} · ${item.shifts_count} shifts"></div>
+            )} – ${fmtDate(item.planned_end)} · ${item.shifts_count} ${item.shift_type || "day"}"></div>
           </div>
         </div>`;
       })
@@ -206,8 +159,7 @@ function renderItems() {
           <div class="site-title">${idx + 1}. ${escapeHtml(item.site_road_name || "Site")}</div>
           <div class="site-meta mono">${escapeHtml(item.site_number || "")}
             · ${fmtDate(item.planned_start) || "—"} → ${fmtDate(item.planned_end) || "—"}
-            ${item.subcontractor_name ? ` · asphalt ${escapeHtml(item.subcontractor_name)}` : ""}
-            ${item.traffic_contractor_name ? ` · traffic ${escapeHtml(item.traffic_contractor_name)}` : ""}
+            · ${escapeHtml(item.shift_type || "day")}
             ${item.link_mode === "fixed_start" ? " · indicative" : " · cascaded"}
             ${item.error ? ` · <span class="must-have late">${escapeHtml(item.error)}</span>` : ""}
           </div>
@@ -215,32 +167,10 @@ function renderItems() {
         <label class="gantt-shifts">Shifts
           <input type="number" min="1" value="${item.shifts_count}" data-shifts="${item.id}" />
         </label>
-        <label class="gantt-sub">Asphalt
-          <select data-sub="${item.id}">
-            <option value="">Board</option>
-            ${state.subcontractors
-              .filter((s) => s.active)
-              .map(
-                (s) =>
-                  `<option value="${s.id}" ${
-                    item.subcontractor_id === s.id ? "selected" : ""
-                  }>${escapeHtml(s.name)}</option>`
-              )
-              .join("")}
-          </select>
-        </label>
-        <label class="gantt-sub">Traffic
-          <select data-traffic="${item.id}">
-            <option value="">None</option>
-            ${state.trafficContractors
-              .filter((s) => s.active)
-              .map(
-                (s) =>
-                  `<option value="${s.id}" ${
-                    item.traffic_contractor_id === s.id ? "selected" : ""
-                  }>${escapeHtml(s.name)}</option>`
-              )
-              .join("")}
+        <label class="gantt-sub">Day / night
+          <select data-shift-type="${item.id}">
+            <option value="day" ${item.shift_type === "night" ? "" : "selected"}>Day</option>
+            <option value="night" ${item.shift_type === "night" ? "selected" : ""}>Night</option>
           </select>
         </label>
         <button type="button" class="btn btn-danger btn-sm" data-rm="${item.id}">Remove</button>
@@ -323,18 +253,13 @@ async function init() {
   await injectChrome({ active: "/gantt", mode: "ops" });
   const params = new URLSearchParams(location.search);
   const prog = params.get("program") || DEFAULT_PROGRAM;
-  const [meta, sites, subs, traffic] = await Promise.all([
+  const [meta, sites] = await Promise.all([
     api("/api/meta"),
     api("/api/sites?archived=false"),
-    api("/api/asphalt/subcontractors?active_only=true"),
-    api("/api/traffic-contractors?active_only=true").catch(() => []),
   ]);
   state.meta = meta;
   state.sites = sites;
-  state.subcontractors = subs;
-  state.trafficContractors = Array.isArray(traffic) ? traffic : [];
   fillPrograms(prog);
-  fillPdfFilters();
   syncPdfLink();
   await loadBoard();
 
@@ -344,8 +269,6 @@ async function init() {
     history.replaceState({}, "", url);
     loadBoard().catch((e) => { alertDialog(e.message); });
   });
-  on("pdfAsphaltFilter", "change", syncPdfLink);
-  on("pdfTrafficFilter", "change", syncPdfLink);
   on("btnSaveBoard", "click", () => saveBoard().catch((e) => { alertDialog(e.message); }));
   on("btnXmasShutdown", "click", () => addChristmasShutdown());
   on("btnSyncSites", "click", async () => {
@@ -368,8 +291,7 @@ async function init() {
       body: JSON.stringify({
         site_id: siteId,
         shifts_count: Number($("addShifts").value || 1),
-        subcontractor_id: Number($("addSub").value || 0) || null,
-        traffic_contractor_id: Number($("addTraffic")?.value || 0) || null,
+        shift_type: $("addShiftType")?.value || "day",
       }),
     });
     fillAddControls();
@@ -390,8 +312,7 @@ async function init() {
   });
   on("ganttList", "change", async (ev) => {
     const shifts = ev.target.closest("[data-shifts]");
-    const sub = ev.target.closest("[data-sub]");
-    const trafficSel = ev.target.closest("[data-traffic]");
+    const shiftType = ev.target.closest("[data-shift-type]");
     if (shifts) {
       state.board = await api(
         `/api/gantt/board/items/${shifts.dataset.shifts}?program=${encodeURIComponent(program())}`,
@@ -404,26 +325,16 @@ async function init() {
       applyBoardForm();
       renderItems();
     }
-    if (sub) {
+    if (shiftType) {
       state.board = await api(
-        `/api/gantt/board/items/${sub.dataset.sub}?program=${encodeURIComponent(program())}`,
+        `/api/gantt/board/items/${shiftType.dataset.shiftType}?program=${encodeURIComponent(program())}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subcontractor_id: Number(sub.value || 0) || null }),
+          body: JSON.stringify({ shift_type: shiftType.value || "day" }),
         }
       );
-      renderItems();
-    }
-    if (trafficSel) {
-      state.board = await api(
-        `/api/gantt/board/items/${trafficSel.dataset.traffic}?program=${encodeURIComponent(program())}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ traffic_contractor_id: Number(trafficSel.value || 0) || null }),
-        }
-      );
+      applyBoardForm();
       renderItems();
     }
   });

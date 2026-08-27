@@ -49,6 +49,11 @@ def next_work_day_after(
     return date.fromisoformat(scheduled[0]["date"])
 
 
+def normalize_shift_type(value: Any) -> str:
+    raw = str(value or "day").strip().lower()
+    return "night" if raw == "night" else "day"
+
+
 def compute_item_window(
     start: date,
     shifts_count: int,
@@ -59,6 +64,7 @@ def compute_item_window(
     rdo_dates: set[date],
     include_dates: set[date],
     exclude_dates: set[date],
+    shift_type: str = "day",
 ) -> tuple[date, date, list[dict[str, Any]]]:
     shifts = max(1, int(shifts_count))
     schedule = build_work_schedule(
@@ -72,7 +78,11 @@ def compute_item_window(
         exclude_dates=exclude_dates,
     )
     planned_start = date.fromisoformat(schedule[0]["date"])
-    planned_end = date.fromisoformat(schedule[-1]["date"])
+    last_work = date.fromisoformat(schedule[-1]["date"])
+    planned_end = last_work
+    if normalize_shift_type(shift_type) == "night":
+        # Night work starts that evening and finishes the following morning.
+        planned_end = last_work + timedelta(days=1)
     return planned_start, planned_end, schedule
 
 
@@ -146,6 +156,7 @@ def recompute_board_dates(
                 rdo_dates=rdo,
                 include_dates=include,
                 exclude_dates=exclude,
+                shift_type=getattr(item, "shift_type", "day"),
             )
         except ValueError:
             item.planned_start = start
@@ -156,7 +167,9 @@ def recompute_board_dates(
 
         item.planned_start = planned_start
         item.planned_end = planned_end
-        previous_end = planned_end
+        # Sequence the next site from the last worked shift date, not the display
+        # end — a night finishing the next morning can still be followed that day.
+        previous_end = date.fromisoformat(schedule[-1]["date"])
         out.append(_item_public(item, schedule=schedule))
 
     return out
@@ -172,6 +185,7 @@ def _item_public(item: Any, *, schedule: list[dict[str, Any]], error: str | None
         "site_id": item.site_id,
         "position": item.position,
         "shifts_count": item.shifts_count,
+        "shift_type": normalize_shift_type(getattr(item, "shift_type", "day")),
         "link_mode": item.link_mode,
         "fixed_start": item.fixed_start.isoformat() if item.fixed_start else None,
         "subcontractor_id": item.subcontractor_id,

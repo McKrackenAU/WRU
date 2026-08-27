@@ -41,18 +41,6 @@
           <select id="programSelect"></select>
         </label>
         <label>
-          PDF asphalt filter
-          <select id="pdfAsphaltFilter">
-            <option value="">Whole board</option>
-          </select>
-        </label>
-        <label>
-          PDF traffic filter
-          <select id="pdfTrafficFilter">
-            <option value="">Whole board</option>
-          </select>
-        </label>
-        <label>
           Anchor start <span class="hint">(used after reorder)</span>
           <input id="anchorStart" type="date" />
         </label>
@@ -96,7 +84,7 @@
 
       <section class="panel-card" style="margin-top:1rem">
         <div class="page-head" style="margin:0 0 0.75rem;padding:0">
-          <h2 style="margin:0;font-size:1.05rem">Shifts &amp; contractors</h2>
+          <h2 style="margin:0;font-size:1.05rem">Shifts</h2>
         </div>
         <div id="ganttList"><p class="hint">Loading…</p></div>
       </section>
@@ -106,8 +94,12 @@
         <form class="form-grid" id="addItemForm">
           <label>Site <select id="addSite" required></select></label>
           <label>Shifts <input id="addShifts" type="number" min="1" value="1" required /></label>
-          <label>Asphalt subcontractor <select id="addSub"><option value="">Board calendar</option></select></label>
-          <label>Traffic contractor <select id="addTraffic"><option value="">None</option></select></label>
+          <label>Day / night
+            <select id="addShiftType">
+              <option value="day">Day</option>
+              <option value="night">Night</option>
+            </select>
+          </label>
           <div class="full"><button type="submit" class="btn btn-primary">Add to Gantt</button></div>
         </form>
       </section>
