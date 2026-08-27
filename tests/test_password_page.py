@@ -33,9 +33,10 @@ def test_chrome_admin_toggle_lives_in_topbar():
     assert 'role="switch"' in COMMON
     assert "btn-admin-link" not in COMMON
     assert "← Back to tracker" not in COMMON
-    foot = COMMON.split("class=\"sidebar-foot\"")[1].split("</div>")[0]
-    assert "Change password" not in foot
-    assert "Admin console" not in foot
+    assert "userMenuBtn" in COMMON
+    assert "My activity" in COMMON
+    assert 'href="/account"' in COMMON
+    assert "sidebar-foot" not in COMMON
 
 
 def test_login_sends_forced_change_to_password_page():

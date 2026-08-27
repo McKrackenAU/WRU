@@ -330,12 +330,13 @@ function applyTheme(mode) {
   if (mode === "dark") root.classList.add("dark");
   else root.classList.remove("dark");
   root.style.colorScheme = mode;
+  const dark = mode === "dark";
   document.querySelectorAll("#themeToggle, [data-theme-toggle]").forEach((btn) => {
-    btn.textContent = mode === "dark" ? "Light" : "Dark";
-    btn.setAttribute(
-      "aria-label",
-      mode === "dark" ? "Switch to light mode" : "Switch to dark mode"
-    );
+    btn.setAttribute("aria-checked", dark ? "true" : "false");
+    btn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+    if (!btn.querySelector(".switch-knob")) {
+      btn.textContent = dark ? "Light" : "Dark";
+    }
   });
 }
 
@@ -533,6 +534,33 @@ function toggleNav() {
     ? document.body.classList.contains("nav-open")
     : !document.body.classList.contains("nav-collapsed");
   setNavOpen(!open);
+}
+
+function wireUserMenu() {
+  const btn = $("userMenuBtn");
+  const panel = $("userMenuPanel");
+  if (!btn || !panel || btn.dataset.bound) return;
+  btn.dataset.bound = "1";
+  const close = () => {
+    panel.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+  };
+  const toggle = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const open = panel.hidden;
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  };
+  btn.addEventListener("click", toggle);
+  document.addEventListener("click", (ev) => {
+    if (panel.hidden) return;
+    if (ev.target.closest(".user-menu")) return;
+    close();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") close();
+  });
 }
 
 function wireNavToggle() {
@@ -932,14 +960,11 @@ export async function injectChrome({ active, mode } = {}) {
       <nav class="side-nav" id="sideNav" aria-label="${isAdmin ? "Admin" : "Primary"}">
         ${sideNavHtml(links, path)}
       </nav>
-      <div class="sidebar-foot">
-        <button type="button" class="btn btn-block theme-toggle" id="themeToggle" data-theme-toggle>Theme</button>
-        <button type="button" class="btn btn-block" id="logoutBtn">Sign out</button>
-      </div>
     `;
   }
 
   const who = escapeHtml(userName() || "");
+  const roleLabel = escapeHtml(currentUser()?.role || "");
   const header = document.querySelector("[data-app-header]");
   if (header) {
     header.classList.toggle("topbar-admin", isAdmin);
@@ -952,6 +977,29 @@ export async function injectChrome({ active, mode } = {}) {
           title="${isAdmin ? "Back to tracker" : "Open admin console"}">
           <span class="switch-knob" aria-hidden="true"></span>
         </button>
+      </div>`
+      : "";
+    const userMenu = who
+      ? `<div class="user-menu">
+        <button type="button" class="user-menu-btn" id="userMenuBtn" aria-expanded="false" aria-haspopup="menu" aria-controls="userMenuPanel">
+          <span class="session-user" title="Signed in">${who}</span>
+          <span class="user-menu-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="user-menu-panel" id="userMenuPanel" hidden role="menu">
+          <p class="user-menu-who">${who}${roleLabel ? ` <span class="hint">${roleLabel}</span>` : ""}</p>
+          <a role="menuitem" href="/tracking?mine=1">My activity</a>
+          <a role="menuitem" href="/account">Account</a>
+          <a role="menuitem" href="/password" id="changePasswordLink">Change password</a>
+          <div class="user-menu-row">
+            <span>Dark mode</span>
+            <button type="button" class="switch" id="themeToggle" data-theme-toggle role="switch" aria-checked="false">
+              <span class="switch-knob" aria-hidden="true"></span>
+            </button>
+          </div>
+          <button type="button" class="user-menu-action" id="btnInstallApp" hidden role="menuitem">Install app</button>
+          <button type="button" class="user-menu-action" id="btnLiveAlerts" hidden role="menuitem">Live alerts</button>
+          <button type="button" class="user-menu-action user-menu-signout" id="logoutBtn" role="menuitem">Sign out</button>
+        </div>
       </div>`
       : "";
     header.innerHTML = `
@@ -967,11 +1015,8 @@ export async function injectChrome({ active, mode } = {}) {
         </div>
       </div>
       <div class="topbar-end">
-        ${who ? `<span class="session-user" title="Signed in">${who}</span>` : ""}
         ${adminToggle}
-        <button type="button" class="btn" id="btnInstallApp" hidden>Install app</button>
-        <button type="button" class="btn" id="btnLiveAlerts" hidden>Live alerts</button>
-        <a class="btn" href="/password" id="changePasswordLink">Change password</a>
+        ${userMenu}
       </div>
     `;
   }
@@ -1004,6 +1049,7 @@ export async function injectChrome({ active, mode } = {}) {
   }
 
   wireNavToggle();
+  wireUserMenu();
   initThemeToggle();
   $("adminModeToggle")?.addEventListener("click", () => {
     location.href = isAdmin ? "/" : "/admin";

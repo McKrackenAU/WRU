@@ -312,6 +312,11 @@ def password_page():
     return _page("password.html")
 
 
+@app.get("/account")
+def account_page():
+    return _page("account.html")
+
+
 @app.get("/")
 def index():
     return _page("index.html")

@@ -26,9 +26,11 @@ function fmtWhen(value) {
 
 async function load() {
   const params = new URLSearchParams({ limit: "200" });
+  const mine = new URLSearchParams(location.search).get("mine") === "1";
   const q = $("search")?.value?.trim() || "";
   const program = $("programFilter")?.value || "";
   const eventType = $("typeFilter")?.value || "";
+  if (mine) params.set("mine", "1");
   if (q) params.set("q", q);
   if (program) params.set("program", program);
   if (eventType) params.set("event_type", eventType);
@@ -62,6 +64,14 @@ async function load() {
 
 async function init() {
   await injectChrome({ active: "/tracking" });
+  const mine = new URLSearchParams(location.search).get("mine") === "1";
+  if (mine) {
+    const h1 = document.querySelector(".page-head h1");
+    const blurb = document.querySelector(".page-head p");
+    if (h1) h1.textContent = "My activity";
+    if (blurb) blurb.textContent = "Your own change log — status moves, notes, costs, and archive actions you saved.";
+    document.title = "My activity · WRU TGS Tracker";
+  }
   const meta = await api("/api/meta");
   $("programFilter").innerHTML =
     `<option value="">All programs</option>` +

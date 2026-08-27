@@ -14,6 +14,7 @@ def test_activity_router_mounted():
     assert "activity.router" in MAIN
     assert (ROOT / "app/routers/activity.py").is_file()
     assert 'prefix="/api/activity"' in ACTIVITY_ROUTER
+    assert "mine: bool" in ACTIVITY_ROUTER
 
 
 def test_nav_points_to_activity_feed():
@@ -26,6 +27,8 @@ def test_tracking_page_is_activity_feed():
     assert 'id="typeFilter"' in TRACKING_HTML
     assert "/api/activity" in TRACKING_JS
     assert "event_type" in TRACKING_JS
+    assert 'params.set("mine", "1")' in TRACKING_JS
+    assert "My activity" in TRACKING_JS
     # Must not be the old program filter board
     assert "Program tracking" not in TRACKING_HTML
     assert "stageFilter" not in TRACKING_HTML

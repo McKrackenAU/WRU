@@ -33,6 +33,10 @@ class PasswordChangeIn(BaseModel):
     new_password: str = Field(min_length=8, max_length=256)
 
 
+class MeUpdateIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=128)
+
+
 @router.post("/login")
 def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
     user = authenticate(db, payload.username, payload.password)
@@ -50,6 +54,25 @@ def logout(request: Request):
 
 @router.get("/me")
 def me(user: User = Depends(get_current_user)):
+    return user_to_public(user)
+
+
+@router.patch("/me")
+def update_me(
+    payload: MeUpdateIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if is_hidden_user(user):
+        raise HTTPException(status_code=400, detail="The recovery account cannot be edited here")
+    name = payload.display_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Display name is required")
+    user.display_name = name
+    db.commit()
+    db.refresh(user)
+    set_session_user(request, user)
     return user_to_public(user)
 
 

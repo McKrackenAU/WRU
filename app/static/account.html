@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Account · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Account</h1>
+          <p>Your name on the tracker and in the activity log.</p>
+        </div>
+      </div>
+      <section class="panel-card password-card">
+        <form class="password-form" id="accountForm">
+          <div id="accountError" class="login-error" role="alert" hidden></div>
+          <div id="accountSaved" class="sys-alert sys-alert-ok" hidden>Saved.</div>
+          <label>
+            Username
+            <input id="accountUsername" type="text" readonly />
+          </label>
+          <label>
+            Role
+            <input id="accountRole" type="text" readonly />
+          </label>
+          <label>
+            Display name
+            <input id="accountDisplayName" name="display-name" type="text" maxlength="128" required />
+          </label>
+          <div class="toolbar">
+            <button type="submit" class="btn btn-primary" id="accountSaveBtn">Save name</button>
+            <a class="btn" href="/password">Change password</a>
+            <a class="btn" href="/tracking?mine=1">My activity</a>
+          </div>
+        </form>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/account.js"></script>
+</body>
+</html>

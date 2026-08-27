@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -14,9 +14,11 @@ router = APIRouter(prefix="/api/activity", tags=["activity"])
 
 @router.get("")
 def list_activity(
+    request: Request,
     q: str | None = Query(default=None),
     program: str | None = Query(default=None),
     event_type: str | None = Query(default=None),
+    mine: bool = Query(default=False),
     limit: int = Query(default=100, ge=1, le=500),
     include_archived: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -33,6 +35,16 @@ def list_activity(
         query = query.filter(Site.program == program.strip())
     if event_type and event_type.strip():
         query = query.filter(TrackingEvent.event_type == event_type.strip())
+    if mine:
+        names = {
+            (request.session.get("display_name") or "").strip(),
+            (request.session.get("username") or "").strip(),
+        }
+        names.discard("")
+        if names:
+            query = query.filter(TrackingEvent.created_by.in_(names))
+        else:
+            query = query.filter(TrackingEvent.id == -1)
     if q and q.strip():
         like = f"%{q.strip()}%"
         query = query.filter(

@@ -304,6 +304,95 @@ body.nav-collapsed .shell-sidebar {
   justify-content: flex-end;
 }
 
+.user-menu {
+  position: relative;
+}
+
+.user-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.1rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.user-menu-btn:hover {
+  background: color-mix(in srgb, var(--ventia-border) 28%, var(--panel));
+}
+
+.user-menu-caret {
+  font-size: 0.7rem;
+  color: var(--ventia-muted);
+}
+
+.user-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 40;
+  min-width: 16rem;
+  padding: 0.4rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.75rem;
+  background: var(--panel);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 18%, transparent);
+  display: grid;
+  gap: 0.15rem;
+}
+
+.user-menu-who {
+  margin: 0;
+  padding: 0.45rem 0.65rem 0.55rem;
+  font-size: 0.88rem;
+  font-weight: 650;
+  border-bottom: 1px solid var(--ventia-border);
+}
+
+.user-menu-panel a,
+.user-menu-action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.user-menu-panel a:hover,
+.user-menu-action:hover {
+  background: color-mix(in srgb, var(--ventia-border) 35%, transparent);
+}
+
+.user-menu-action[hidden] {
+  display: none !important;
+}
+
+.user-menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+.user-menu-signout {
+  border-top: 1px solid var(--ventia-border);
+  margin-top: 0.2rem;
+  border-radius: 0 0 0.5rem 0.5rem;
+}
+
 .session-user {
   font-size: 0.85rem;
   color: var(--ventia-muted);
@@ -323,7 +412,8 @@ body.nav-collapsed .shell-sidebar {
   flex-shrink: 0;
 }
 
-.admin-mode-toggle .switch {
+.admin-mode-toggle .switch,
+.user-menu-row .switch {
   position: relative;
   width: 2.35rem;
   height: 1.28rem;
@@ -336,17 +426,20 @@ body.nav-collapsed .shell-sidebar {
   flex-shrink: 0;
 }
 
-.admin-mode-toggle .switch:focus-visible {
+.admin-mode-toggle .switch:focus-visible,
+.user-menu-row .switch:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--ventia-blue) 55%, transparent);
   outline-offset: 2px;
 }
 
-.admin-mode-toggle .switch[aria-checked="true"] {
+.admin-mode-toggle .switch[aria-checked="true"],
+.user-menu-row .switch[aria-checked="true"] {
   background: var(--ventia-blue);
   border-color: var(--ventia-blue);
 }
 
-.admin-mode-toggle .switch-knob {
+.admin-mode-toggle .switch-knob,
+.user-menu-row .switch-knob {
   position: absolute;
   top: 2px;
   left: 2px;
@@ -358,7 +451,8 @@ body.nav-collapsed .shell-sidebar {
   transition: transform 0.15s ease;
 }
 
-.admin-mode-toggle .switch[aria-checked="true"] .switch-knob {
+.admin-mode-toggle .switch[aria-checked="true"] .switch-knob,
+.user-menu-row .switch[aria-checked="true"] .switch-knob {
   transform: translateX(1.05rem);
 }
 
@@ -3881,6 +3975,13 @@ html.pwa-standalone .topbar {
 
 body.must-change-password .side-nav,
 body.must-change-password .admin-mode-toggle {
+  pointer-events: none;
+  opacity: 0.42;
+}
+
+body.must-change-password .user-menu-panel a:not(#changePasswordLink),
+body.must-change-password .user-menu-row,
+body.must-change-password .user-menu-action:not(#logoutBtn) {
   pointer-events: none;
   opacity: 0.42;
 }
