@@ -129,6 +129,8 @@ def test_pdf_and_xlsx_use_slim_columns():
 
     wb = load_workbook(BytesIO(_xlsx_bytes(rows, "Permits", "Permits list")))
     ws = wb.active
+    assert "no-objection" not in str(ws.cell(2, 1).value or "").lower()
+    assert "Council no-objection" not in EXPORT
     headers = [ws.cell(4, col).value for col in range(1, 8)]
     assert headers[:6] == CLIENT_HEADERS
     assert headers[6] is None

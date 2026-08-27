@@ -18,7 +18,6 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
-from ..calculations import COUNCIL_NO_OBJECTION_BUSINESS_DAYS
 from ..database import get_db
 from ..models import Site
 from ..services import site_to_dict
@@ -218,10 +217,6 @@ def _xlsx_bytes(rows: list[dict], sheet_name: str, title: str, view: ClientListV
     cap = "Exported " + date.today().isoformat()
     if view and view.limit is not None:
         cap += f" · top {view.limit}"
-    cap += (
-        f" · Council no-objection assumed after "
-        f"{COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days without response"
-    )
     ws.cell(2, 1, cap)
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="0B3D2E")
@@ -275,10 +270,7 @@ def _pdf_bytes(rows: list[dict], *, title: str, team_label: str, view: ClientLis
     caption = _view_caption(view, team_label, len(rows))
     doc.brand_eyebrow = "PRIORITY LIST"
     doc.brand_title = title
-    doc.brand_subtitle = (
-        f"{caption} · "
-        f"Council no-objection after {COUNCIL_NO_OBJECTION_BUSINESS_DAYS} business days"
-    )
+    doc.brand_subtitle = caption
     doc.brand_doc_kind = "Priority List"
     doc.brand_product = "WRU TGS TRACKER"
     doc.brand_footer_meta = caption
