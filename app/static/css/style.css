@@ -1853,6 +1853,11 @@ dialog::backdrop {
   color: var(--ventia-muted);
 }
 
+.form-grid label[hidden],
+.add-column label[hidden] {
+  display: none !important;
+}
+
 .form-grid .full { grid-column: 1 / -1; }
 
 .form-grid.compact {

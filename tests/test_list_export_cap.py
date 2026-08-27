@@ -146,3 +146,5 @@ def test_road_name_is_list_select_with_other():
     assert "Other…" in APP_JS
     assert "collectedRoadName" in APP_JS
     assert "used_roads" in (ROOT / "app/main.py").read_text(encoding="utf-8")
+    css = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
+    assert "label[hidden]" in css
