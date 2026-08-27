@@ -346,6 +346,10 @@ body.nav-collapsed .shell-sidebar {
   gap: 0.15rem;
 }
 
+.user-menu-panel[hidden] {
+  display: none !important;
+}
+
 .user-menu-who {
   margin: 0;
   padding: 0.45rem 0.65rem 0.55rem;
