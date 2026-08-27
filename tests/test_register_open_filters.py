@@ -42,8 +42,9 @@ def test_register_filters_are_checkboxes():
 def test_register_filter_checkboxes_are_compact():
     style = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert ".filter-bar input:not([type=\"checkbox\"])" in style or '.filter-bar input:not([type="checkbox"])' in style
+    assert "appearance: none" in style
     assert ".lists-check input[type=\"checkbox\"]" in style or '.lists-check input[type="checkbox"]' in style
-    assert "width: 0.9rem" in style
+    assert "width: 13px" in style
     assert ".filter-drop-col .lists-check" in style
     assert "align-items: center" in style
 
