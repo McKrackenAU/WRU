@@ -86,6 +86,9 @@ class GanttTimeline(Flowable):
 
     def wrap(self, availWidth, availHeight):
         # Full frame width so bars are not stuck in a left-hand strip.
+        # Assign self.height: Frame uses the wrap() return value to reserve
+        # space, but draw() uses self.height — leaving it at 0 paints a strip
+        # along the bottom of an otherwise empty landscape page.
         self.width = max(40, float(availWidth or 0))
         self.label_w = min(78 * mm, max(50, self.width * 0.30))
         n = max(1, len(self.items))
@@ -94,14 +97,16 @@ class GanttTimeline(Flowable):
         max_rows = timeline_rows_for_height(room, MIN_TIMELINE_ROW_H)
         if n > max_rows:
             self.row_h = MIN_TIMELINE_ROW_H
-            return self.width, self.header_h + n * self.row_h + 4
+            self.height = self.header_h + n * self.row_h + 4
+            return self.width, self.height
         # Pack rows into this page and report the full frame height so the
-        # chart is not a short strip at the top of landscape A4.
+        # chart is not a short strip on landscape A4.
         self.row_h = max(
             MIN_TIMELINE_ROW_H,
             min(MAX_TIMELINE_ROW_H, (room - self.header_h - 4) / n),
         )
-        return self.width, room
+        self.height = room
+        return self.width, self.height
 
     def split(self, availWidth, availHeight):
         """Paginate tall boards so ReportLab does not raise LayoutError."""

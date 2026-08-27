@@ -104,6 +104,8 @@ def test_gantt_timeline_fills_page_width_and_height():
     w, h = tl.wrap(avail_w, avail_h)
     assert abs(w - avail_w) < 1
     assert h >= avail_h - 1
+    assert abs(tl.height - h) < 1
+    assert abs(tl.width - w) < 1
 
 
 def test_gantt_timeline_splits_tall_board_to_fill_pages():
@@ -116,6 +118,7 @@ def test_gantt_timeline_splits_tall_board_to_fill_pages():
     w, h = chunks[0].wrap(avail_w, avail_h)
     assert abs(w - avail_w) < 1
     assert h >= avail_h - 1
+    assert abs(chunks[0].height - h) < 1
 
 
 def test_gantt_page_has_day_night_not_contractor_filters():
