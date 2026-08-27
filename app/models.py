@@ -597,6 +597,10 @@ class GanttBoard(Base):
     rdo_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     exclude_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     include_dates: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # When true, GET no longer reshuffles items from site indicative starts
+    # so a saved works sequence can be edited (weather, missed days).
+    schedule_saved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

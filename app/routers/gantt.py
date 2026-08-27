@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
+from ..live_hub import notify_from_request
 from ..gantt_engine import normalize_shift_type, recompute_board_dates
 from ..gantt_export import build_gantt_pdf
 from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site, TrafficContractor
@@ -29,6 +30,7 @@ class BoardPatch(BaseModel):
     rdo_dates: list[str] | None = None
     exclude_dates: list[str] | None = None
     include_dates: list[str] | None = None
+    schedule_saved: bool | None = None
 
 
 class ItemIn(BaseModel):
@@ -79,6 +81,8 @@ def _board_public(board: GanttBoard, items_out: list[dict]) -> dict:
         "rdo_dates": list(board.rdo_dates or []),
         "exclude_dates": list(board.exclude_dates or []),
         "include_dates": list(board.include_dates or []),
+        "schedule_saved": bool(getattr(board, "schedule_saved", False)),
+        "saved_at": board.saved_at.isoformat() if getattr(board, "saved_at", None) else None,
         "items": items_out,
     }
 
@@ -118,8 +122,17 @@ def _recompute_and_save(db: Session, board: GanttBoard, *, write_back_sites: boo
     return _board_public(board, out)
 
 
-def _auto_populate_board(db: Session, board: GanttBoard) -> int:
-    """Ensure all active program sites are on the board, seeded from indicative starts."""
+def _auto_populate_board(db: Session, board: GanttBoard, *, unlock: bool = False) -> int:
+    """Ensure all active program sites are on the board, seeded from indicative starts.
+
+    When the Gantt has been saved (``schedule_saved``), existing item order and
+    fixed starts are left alone so weather delays can be edited after export.
+    Pass ``unlock=True`` to rebuild from the register again.
+    """
+    if unlock:
+        board.schedule_saved = False
+        board.saved_at = None
+    locked = bool(getattr(board, "schedule_saved", False)) and not unlock
     existing_items = (
         db.query(GanttItem)
         .options(selectinload(GanttItem.site))
@@ -134,7 +147,7 @@ def _auto_populate_board(db: Session, board: GanttBoard) -> int:
         .all()
     )
     added = 0
-    # Position by indicative start so the chart reads in calendar order
+    max_pos = max((i.position for i in existing_items), default=0)
     for idx, site in enumerate(sites):
         pos = (idx + 1) * 10
         item = by_site.get(site.id)
@@ -142,15 +155,16 @@ def _auto_populate_board(db: Session, board: GanttBoard) -> int:
             item = GanttItem(
                 board_id=board.id,
                 site_id=site.id,
-                position=pos,
+                position=(max_pos + 10) if locked else pos,
                 shifts_count=1,
                 link_mode="fixed_start" if site.indicative_site_start_date else "after_previous",
                 fixed_start=site.indicative_site_start_date,
             )
+            max_pos = item.position
             db.add(item)
             added += 1
-        else:
-            # Keep chart ordered by indicative start until the user reorders (cascade mode)
+        elif not locked:
+            # Keep chart ordered by indicative start until the user saves / reorders
             if (item.link_mode or "") != "after_previous":
                 item.position = pos
                 if site.indicative_site_start_date:
@@ -189,21 +203,29 @@ def get_board(program: str = Query(default=DEFAULT_GANTT_PROGRAM), db: Session =
 @router.patch("/board")
 def patch_board(
     payload: BoardPatch,
+    request: Request,
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
     db: Session = Depends(get_db),
 ):
     board = _load_board(db, program)
     data = payload.model_dump(exclude_unset=True)
+    if data.get("schedule_saved") is True:
+        data["saved_at"] = datetime.now(timezone.utc)
+    elif data.get("schedule_saved") is False:
+        data["saved_at"] = None
     for key, value in data.items():
         setattr(board, key, value)
     db.commit()
     db.refresh(board)
-    return _recompute_and_save(db, board)
+    out = _recompute_and_save(db, board)
+    notify_from_request(request, reason="gantt")
+    return out
 
 
 @router.post("/board/items", status_code=201)
 def add_item(
     payload: ItemIn,
+    request: Request,
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
     db: Session = Depends(get_db),
 ):
@@ -251,13 +273,16 @@ def add_item(
     )
     db.add(item)
     db.commit()
-    return _recompute_and_save(db, board, write_back_sites=False)
+    out = _recompute_and_save(db, board, write_back_sites=False)
+    notify_from_request(request, reason="gantt")
+    return out
 
 
 @router.patch("/board/items/{item_id}")
 def patch_item(
     item_id: int,
     payload: ItemPatch,
+    request: Request,
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
     db: Session = Depends(get_db),
 ):
@@ -283,12 +308,15 @@ def patch_item(
         .count()
         > 0
     )
-    return _recompute_and_save(db, board, write_back_sites=cascading)
+    out = _recompute_and_save(db, board, write_back_sites=cascading)
+    notify_from_request(request, reason="gantt")
+    return out
 
 
 @router.post("/board/reorder")
 def reorder_items(
     payload: ReorderIn,
+    request: Request,
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
     db: Session = Depends(get_db),
 ):
@@ -325,12 +353,15 @@ def reorder_items(
             item.link_mode = "after_previous"
             item.fixed_start = None
     db.commit()
-    return _recompute_and_save(db, board, write_back_sites=True)
+    out = _recompute_and_save(db, board, write_back_sites=True)
+    notify_from_request(request, reason="gantt")
+    return out
 
 
 @router.delete("/board/items/{item_id}", status_code=200)
 def delete_item(
     item_id: int,
+    request: Request,
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
     db: Session = Depends(get_db),
 ):
@@ -340,19 +371,24 @@ def delete_item(
         raise HTTPException(status_code=404, detail="Gantt item not found")
     db.delete(item)
     db.commit()
-    return _recompute_and_save(db, board)
+    out = _recompute_and_save(db, board)
+    notify_from_request(request, reason="gantt")
+    return out
 
 
 @router.post("/board/sync-program-sites")
 def sync_program_sites(
+    request: Request,
     program: str = Query(default=DEFAULT_GANTT_PROGRAM),
+    unlock: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     """Refresh the board from active program sites and their indicative start dates."""
     board = _load_board(db, program)
-    added = _auto_populate_board(db, board)
+    added = _auto_populate_board(db, board, unlock=unlock)
     out = _recompute_and_save(db, board, write_back_sites=False)
     out["synced_added"] = added
+    notify_from_request(request, reason="gantt")
     return out
 
 

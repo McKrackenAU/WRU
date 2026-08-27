@@ -1,4 +1,4 @@
-import { $, api, escapeHtml, injectChrome, alertDialog, errorMessage, docCategorySelectHtml } from "./common.js";
+import { $, api, escapeHtml, injectChrome, alertDialog, errorMessage, docCategorySelectHtml, onLiveSitesChanged, syncLiveRevision } from "./common.js";
 
 let categories = [];
 
@@ -64,6 +64,8 @@ async function init() {
     if (sel) changeCategory(sel);
   });
   await load();
+  onLiveSitesChanged(() => load().catch(() => {}));
+  await syncLiveRevision();
 }
 
 init().catch((err) => {

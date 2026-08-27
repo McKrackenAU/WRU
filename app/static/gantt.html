@@ -30,7 +30,7 @@
         </div>
         <div class="toolbar">
           <button type="button" class="btn" id="btnSyncSites">Refresh from sites</button>
-          <button type="button" class="btn btn-primary" id="btnSaveBoard">Save calendar settings</button>
+          <button type="button" class="btn btn-primary" id="btnSaveBoard">Save Gantt</button>
           <a class="btn btn-primary" id="btnExportPdf" href="#">Export PDF</a>
         </div>
       </div>
@@ -63,7 +63,7 @@
           <input id="boardRdos" placeholder="2026-08-04, 2026-09-01" />
         </label>
         <label class="full">
-          Skip / shutdown dates <span class="hint">(Christmas shutdown, misc non-work days — comma-separated ISO)</span>
+          Missed / weather / shutdown dates <span class="hint">(comma-separated ISO — Gantt skips these after you Save)</span>
           <input id="boardExclude" placeholder="2025-12-24, 2025-12-29, 2026-01-02" />
         </label>
         <div class="full toolbar" style="gap:0.5rem;flex-wrap:wrap">
@@ -94,12 +94,11 @@
         <form class="form-grid" id="addItemForm">
           <label>Site <select id="addSite" required></select></label>
           <label>Shifts <input id="addShifts" type="number" min="1" value="1" required /></label>
-          <label>Day / night
-            <select id="addShiftType">
-              <option value="day">Day</option>
-              <option value="night">Night</option>
-            </select>
-          </label>
+          <fieldset class="gantt-shift-checks" id="addShiftChecks">
+            <legend>Works</legend>
+            <label class="check-row gantt-shift-check"><input id="addShiftDay" type="checkbox" checked /> <span>Day</span></label>
+            <label class="check-row gantt-shift-check"><input id="addShiftNight" type="checkbox" /> <span>Night</span></label>
+          </fieldset>
           <div class="full"><button type="submit" class="btn btn-primary">Add to Gantt</button></div>
         </form>
       </section>

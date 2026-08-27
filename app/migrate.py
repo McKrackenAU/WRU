@@ -81,6 +81,12 @@ def run_migrations() -> None:
         "shift_type",
         "shift_type VARCHAR(16) NOT NULL DEFAULT 'day'",
     )
+    ensure_column(
+        "gantt_boards",
+        "schedule_saved",
+        "schedule_saved BOOLEAN NOT NULL DEFAULT FALSE",
+    )
+    ensure_column("gantt_boards", "saved_at", "saved_at TIMESTAMPTZ")
     ensure_column("actual_spends", "source", "source VARCHAR(16) NOT NULL DEFAULT 'manual'")
     ensure_column("actual_spends", "inputs", "inputs JSONB NOT NULL DEFAULT '{}'::jsonb")
     ensure_column("actual_spends", "results", "results JSONB NOT NULL DEFAULT '{}'::jsonb")

@@ -10,7 +10,7 @@ from typing import AsyncIterator
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..live_hub import current_revision, hub
+from ..live_hub import hub, live_identity
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 
@@ -21,7 +21,7 @@ HEARTBEAT_SECONDS = 15.0
 def live_revision():
     """Lightweight poll target when SSE is blocked or reconnecting."""
     return JSONResponse(
-        {"revision": current_revision(), "subscribers": hub.subscriber_count()},
+        live_identity(),
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
     )
 
@@ -42,12 +42,7 @@ async def live_events(
 
     async def gen() -> AsyncIterator[str]:
         try:
-            hello = {
-                "type": "hello",
-                "client_id": cid,
-                "revision": current_revision(),
-                "subscribers": hub.subscriber_count(),
-            }
+            hello = {"type": "hello", "client_id": cid, **live_identity()}
             yield f"data: {json.dumps(hello)}\n\n"
             while True:
                 if await request.is_disconnected():
@@ -56,7 +51,7 @@ async def live_events(
                     event = await asyncio.to_thread(q.get, True, HEARTBEAT_SECONDS)
                     yield f"data: {json.dumps(event)}\n\n"
                 except queue.Empty:
-                    ping = {"type": "ping", "revision": current_revision()}
+                    ping = {"type": "ping", **live_identity()}
                     yield f"data: {json.dumps(ping)}\n\n"
         finally:
             hub.unsubscribe(conn_id)

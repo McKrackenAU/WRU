@@ -8,6 +8,8 @@ import {
   promptDialog,
   userName,
   enhanceNumberInputs,
+  onLiveSitesChanged,
+  syncLiveRevision,
 } from "./common.js";
 
 let settings = null;
@@ -958,6 +960,8 @@ async function init() {
       await uploadAttachment(Number(up.dataset.attUpload)).catch((e) => { alertDialog(e.message); });
     }
   });
+  onLiveSitesChanged(() => loadEstimates().catch(() => {}));
+  await syncLiveRevision();
 }
 
 init().catch((e) => { alertDialog(e.message); });

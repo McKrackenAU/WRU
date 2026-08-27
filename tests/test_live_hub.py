@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import queue
 
-from app.live_hub import LiveHub, bump_revision, current_revision, notify_sites_changed
+from app.live_hub import LiveHub, bump_revision, current_revision, live_identity, notify_sites_changed
 
 
 def test_subscribe_uses_unique_connection_ids():
@@ -51,6 +51,27 @@ def test_revision_increments_on_notify():
     notify_sites_changed(site_ids=[1], reason="update", client_id="local")
     after = current_revision()
     assert after == before + 1
+
+
+def test_live_identity_includes_boot_and_version():
+    ident = live_identity()
+    assert ident["revision"] == current_revision()
+    assert ident["boot_id"]
+    assert ident["asset_version"]
+    assert "subscribers" in ident
+
+
+def test_revision_persists_across_disk_reread(tmp_path, monkeypatch):
+    from app import live_hub
+
+    path = tmp_path / "live_state.json"
+    monkeypatch.setattr(live_hub, "STATE_PATH", path)
+    live_hub._revision = 4
+    live_hub._state_mtime_ns = 0
+    live_hub._write_state_locked()
+    live_hub._revision = 0
+    live_hub._state_mtime_ns = 0
+    assert current_revision() >= 4
 
 
 def test_full_queue_drops_oldest_not_raise():

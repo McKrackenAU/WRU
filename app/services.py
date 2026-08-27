@@ -200,7 +200,8 @@ def apply_generic_moa_link(site: Site, generic: Site | None, db: Session | None 
     if not generic.is_generic_moa:
         raise ValueError("Linked site is not marked as a generic MoA")
     site.linked_generic_moa_id = generic.id
-    if generic.moa_number:
+    # Only fill blank identity fields — never overwrite another site's MoA number.
+    if generic.moa_number and not (site.moa_number or "").strip():
         site.moa_number = generic.moa_number
     if generic.tgs_reference and not site.tgs_reference:
         site.tgs_reference = generic.tgs_reference

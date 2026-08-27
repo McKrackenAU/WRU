@@ -1143,10 +1143,16 @@ function fillProgramSelect(selected = "") {
   if (cur) sel.value = cur;
 }
 
-function fillGenericSelect(selected = "") {
+function fillGenericSelect(selected) {
   const sel = $("fLinkedGeneric");
   if (!sel) return;
-  const cur = selected != null && selected !== "" ? String(selected) : sel.value;
+  let cur = "";
+  if (arguments.length > 0) {
+    cur = selected == null || selected === "" ? "" : String(selected);
+  } else if (state.detailSiteId) {
+    const open = state.sites.find((s) => s.id === Number(state.detailSiteId));
+    cur = open?.linked_generic_moa_id ? String(open.linked_generic_moa_id) : "";
+  }
   const id = $("siteId")?.value;
   sel.innerHTML =
     `<option value="">None</option>` +
@@ -1157,7 +1163,8 @@ function fillGenericSelect(selected = "") {
           `<option value="${g.id}">${escapeHtml(g.moa_number || g.site_number)} — ${escapeHtml(g.road_name)}</option>`
       )
       .join("");
-  if (cur) sel.value = cur;
+  sel.value = cur;
+  if (sel.value !== cur) sel.value = "";
 }
 
 function renderCouncilRows(rows) {
@@ -1305,7 +1312,7 @@ async function openSiteDrawer(site = null) {
   $("fJobDone").value = site?.job_completed_date || "";
   $("fInclude").checked = site ? site.include_in_totals !== false : true;
   $("fGenericMoa").checked = !!site?.is_generic_moa;
-  fillGenericSelect(site?.linked_generic_moa_id || "");
+  fillGenericSelect(site?.linked_generic_moa_id ?? "");
   renderCouncilRows(site?.council_details || []);
   $("fComments").value = site?.comments || "";
   $("fKml").value = "";

@@ -9,6 +9,8 @@ import {
   confirmDialog,
   showPageError,
   userName,
+  onLiveSitesChanged,
+  syncLiveRevision,
 } from "./common.js";
 
 const state = {
@@ -373,6 +375,8 @@ async function init() {
     await api(`/api/spend/${btn.dataset.del}`, { method: "DELETE" });
     await loadRows();
   });
+  onLiveSitesChanged(() => loadRows().catch(() => {}));
+  await syncLiveRevision();
 }
 
 init().catch((e) => showPageError("spendBody", e, "Could not load spend"));

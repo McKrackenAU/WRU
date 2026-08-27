@@ -8,6 +8,8 @@ import {
   alertDialog,
   confirmDialog,
   showPageError,
+  onLiveSitesChanged,
+  syncLiveRevision,
 } from "./common.js";
 
 const DEFAULT_PROGRAM = "Lifecycle pavements";
@@ -53,6 +55,22 @@ function fillAddControls() {
         )
         .join("")
     : `<option value="">No sites left to add</option>`;
+}
+
+function addShiftType() {
+  if ($("addShiftNight")?.checked && !$("addShiftDay")?.checked) return "night";
+  return "day";
+}
+
+function wireShiftPair(dayEl, nightEl) {
+  if (!dayEl || !nightEl) return;
+  const sync = (from) => {
+    if (from === "day" && dayEl.checked) nightEl.checked = false;
+    if (from === "night" && nightEl.checked) dayEl.checked = false;
+    if (!dayEl.checked && !nightEl.checked) dayEl.checked = true;
+  };
+  dayEl.addEventListener("change", () => sync("day"));
+  nightEl.addEventListener("change", () => sync("night"));
 }
 
 function pdfExportHref() {
@@ -167,12 +185,16 @@ function renderItems() {
         <label class="gantt-shifts">Shifts
           <input type="number" min="1" value="${item.shifts_count}" data-shifts="${item.id}" />
         </label>
-        <label class="gantt-sub">Day / night
-          <select data-shift-type="${item.id}">
-            <option value="day" ${item.shift_type === "night" ? "" : "selected"}>Day</option>
-            <option value="night" ${item.shift_type === "night" ? "selected" : ""}>Night</option>
-          </select>
-        </label>
+        <div class="gantt-shift-checks">
+          <label class="check-row gantt-shift-check">
+            <input type="checkbox" data-shift-day="${item.id}" ${item.shift_type === "night" ? "" : "checked"} />
+            <span>Day</span>
+          </label>
+          <label class="check-row gantt-shift-check">
+            <input type="checkbox" data-shift-night="${item.id}" ${item.shift_type === "night" ? "checked" : ""} />
+            <span>Night</span>
+          </label>
+        </div>
         <button type="button" class="btn btn-danger btn-sm" data-rm="${item.id}">Remove</button>
       </div>`
       )
@@ -187,12 +209,19 @@ async function loadBoard() {
   fillAddControls();
   renderItems();
   syncPdfLink();
-  const cascading = (state.board.items || []).some((i) => i.link_mode === "after_previous");
-  $("ganttHint").textContent = cascading
-    ? "Drag bars to reorder — dates cascade from the top site"
-    : "Bars use each site’s indicative start — drag to reorder and cascade";
+  updateGanttHint();
 }
 
+function updateGanttHint() {
+  const cascading = (state.board?.items || []).some((i) => i.link_mode === "after_previous");
+  const saved = Boolean(state.board?.schedule_saved);
+  if (!$("ganttHint")) return;
+  $("ganttHint").textContent = saved
+    ? "Saved Gantt — edit Day/Night, weather dates, or order, then Save again. Refresh from sites rebuilds from the register."
+    : cascading
+      ? "Drag bars to reorder — dates cascade from the top site. Save Gantt to keep this sequence after export."
+      : "Bars use each site’s indicative start — Save Gantt to lock the sequence for later edits.";
+}
 
 function christmasShutdownRange(year) {
   // Inclusive shutdown covering Christmas Eve through the day after New Year.
@@ -217,7 +246,7 @@ function addChristmasShutdown() {
   $("boardExclude").value = merged.join(", ");
   const hint = $("xmasHint");
   if (hint) {
-    hint.textContent = `Added ${range[0]} → ${range[range.length - 1]}. Save calendar settings to apply.`;
+    hint.textContent = `Added ${range[0]} → ${range[range.length - 1]}. Save Gantt to apply.`;
   }
 }
 
@@ -231,11 +260,13 @@ async function saveBoard() {
       skip_sunday_before_monday_ph: $("skipSun").value === "1",
       rdo_dates: parseDates($("boardRdos").value),
       exclude_dates: parseDates($("boardExclude")?.value),
+      schedule_saved: true,
     }),
   });
   applyBoardForm();
   fillAddControls();
   renderItems();
+  updateGanttHint();
 }
 
 async function reorder(itemIds) {
@@ -261,7 +292,10 @@ async function init() {
   state.sites = sites;
   fillPrograms(prog);
   syncPdfLink();
+  wireShiftPair($("addShiftDay"), $("addShiftNight"));
+  onLiveSitesChanged(() => loadBoard().catch(() => {}));
   await loadBoard();
+  await syncLiveRevision();
 
   on("programSelect", "change", () => {
     const url = new URL(location.href);
@@ -272,14 +306,24 @@ async function init() {
   on("btnSaveBoard", "click", () => saveBoard().catch((e) => { alertDialog(e.message); }));
   on("btnXmasShutdown", "click", () => addChristmasShutdown());
   on("btnSyncSites", "click", async () => {
+    if (state.board?.schedule_saved) {
+      if (
+        !(await confirmDialog(
+          "Rebuild this Gantt from site indicative starts? Saved order and dates will be replaced. Weather / missed days on the board calendar are kept."
+        ))
+      ) {
+        return;
+      }
+    }
     state.board = await api(
-      `/api/gantt/board/sync-program-sites?program=${encodeURIComponent(program())}`,
+      `/api/gantt/board/sync-program-sites?program=${encodeURIComponent(program())}&unlock=1`,
       { method: "POST" }
     );
     applyBoardForm();
     fillAddControls();
     renderItems();
     syncPdfLink();
+    updateGanttHint();
   });
   on("addItemForm", "submit", async (e) => {
     e.preventDefault();
@@ -291,7 +335,7 @@ async function init() {
       body: JSON.stringify({
         site_id: siteId,
         shifts_count: Number($("addShifts").value || 1),
-        shift_type: $("addShiftType")?.value || "day",
+        shift_type: addShiftType(),
       }),
     });
     fillAddControls();
@@ -312,7 +356,8 @@ async function init() {
   });
   on("ganttList", "change", async (ev) => {
     const shifts = ev.target.closest("[data-shifts]");
-    const shiftType = ev.target.closest("[data-shift-type]");
+    const shiftDay = ev.target.closest("[data-shift-day]");
+    const shiftNight = ev.target.closest("[data-shift-night]");
     if (shifts) {
       state.board = await api(
         `/api/gantt/board/items/${shifts.dataset.shifts}?program=${encodeURIComponent(program())}`,
@@ -325,13 +370,22 @@ async function init() {
       applyBoardForm();
       renderItems();
     }
-    if (shiftType) {
+    if (shiftDay || shiftNight) {
+      const box = shiftDay || shiftNight;
+      const itemId = Number(box.dataset.shiftDay || box.dataset.shiftNight);
+      const row = box.closest("[data-item-id]");
+      const dayBox = row?.querySelector("[data-shift-day]");
+      const nightBox = row?.querySelector("[data-shift-night]");
+      if (shiftNight && nightBox?.checked && dayBox) dayBox.checked = false;
+      if (shiftDay && dayBox?.checked && nightBox) nightBox.checked = false;
+      if (dayBox && nightBox && !dayBox.checked && !nightBox.checked) dayBox.checked = true;
+      const shiftType = nightBox?.checked && !dayBox?.checked ? "night" : "day";
       state.board = await api(
-        `/api/gantt/board/items/${shiftType.dataset.shiftType}?program=${encodeURIComponent(program())}`,
+        `/api/gantt/board/items/${itemId}?program=${encodeURIComponent(program())}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shift_type: shiftType.value || "day" }),
+          body: JSON.stringify({ shift_type: shiftType }),
         }
       );
       applyBoardForm();

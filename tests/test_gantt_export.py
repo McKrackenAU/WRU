@@ -122,11 +122,14 @@ def test_gantt_timeline_splits_tall_board_to_fill_pages():
 
 
 def test_gantt_page_has_day_night_not_contractor_filters():
-    assert 'id="addShiftType"' in GANTT_HTML
-    assert "Day / night" in GANTT_HTML
+    assert 'id="addShiftDay"' in GANTT_HTML
+    assert 'id="addShiftNight"' in GANTT_HTML
+    assert "Save Gantt" in GANTT_HTML
     assert "pdf-asphalt" not in GANTT_HTML
     assert "pdf-traffic" not in GANTT_HTML
     assert "shift_type" in GANTT_JS
-    assert "data-shift-type" in GANTT_JS
+    assert "data-shift-day" in GANTT_JS
+    assert "data-shift-night" in GANTT_JS
+    assert "schedule_saved" in GANTT_JS
     assert "pdfAsphalt" not in GANTT_JS
     assert "pdfTraffic" not in GANTT_JS

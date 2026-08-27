@@ -8,6 +8,8 @@ import {
   confirmDialog,
   showPageError,
   userName,
+  onLiveSitesChanged,
+  syncLiveRevision,
 } from "./common.js";
 
 const state = {
@@ -346,6 +348,8 @@ async function init() {
     await api(`/api/asphalt/estimates/${btn.dataset.delEst}`, { method: "DELETE" });
     await loadHistory();
   });
+  onLiveSitesChanged(() => loadHistory().catch(() => {}));
+  await syncLiveRevision();
 }
 
 init().catch((e) => showPageError("linesWrap", e, "Could not load asphalt costing"));

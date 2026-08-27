@@ -1,11 +1,13 @@
-"""In-process live event hub for multi-user register refresh.
+"""Live event hub for multi-user refresh.
 
-Single uvicorn worker assumed (current deploy). Thread-safe so sync
-route handlers can publish after commits.
+Revision is persisted on disk so all workers (and process restarts / system
+updates) share a monotonically increasing counter. SSE still fans out in
+this process; clients also poll ``/api/live/revision`` as a backup.
 """
 
 from __future__ import annotations
 
+import json
 import queue
 import secrets
 import threading
@@ -14,20 +16,85 @@ from typing import Any
 
 from starlette.requests import Request
 
+from .database import DATA_DIR
+
+STATE_PATH = DATA_DIR / "live_state.json"
+
 _revision = 0
 _revision_lock = threading.Lock()
+_boot_id = secrets.token_urlsafe(12)
+_started_at = time.time()
+_state_mtime_ns = 0
+
+
+def boot_id() -> str:
+    return _boot_id
+
+
+def asset_version() -> str:
+    from .version import version_string
+
+    return version_string()
+
+
+def _read_disk_revision() -> tuple[int, int]:
+    try:
+        st = STATE_PATH.stat()
+        data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        return int(data.get("revision") or 0), int(getattr(st, "st_mtime_ns", 0) or 0)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return 0, 0
+
+
+def _refresh_from_disk_locked() -> None:
+    global _revision, _state_mtime_ns
+    disk_rev, mtime_ns = _read_disk_revision()
+    if mtime_ns != _state_mtime_ns and disk_rev > _revision:
+        _revision = disk_rev
+        _state_mtime_ns = mtime_ns
+
+
+def _write_state_locked() -> None:
+    global _state_mtime_ns
+    payload = {
+        "revision": _revision,
+        "boot_id": _boot_id,
+        "asset_version": asset_version(),
+        "updated_at": time.time(),
+    }
+    tmp = STATE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload), encoding="utf-8")
+    tmp.replace(STATE_PATH)
+    try:
+        _state_mtime_ns = int(STATE_PATH.stat().st_mtime_ns)
+    except OSError:
+        _state_mtime_ns = 0
 
 
 def bump_revision() -> int:
     global _revision
     with _revision_lock:
+        _refresh_from_disk_locked()
         _revision += 1
+        _write_state_locked()
         return _revision
 
 
 def current_revision() -> int:
     with _revision_lock:
+        _refresh_from_disk_locked()
         return _revision
+
+
+def live_identity() -> dict[str, Any]:
+    """Public fields every client needs to stay in sync across restarts."""
+    return {
+        "revision": current_revision(),
+        "boot_id": _boot_id,
+        "asset_version": asset_version(),
+        "started_at": _started_at,
+        "subscribers": hub.subscriber_count(),
+    }
 
 
 class LiveHub:
@@ -99,6 +166,10 @@ class LiveHub:
 
 hub = LiveHub()
 
+# Seed in-memory counter from a previous process if present.
+with _revision_lock:
+    _refresh_from_disk_locked()
+
 
 def live_actor_from_request(request: Request | None) -> dict[str, Any]:
     if request is None:
@@ -133,6 +204,8 @@ def notify_sites_changed(
         "actor_name": actor_name,
         "client_id": client_id,
         "revision": revision,
+        "boot_id": _boot_id,
+        "asset_version": asset_version(),
         "ts": time.time(),
     }
     return hub.publish(event, skip_client_id=client_id)
