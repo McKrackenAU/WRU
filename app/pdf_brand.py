@@ -13,14 +13,17 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-# VenInspect report-pdf.ts tokens
-GREEN = colors.HexColor("#004825")
-GREEN_MID = colors.HexColor("#00994d")
+# Colour tokens — brighter than the near-black forest so headers and Gantt bars
+# still read as Ventia green on paper / in Excel.
+GREEN_HEX = "0B7A45"
+GREEN_MID_HEX = "00C45A"
+GREEN = colors.HexColor(f"#{GREEN_HEX}")
+GREEN_MID = colors.HexColor(f"#{GREEN_MID_HEX}")
 INK = colors.HexColor("#1a1a1a")
 MUTED = colors.HexColor("#5c6670")
 RULE = colors.HexColor("#c5cdd4")
-ROW_ALT = colors.HexColor("#f6faef")
-HEADER_FILL = colors.HexColor("#004825")
+ROW_ALT = colors.HexColor("#eef8e8")
+HEADER_FILL = GREEN
 WARN_TINT = colors.HexColor("#FDE8D8")
 
 BRAND_DIR = Path(__file__).resolve().parent / "static" / "brand"

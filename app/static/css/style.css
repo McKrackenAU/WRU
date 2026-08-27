@@ -32,9 +32,9 @@
 }
 
 html.dark {
-  /* Near-black UI; Ventia green used as accent only */
-  --ventia-green: #2fbf78;
-  --ventia-green-mid: #249a62;
+  /* Near-black UI with a brighter fluoro Ventia green so controls actually read as brand */
+  --ventia-green: #3dd68c;
+  --ventia-green-mid: #2fbf78;
   --ventia-green-tint: #0a0c0e;
   --ventia-blue: #5aa0d6;
   --ventia-ink: #e6e8eb;
@@ -49,11 +49,11 @@ html.dark {
   --field-bg: #0a0c10;
   --danger-bg: #241015;
   --danger-fg: #e8a4ac;
-  --ok: #2fbf78;
+  --ok: #3dd68c;
   --ok-bg: #0c1611;
   --warn: #d4a85c;
   --warn-bg: #1a160e;
-  --stage-on: #2fbf78;
+  --stage-on: #3dd68c;
   --stage-off: #6b7280;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
@@ -313,17 +313,34 @@ body.nav-collapsed .shell-sidebar {
   align-items: center;
   gap: 0.35rem;
   min-height: 2.1rem;
-  padding: 0.25rem 0.55rem;
-  border: 1px solid var(--ventia-border);
+  padding: 0.25rem 0.7rem 0.25rem 0.8rem;
+  border: 1px solid var(--ventia-green);
   border-radius: 999px;
-  background: var(--panel);
-  color: inherit;
+  background: var(--ventia-green);
+  color: #fff;
   font: inherit;
+  font-weight: 650;
   cursor: pointer;
 }
 
+.user-menu-btn .session-user,
+.user-menu-btn .user-menu-caret {
+  color: inherit;
+}
+
+html.dark .user-menu-btn {
+  color: #062014;
+}
+
 .user-menu-btn:hover {
-  background: color-mix(in srgb, var(--ventia-border) 28%, var(--panel));
+  background: var(--ventia-green-mid);
+  border-color: var(--ventia-green-mid);
+}
+
+html.dark .user-menu-btn:hover {
+  background: color-mix(in srgb, var(--ventia-green) 78%, #fff);
+  border-color: color-mix(in srgb, var(--ventia-green) 78%, #fff);
+  color: #062014;
 }
 
 .user-menu-caret {
@@ -338,10 +355,12 @@ body.nav-collapsed .shell-sidebar {
   z-index: 40;
   min-width: 16rem;
   padding: 0.4rem;
-  border: 1px solid var(--ventia-border);
+  border: 1px solid color-mix(in srgb, var(--ventia-green) 32%, var(--ventia-border));
   border-radius: 0.75rem;
   background: var(--panel);
-  box-shadow: 0 10px 28px color-mix(in srgb, #000 18%, transparent);
+  box-shadow:
+    0 10px 28px color-mix(in srgb, #000 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--ventia-green) 18%, transparent);
   display: grid;
   gap: 0.15rem;
 }
@@ -638,7 +657,7 @@ body.nav-drawer-open {
 }
 
 html.dark .main-nav a.active {
-  background: #3dd68c;
+  background: var(--ventia-green);
   color: #0d1117;
 }
 
@@ -750,7 +769,7 @@ html.dark .main-nav a.active {
 }
 
 html.dark .bar-fill {
-  background: #3dd68c;
+  background: var(--ventia-green);
 }
 
 .split-2 {
@@ -1205,8 +1224,8 @@ body.map-page .main {
 }
 
 html.dark .tabs button.active {
-  background: #3dd68c;
-  border-color: #3dd68c;
+  background: var(--ventia-green);
+  border-color: var(--ventia-green);
   color: #0d1117;
 }
 
@@ -1348,8 +1367,8 @@ html.dark select option {
 }
 
 html.dark .btn-primary {
-  background: #3dd68c;
-  border-color: #3dd68c;
+  background: var(--ventia-green);
+  border-color: var(--ventia-green);
   color: #0d1117;
 }
 
@@ -1780,11 +1799,12 @@ html.dark .data-table th {
   flex-wrap: wrap;
   background: color-mix(in srgb, var(--ventia-border) 28%, var(--panel));
   border-bottom: 1px solid var(--ventia-border);
+  box-shadow: inset 3px 0 0 var(--ventia-green);
   position: relative;
   top: auto;
   z-index: 1;
   min-height: 2.6rem;
-  padding: 0.35rem 0.65rem 0.35rem 0.45rem;
+  padding: 0.35rem 0.65rem 0.35rem 0.55rem;
 }
 
 .register-program-head .register-program-title {
@@ -3190,7 +3210,6 @@ html.dark .leaflet-control-scale-line {
   color: var(--ventia-ink);
   background: transparent;
   border-bottom: none;
-  border-left: 3px solid var(--ventia-green-mid);
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -3206,7 +3225,7 @@ html.dark .leaflet-control-scale-line {
   border: 0;
   background: none;
   font: inherit;
-  color: inherit;
+  color: var(--ventia-green);
   text-transform: inherit;
   letter-spacing: inherit;
   cursor: pointer;

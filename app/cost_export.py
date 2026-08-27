@@ -14,6 +14,8 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from .pdf_brand import GREEN_HEX
+
 
 def _money(n: Any) -> str:
     try:
@@ -57,7 +59,7 @@ def build_cost_workbook(
     ws.title = "Summary"
 
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill("solid", fgColor="0B3D2E")
+    header_fill = PatternFill("solid", fgColor=GREEN_HEX)
     best_fill = PatternFill("solid", fgColor="C8E6C9")
     money_font = Font(bold=True)
 

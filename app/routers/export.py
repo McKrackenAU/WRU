@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Site
+from ..pdf_brand import GREEN_HEX
 from ..services import site_to_dict
 from ..stage_registry import stage_labels_map
 
@@ -219,7 +220,7 @@ def _xlsx_bytes(rows: list[dict], sheet_name: str, title: str, view: ClientListV
         cap += f" · top {view.limit}"
     ws.cell(2, 1, cap)
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill("solid", fgColor="0B3D2E")
+    header_fill = PatternFill("solid", fgColor=GREEN_HEX)
     for col, h in enumerate(CLIENT_HEADERS, 1):
         cell = ws.cell(4, col, h)
         cell.font = header_font

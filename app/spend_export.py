@@ -14,7 +14,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .pdf_brand import GREEN, MUTED, ROW_ALT, RULE, branded_margins, draw_branded_page
+from .pdf_brand import GREEN, GREEN_HEX, MUTED, ROW_ALT, RULE, branded_margins, draw_branded_page
 
 
 def _money(n: Any) -> str:
@@ -51,7 +51,7 @@ def build_spend_workbook(rows: list[dict[str, Any]], *, title: str = "Actual spe
     ws = wb.active
     ws.title = "Spend"
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill("solid", fgColor="004825")
+    header_fill = PatternFill("solid", fgColor=GREEN_HEX)
     money_font = Font(bold=True)
 
     ws.cell(1, 1, "WRU TGS Tracker — Actual spend").font = Font(bold=True, size=14)
