@@ -241,6 +241,9 @@ function syncExportLinks() {
     const base = a.getAttribute("data-export");
     a.href = q ? `${base}?${q}` : base;
     a.title = label;
+    const kind = (a.getAttribute("data-export-kind") || a.textContent.split("·")[0] || "Export").trim();
+    if (!a.getAttribute("data-export-kind")) a.setAttribute("data-export-kind", kind);
+    a.textContent = state.cap != null ? `${kind} · top ${state.cap}` : kind;
   });
 }
 

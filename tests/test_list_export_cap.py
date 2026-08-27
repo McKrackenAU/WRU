@@ -67,6 +67,7 @@ def test_lists_page_wires_export_query_to_cap():
     assert "js-list-export" in LISTS_HTML
     assert 'data-export="/api/export/permits-list.pdf"' in LISTS_HTML
     assert 'data-export="/api/export/trims-list.pdf"' in LISTS_HTML
+    assert "Export top" in LISTS_JS
     assert "client_list_view" in EXPORT
     assert "apply_client_list_view" in EXPORT
     assert "limit: int | None = Query" in EXPORT
