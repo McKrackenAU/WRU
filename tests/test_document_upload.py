@@ -43,6 +43,10 @@ def test_chunked_document_upload_is_wired():
     assert "begin_document_session" in DOCS_PY
     assert "update_document" in DOCS_PY
     assert 'id="docUploadStatus"' in INDEX
+    assert 'id="docDropzone"' in INDEX
+    assert "wireDocDropzone" in APP_JS
+    assert 'addEventListener("drop"' in APP_JS
+    assert "Drop files here" in INDEX
 
 
 def test_library_page_can_change_category():

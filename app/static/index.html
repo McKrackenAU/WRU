@@ -296,23 +296,25 @@
             </div>
             <ul id="trackList" class="event-list"></ul>
             <h3 style="margin-top:1.25rem">Documents</h3>
-            <div class="upload-row" style="flex-wrap:wrap">
-              <select id="docCategory">
-                <option value="email">Email</option>
-                <option value="tgs">TGS</option>
-                <option value="plan">Plan</option>
-                <option value="moa">MoA</option>
-                <option value="correspondence">Correspondence</option>
-                <option value="photo">Photo</option>
-                <option value="other">Other</option>
-              </select>
-              <input type="text" id="docDesc" placeholder="Description (optional, applies to all)" />
-              <input type="file" id="docFile" multiple />
-              <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
+            <div class="doc-dropzone" id="docDropzone">
+              <div class="upload-row" style="flex-wrap:wrap">
+                <select id="docCategory">
+                  <option value="email">Email</option>
+                  <option value="tgs">TGS</option>
+                  <option value="plan">Plan</option>
+                  <option value="moa">MoA</option>
+                  <option value="correspondence">Correspondence</option>
+                  <option value="photo">Photo</option>
+                  <option value="other">Other</option>
+                </select>
+                <input type="text" id="docDesc" placeholder="Description (optional, applies to all)" />
+                <input type="file" id="docFile" multiple />
+                <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
+              </div>
+              <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads use JSON chunks so workplace filters do not block them.</p>
+              <p class="hint" id="docUploadStatus" hidden></p>
+              <ul id="docList" class="event-list"></ul>
             </div>
-            <p class="hint" id="docUploadHint">Select one or more files. They all use this category. Uploads use the same JSON-chunk method as bulk import so workplace filters do not block them.</p>
-            <p class="hint" id="docUploadStatus" hidden></p>
-            <ul id="docList" class="event-list"></ul>
             <div class="toolbar" style="margin-top:1rem">
               <a class="btn" id="btnOpenCosts" href="/costs">Cost calculator</a>
               <a class="btn" id="btnOpenSpend" href="/spend">Actual spend</a>

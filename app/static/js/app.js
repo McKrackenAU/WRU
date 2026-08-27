@@ -1282,6 +1282,8 @@ function setDrawerReadOnly(readOnly) {
   if (compose) compose.hidden = state.readOnlyArchive;
   const upload = document.querySelector("#activityBody .upload-row");
   if (upload) upload.hidden = state.readOnlyArchive;
+  const dropzone = $("docDropzone");
+  if (dropzone) dropzone.classList.toggle("is-readonly", state.readOnlyArchive);
   document.querySelectorAll("[data-del-track], [data-del-doc]").forEach((btn) => {
     btn.hidden = state.readOnlyArchive;
   });
@@ -1697,12 +1699,71 @@ function setDocUploadStatus(text) {
   el.textContent = text;
 }
 
-async function uploadDoc() {
+function filesFromDataTransfer(dt) {
+  if (!dt) return [];
+  if (dt.files && dt.files.length) {
+    return [...dt.files].filter((f) => f && f.size);
+  }
+  return [];
+}
+
+function dataTransferHasFiles(ev) {
+  const types = ev.dataTransfer?.types;
+  if (!types) return false;
+  return [...types].includes("Files");
+}
+
+function wireDocDropzone() {
+  const zone = $("docDropzone");
+  if (!zone || zone.dataset.bound) return;
+  zone.dataset.bound = "1";
+  let depth = 0;
+  const clear = () => {
+    depth = 0;
+    zone.classList.remove("is-dragover");
+  };
+  zone.addEventListener("dragenter", (ev) => {
+    if (!dataTransferHasFiles(ev) || state.readOnlyArchive || !state.detailSiteId) return;
+    ev.preventDefault();
+    depth += 1;
+    zone.classList.add("is-dragover");
+  });
+  zone.addEventListener("dragover", (ev) => {
+    if (!dataTransferHasFiles(ev) || state.readOnlyArchive || !state.detailSiteId) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+  });
+  zone.addEventListener("dragleave", () => {
+    depth = Math.max(0, depth - 1);
+    if (!depth) zone.classList.remove("is-dragover");
+  });
+  zone.addEventListener(
+    "drop",
+    (ev) => {
+      if (!dataTransferHasFiles(ev)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      clear();
+      if (state.readOnlyArchive || !state.detailSiteId) return;
+      const files = filesFromDataTransfer(ev.dataTransfer);
+      if (!files.length) {
+        alertDialog("Drop one or more files onto Documents");
+        return;
+      }
+      uploadDoc(files).catch((e) => {
+        alertDialog(errorMessage(e, "Could not upload"));
+      });
+    },
+    true
+  );
+}
+
+async function uploadDoc(incomingFiles) {
   if (!state.detailSiteId) return;
   const fileInput = $("docFile");
-  const files = [...(fileInput?.files || [])].filter((f) => f && f.size);
+  const files = [...(incomingFiles || fileInput?.files || [])].filter((f) => f && f.size);
   if (!files.length) {
-    alertDialog("Choose one or more files first");
+    alertDialog("Choose one or more files first, or drop them onto Documents");
     return;
   }
   const oversized = files.find((f) => f.size > 25 * 1024 * 1024);
@@ -1782,6 +1843,7 @@ function bindEvents() {
   on("btnArchiveSite", "click", () => archiveSite().catch((e) => { alertDialog(e.message); }));
   on("btnAddTrack", "click", () => addTracking().catch((e) => { alertDialog(e.message); }));
   on("btnUploadDoc", "click", () => uploadDoc().catch((e) => { alertDialog(e.message); }));
+  wireDocDropzone();
   on("siteForm", "submit", (ev) =>
     saveSite(ev).catch((e) => {
       alertDialog(errorMessage(e, "Could not save site"));

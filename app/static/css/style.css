@@ -2308,6 +2308,27 @@ input[type="number"].num-stepper-input::-webkit-inner-spin-button {
   margin-bottom: 0.75rem;
 }
 
+.doc-dropzone {
+  border: 1px dashed var(--ventia-border);
+  border-radius: var(--radius);
+  padding: 0.7rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.doc-dropzone.is-dragover {
+  border-color: var(--ventia-green-mid);
+  background: color-mix(in srgb, var(--ventia-green-tint) 55%, var(--panel));
+}
+
+.doc-dropzone.is-readonly {
+  border-color: transparent;
+  padding: 0;
+}
+
+.doc-dropzone .event-list {
+  margin-top: 0.35rem;
+}
+
 .event-list {
   list-style: none;
   margin: 0;
