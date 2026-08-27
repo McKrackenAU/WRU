@@ -39,6 +39,15 @@ def test_register_filters_are_checkboxes():
     assert 'id="btnFiltersAll"' in INDEX
 
 
+def test_register_filter_checkboxes_are_compact():
+    style = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
+    assert ".filter-bar input:not([type=\"checkbox\"])" in style or '.filter-bar input:not([type="checkbox"])' in style
+    assert ".lists-check input[type=\"checkbox\"]" in style or '.lists-check input[type="checkbox"]' in style
+    assert "width: 0.9rem" in style
+    assert ".filter-drop-col .lists-check" in style
+    assert "align-items: center" in style
+
+
 def test_must_have_ok_is_yellow_not_green():
     assert 'if (band === "ok" || band === "warn") return "must-have warn"' in COMMON
     assert "moa_has_been_submitted" in CALC
