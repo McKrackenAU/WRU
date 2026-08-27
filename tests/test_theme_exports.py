@@ -31,8 +31,8 @@ def test_program_title_has_no_floating_left_rule():
 
 
 def test_export_greens_are_brighter_than_forest():
-    assert GREEN_HEX == "0B7A45"
-    assert GREEN_MID_HEX == "00C45A"
+    assert GREEN_HEX == "0D8F4E"
+    assert GREEN_MID_HEX == "00D26A"
     assert str(GREEN).lower() != "#004825"
     assert str(GREEN_MID).lower() != "#00994d"
     assert "GREEN_HEX" in EXPORT_PY

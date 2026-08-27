@@ -13,10 +13,9 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfgen.canvas import Canvas
 
-# Colour tokens — brighter than the near-black forest so headers and Gantt bars
-# still read as Ventia green on paper / in Excel.
-GREEN_HEX = "0B7A45"
-GREEN_MID_HEX = "00C45A"
+# Brighter Ventia greens so headers, titles and Gantt bars read as green on paper.
+GREEN_HEX = "0D8F4E"
+GREEN_MID_HEX = "00D26A"
 GREEN = colors.HexColor(f"#{GREEN_HEX}")
 GREEN_MID = colors.HexColor(f"#{GREEN_MID_HEX}")
 INK = colors.HexColor("#1a1a1a")
@@ -49,8 +48,8 @@ def draw_branded_page(canvas: Canvas, doc) -> None:
     product = getattr(doc, "brand_product", None) or "WRU TGS TRACKER"
     footer_meta = getattr(doc, "brand_footer_meta", None) or ""
 
-    # Top brand bar (VenInspect: rect 0,0,PAGE_W,8)
-    canvas.setFillColor(GREEN)
+    # Top brand bar — brighter stripe so the page reads as Ventia green, not near-black
+    canvas.setFillColor(GREEN_MID)
     canvas.rect(0, page_h - 8, page_w, 8, fill=1, stroke=0)
 
     # Ventia wordmark (top-right)
