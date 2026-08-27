@@ -24,6 +24,18 @@ def test_password_script_posts_change_endpoint():
 def test_chrome_exposes_change_password():
     assert 'href="/password"' in COMMON
     assert "Change password" in COMMON
+    assert COMMON.count("Change password") == 1
+    assert 'id="changePasswordLink"' in COMMON
+
+
+def test_chrome_admin_toggle_lives_in_topbar():
+    assert "adminModeToggle" in COMMON
+    assert 'role="switch"' in COMMON
+    assert "btn-admin-link" not in COMMON
+    assert "← Back to tracker" not in COMMON
+    foot = COMMON.split("class=\"sidebar-foot\"")[1].split("</div>")[0]
+    assert "Change password" not in foot
+    assert "Admin console" not in foot
 
 
 def test_login_sends_forced_change_to_password_page():

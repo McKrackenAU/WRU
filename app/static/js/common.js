@@ -915,9 +915,6 @@ export async function injectChrome({ active, mode } = {}) {
   const links = isAdmin ? ADMIN_NAV : OPS_NAV;
   const sidebar = document.querySelector("[data-app-sidebar]");
   if (sidebar) {
-    const adminLink = canAdmin
-      ? `<a class="btn btn-block btn-admin-link" href="/admin">Admin console</a>`
-      : "";
     sidebar.innerHTML = `
       <div class="sidebar-brand">
         <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="36" height="36" alt="" />
@@ -933,8 +930,6 @@ export async function injectChrome({ active, mode } = {}) {
         ${sideNavHtml(links, path)}
       </nav>
       <div class="sidebar-foot">
-        ${isAdmin ? `<a class="btn btn-block" href="/">← Back to tracker</a>` : adminLink}
-        <a class="btn btn-block" href="/password" id="changePasswordLink">Change password</a>
         <button type="button" class="btn btn-block theme-toggle" id="themeToggle" data-theme-toggle>Theme</button>
         <button type="button" class="btn btn-block" id="logoutBtn">Sign out</button>
       </div>
@@ -945,6 +940,17 @@ export async function injectChrome({ active, mode } = {}) {
   const header = document.querySelector("[data-app-header]");
   if (header) {
     header.classList.toggle("topbar-admin", isAdmin);
+    const adminToggle = canAdmin
+      ? `<div class="admin-mode-toggle">
+        <span id="adminModeLabel">Admin</span>
+        <button type="button" class="switch" id="adminModeToggle" role="switch"
+          aria-checked="${isAdmin ? "true" : "false"}"
+          aria-labelledby="adminModeLabel"
+          title="${isAdmin ? "Back to tracker" : "Open admin console"}">
+          <span class="switch-knob" aria-hidden="true"></span>
+        </button>
+      </div>`
+      : "";
     header.innerHTML = `
       <div class="topbar-start">
         <button type="button" class="icon-btn nav-burger" id="navToggle" aria-expanded="true" aria-controls="sideNav" aria-label="Menu">
@@ -959,7 +965,8 @@ export async function injectChrome({ active, mode } = {}) {
       </div>
       <div class="topbar-end">
         ${who ? `<span class="session-user" title="Signed in">${who}</span>` : ""}
-        <a class="btn" href="/password">Change password</a>
+        ${adminToggle}
+        <a class="btn" href="/password" id="changePasswordLink">Change password</a>
       </div>
     `;
   }
@@ -993,6 +1000,9 @@ export async function injectChrome({ active, mode } = {}) {
 
   wireNavToggle();
   initThemeToggle();
+  $("adminModeToggle")?.addEventListener("click", () => {
+    location.href = isAdmin ? "/" : "/admin";
+  });
   $("logoutBtn")?.addEventListener("click", () => {
     logout();
   });
