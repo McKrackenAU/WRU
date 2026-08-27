@@ -174,13 +174,22 @@ def meta(db: Session = Depends(get_db)):
         if c
     ]
     councils = list(dict.fromkeys([*lookup_councils, *used_councils]))
-    roads = [
+    lookup_roads = [
         r.value
         for r in db.query(LookupItem)
         .filter(LookupItem.kind == "road", LookupItem.active.is_(True))
         .order_by(LookupItem.position.asc(), LookupItem.value.asc())
         .all()
     ]
+    used_roads = [
+        r
+        for (r,) in db.query(distinct(Site.road_name))
+        .filter(Site.road_name.isnot(None))
+        .order_by(Site.road_name)
+        .all()
+        if r
+    ]
+    roads = list(dict.fromkeys([*lookup_roads, *used_roads]))
     return {
         "workflow_stages": stage_meta(db),
         "doc_categories": DOC_CATEGORIES,

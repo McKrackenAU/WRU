@@ -1061,12 +1061,62 @@ async function loadAll() {
   setStatus(`${state.sites.length} active · ${pri} Permits · ${trims} TRIMS`);
 }
 
-function fillRoadList() {
-  const list = $("roadList");
-  if (!list) return;
-  list.innerHTML = (state.meta.roads || [])
-    .map((r) => `<option value="${escapeHtml(r)}"></option>`)
-    .join("");
+const ROAD_OTHER = "__other__";
+
+function knownRoads() {
+  const seen = new Set();
+  const out = [];
+  const fromMeta = state.meta.roads || [];
+  const fromSites = (state.sites || []).map((s) => s.road_name).filter(Boolean);
+  for (const raw of [...fromMeta, ...fromSites]) {
+    const name = String(raw || "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+function collectedRoadName() {
+  const sel = $("fRoadSelect");
+  if (!sel) return "";
+  if (sel.value === ROAD_OTHER) return ($("fRoadOther")?.value || "").trim();
+  return (sel.value || "").trim();
+}
+
+function syncRoadOther() {
+  const sel = $("fRoadSelect");
+  const wrap = $("fRoadOtherLabel");
+  const other = $("fRoadOther");
+  const isOther = sel?.value === ROAD_OTHER;
+  if (wrap) wrap.hidden = !isOther;
+  if (other) {
+    other.required = isOther;
+    if (!isOther) other.value = "";
+  }
+}
+
+function fillRoadList(selected) {
+  const sel = $("fRoadSelect");
+  if (!sel) return;
+  const preserveOther = selected === undefined && sel.value === ROAD_OTHER;
+  const want = (selected !== undefined ? selected : collectedRoadName()).trim();
+  const roads = knownRoads();
+  const match =
+    roads.find((r) => r === want) ||
+    roads.find((r) => r.toLowerCase() === want.toLowerCase()) ||
+    "";
+  const useOther = preserveOther || (Boolean(want) && !match);
+  const otherText = useOther ? want || ($("fRoadOther")?.value || "").trim() : "";
+  sel.innerHTML =
+    `<option value="">Select…</option>` +
+    roads.map((r) => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join("") +
+    `<option value="${ROAD_OTHER}">Other…</option>`;
+  sel.value = useOther ? ROAD_OTHER : match;
+  syncRoadOther();
+  if (useOther && $("fRoadOther")) $("fRoadOther").value = otherText;
 }
 
 function maybeScrollHighlight() {
@@ -1230,7 +1280,7 @@ async function openSiteDrawer(site = null) {
     ? `${site.site_number}${site.moa_number ? ` · MoA ${site.moa_number}` : ""}${archived ? " · read only" : ""}`
     : "New register row";
   $("siteId").value = site ? site.id : "";
-  $("fRoad").value = site?.road_name || "";
+  fillRoadList(site?.road_name || "");
   $("fSiteNo").value = site?.site_number || "";
   fillProgramSelect(site?.program || "");
   $("fTgs").value = site?.tgs_reference || "";
@@ -1319,7 +1369,7 @@ function collectSitePayload() {
   }
   const linked = $("fLinkedGeneric").value;
   return {
-    road_name: $("fRoad").value.trim(),
+    road_name: collectedRoadName(),
     site_number: $("fSiteNo").value.trim(),
     program: $("fProgram").value.trim() || null,
     tgs_reference: $("fTgs").value.trim() || null,
@@ -1790,6 +1840,10 @@ function bindEvents() {
     btn.closest(".council-row")?.remove();
     if (!$("councilRows")?.querySelector(".council-row")) renderCouncilRows([]);
     scheduleAutosave();
+  });
+  on("fRoadSelect", "change", () => {
+    syncRoadOther();
+    if ($("fRoadSelect")?.value === ROAD_OTHER) $("fRoadOther")?.focus();
   });
   on("siteForm", "input", scheduleAutosave);
   on("siteForm", "change", scheduleAutosave);

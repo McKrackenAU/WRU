@@ -180,33 +180,29 @@ def _client_list_rows(db: Session, *, team: str, view: ClientListView | None = N
     return apply_client_list_view(rows, view)
 
 
-CLIENT_FIELDS = [
-    "priority",
-    "road_name",
-    "site_number",
-    "program",
-    "councils",
-    "council_status",
-    "business_days_waiting",
-    "indicative_start",
-    "days_to_start",
-    "moa_must_have",
-    "must_have_status",
-    "moa_number",
-    "moa_submission_date",
-    "tgs_reference",
-    "current_stage",
-    "progress_pct",
-    "comments",
+# Permits / TRIMS client-list export: six columns, matching the printed list.
+CLIENT_COLUMNS = [
+    ("priority", "Priority"),
+    ("moa_number", "MoA Number"),
+    ("road_name", "Road"),
+    ("site_number", "Site"),
+    ("program", "Program"),
+    ("indicative_start", "Indicative start"),
 ]
+CLIENT_FIELDS = [key for key, _ in CLIENT_COLUMNS]
+CLIENT_HEADERS = [label for _, label in CLIENT_COLUMNS]
+
+
+def _client_export_values(row: dict) -> dict[str, Any]:
+    return {label: row.get(key, "") for key, label in CLIENT_COLUMNS}
 
 
 def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=CLIENT_FIELDS, extrasaction="ignore")
+    writer = csv.DictWriter(buf, fieldnames=CLIENT_HEADERS, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
-        writer.writerow(row)
+        writer.writerow(_client_export_values(row))
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
@@ -229,13 +225,14 @@ def _xlsx_bytes(rows: list[dict], sheet_name: str, title: str, view: ClientListV
     ws.cell(2, 1, cap)
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="0B3D2E")
-    for col, h in enumerate(CLIENT_FIELDS, 1):
+    for col, h in enumerate(CLIENT_HEADERS, 1):
         cell = ws.cell(4, col, h)
         cell.font = header_font
         cell.fill = header_fill
     for r_idx, row in enumerate(rows, start=5):
-        for c_idx, key in enumerate(CLIENT_FIELDS, 1):
-            ws.cell(r_idx, c_idx, row.get(key, ""))
+        values = _client_export_values(row)
+        for c_idx, header in enumerate(CLIENT_HEADERS, 1):
+            ws.cell(r_idx, c_idx, values.get(header, ""))
     for col in ws.columns:
         letter = col[0].column_letter
         width = max((len(str(c.value)) if c.value is not None else 0) for c in col)
@@ -331,58 +328,40 @@ def _pdf_bytes(rows: list[dict], *, title: str, team_label: str, view: ClientLis
 
     headers = [
         "Pri",
+        "MoA #",
         "Road",
         "Site",
         "Program",
-        "Stage",
-        "Start",
-        "Must-have",
-        "Council / wait",
-        "MoA #",
-        "Comments",
+        "Indicative start",
     ]
     data: list[list[Any]] = [[_pdf_cell(h, styles["Th"]) for h in headers]]
 
     if not rows:
-        data.append([_pdf_cell("No sites on this priority list.", styles["Td"])] + [""] * 9)
+        data.append(
+            [_pdf_cell("No sites on this priority list.", styles["Td"])]
+            + [""] * (len(headers) - 1)
+        )
     else:
         for row in rows:
-            wait = row.get("business_days_waiting")
-            council = row.get("councils") or ""
-            if wait not in ("", None):
-                council = f"{council} ({wait}d)" if council else f"{wait}d"
-            must = row.get("moa_must_have") or ""
-            must_label = row.get("must_have_status") or ""
-            if must_label and must_label != "—":
-                must = f"{must} · {must_label}" if must else must_label
-            comments = (row.get("comments") or "")[:160]
             data.append(
                 [
                     _pdf_cell(row.get("priority"), styles["TdCenter"]),
+                    _pdf_cell(row.get("moa_number"), styles["Td"]),
                     _pdf_cell(row.get("road_name"), styles["Td"]),
                     _pdf_cell(row.get("site_number"), styles["Td"]),
                     _pdf_cell(row.get("program"), styles["Td"]),
-                    _pdf_cell(row.get("current_stage"), styles["Td"]),
                     _pdf_cell(row.get("indicative_start"), styles["Td"]),
-                    _pdf_cell(must, styles["Td"]),
-                    _pdf_cell(council, styles["Td"]),
-                    _pdf_cell(row.get("moa_number"), styles["Td"]),
-                    _pdf_cell(comments, styles["Td"]),
                 ]
             )
 
     # Landscape A4 with 12mm margins ≈ 273mm usable
     col_widths = [
-        12 * mm,  # Pri
-        41 * mm,  # Road
-        18 * mm,  # Site
-        28 * mm,  # Program
-        32 * mm,  # Stage
-        20 * mm,  # Start
-        28 * mm,  # Must-have
-        35 * mm,  # Council
-        20 * mm,  # MoA
-        39 * mm,  # Comments
+        16 * mm,  # Pri
+        42 * mm,  # MoA #
+        78 * mm,  # Road
+        32 * mm,  # Site
+        64 * mm,  # Program
+        41 * mm,  # Indicative start
     ]
     table = Table(data, colWidths=col_widths, repeatRows=1)
     style_cmds: list[tuple] = [

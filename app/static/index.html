@@ -159,13 +159,19 @@
       </div>
       <form id="siteForm" class="drawer-body">
         <input type="hidden" id="siteId" />
-        <datalist id="roadList"></datalist>
 
         <section class="tab-panel active" data-panel="overview">
           <div class="form-section">
             <h3>Site</h3>
             <div class="form-grid">
-              <label>Road name<input id="fRoad" list="roadList" required maxlength="255" /></label>
+              <label>Road name
+                <select id="fRoadSelect" required>
+                  <option value="">Select…</option>
+                </select>
+              </label>
+              <label id="fRoadOtherLabel" class="full" hidden>Other road name
+                <input id="fRoadOther" maxlength="255" autocomplete="off" />
+              </label>
               <label>Site number<input id="fSiteNo" required maxlength="64" /></label>
               <label>Program
                 <select id="fProgram"><option value="">Select…</option></select>
