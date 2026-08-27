@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from .calculations import expand_workflow_prefix
+from .lookups import sync_usage_into_lookups
 from .models import Site
 from .services import apply_workflow, ensure_workflow_steps, set_councils, sync_computed_fields
 from .stage_registry import active_programs, stage_keys as registry_stage_keys
@@ -777,6 +778,7 @@ def import_tracker_rows(
             errors.append(f"{raw.get('road_name')} / {raw.get('site_number')}: {exc}")
 
     db.commit()
+    sync_usage_into_lookups(db, "road")
     return {
         "parsed": len(rows),
         "created": created,

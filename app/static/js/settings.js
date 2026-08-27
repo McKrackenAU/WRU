@@ -35,33 +35,109 @@ async function saveRules(ev) {
   $("rulesStatus").textContent = `Saved ${new Date().toLocaleTimeString()}`;
 }
 
-async function loadLookups() {
-  const kind = $("lookupKind").value;
+async function loadLookups(kind, listId, statusId) {
   const rows = await api(`/api/admin/lookups?kind=${encodeURIComponent(kind)}&active_only=false`);
-  $("lookupList").innerHTML = rows.length
+  const list = $(listId);
+  const status = $(statusId);
+  const noun = kind === "road" ? "road" : "council";
+  const active = rows.filter((r) => r.active);
+  if (status) {
+    const used = active.reduce((n, r) => n + (r.usage_count || 0), 0);
+    status.textContent = rows.length
+      ? `${active.length} ${noun}${active.length === 1 ? "" : "s"} in the list · ${used} site use${used === 1 ? "" : "s"}`
+      : `No ${noun}s yet — add the correct names here.`;
+  }
+  if (!list) return;
+  list.innerHTML = rows.length
     ? rows
-        .map(
-          (r) => `<li>
-          <div class="top">
-            <span>${r.active ? "" : "<em>inactive · </em>"}${escapeHtml(r.value)}</span>
-            <button type="button" class="btn btn-danger" data-del-lookup="${r.id}" ${r.active ? "" : "disabled"}>Remove</button>
+        .map((r) => {
+          const count = r.usage_count || 0;
+          const countLabel = `${count} site${count === 1 ? "" : "s"}`;
+          return `<li data-lookup-id="${r.id}" data-kind="${kind}" data-original="${escapeHtml(r.value)}" data-usage="${count}" class="${r.active ? "" : "is-inactive"}">
+          <div class="lookup-row">
+            <input data-lookup-value value="${escapeHtml(r.value)}" ${r.active ? "" : "disabled"} maxlength="255" aria-label="${escapeHtml(r.value)}" />
+            <span class="lookup-count">${escapeHtml(countLabel)}</span>
+            ${
+              r.active
+                ? `<button type="button" class="btn btn-sm" data-save-lookup="${r.id}">Save</button>
+                   <button type="button" class="btn btn-sm btn-danger" data-del-lookup="${r.id}">Remove</button>`
+                : `<button type="button" class="btn btn-sm" data-restore-lookup="${r.id}">Restore</button>`
+            }
           </div>
-        </li>`
-        )
+        </li>`;
+        })
         .join("")
-    : `<li><p class="meta">No ${kind} values yet.</p></li>`;
+    : `<li><p class="meta">No ${noun}s yet.</p></li>`;
 }
 
-async function addLookup() {
-  const value = $("lookupValue").value.trim();
+async function addLookup(kind, inputId) {
+  const input = $(inputId);
+  const value = input?.value.trim();
   if (!value) return;
   await api("/api/admin/lookups", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: $("lookupKind").value, value }),
+    body: JSON.stringify({ kind, value }),
   });
-  $("lookupValue").value = "";
-  await loadLookups();
+  if (input) input.value = "";
+  await refreshLookups();
+}
+
+async function refreshLookups() {
+  await Promise.all([
+    loadLookups("road", "roadLookupList", "roadLookupStatus"),
+    loadLookups("council", "councilLookupList", "councilLookupStatus"),
+  ]);
+}
+
+async function saveLookupRow(li) {
+  const id = li?.dataset.lookupId;
+  const kind = li?.dataset.kind;
+  const original = li?.dataset.original || "";
+  const input = li?.querySelector("[data-lookup-value]");
+  const value = input?.value.trim();
+  if (!id || !kind || !value) return;
+  const count = Number(li.dataset.usage || 0);
+  if (value !== original && count > 0) {
+    const ok = await confirmDialog(
+      `Rename “${original}” to “${value}” on ${count} site${count === 1 ? "" : "s"}? The new name will show on the register, lists, and exports.`
+    );
+    if (!ok) {
+      input.value = original;
+      return;
+    }
+  }
+  const saved = await api(`/api/admin/lookups/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, value, active: true }),
+  });
+  await refreshLookups();
+  if (saved?.merged) {
+    await alertDialog(
+      `Merged into “${saved.value}”${
+        saved.sites_updated
+          ? ` and updated ${saved.sites_updated} site${saved.sites_updated === 1 ? "" : "s"}`
+          : ""
+      }.`
+    );
+  } else if (saved?.sites_updated) {
+    const statusId = kind === "road" ? "roadLookupStatus" : "councilLookupStatus";
+    if ($(statusId)) {
+      $(statusId).textContent = `Saved “${saved.value}” · updated ${saved.sites_updated} site${
+        saved.sites_updated === 1 ? "" : "s"
+      }.`;
+    }
+  }
+}
+
+async function restoreLookup(id, kind, value) {
+  await api(`/api/admin/lookups/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, value, active: true }),
+  });
+  await refreshLookups();
 }
 
 function xorBytes(u8, keyU8) {
@@ -168,6 +244,7 @@ async function runImport(dryRun) {
         }`;
     $("importLog").hidden = false;
     $("importLog").textContent = JSON.stringify(body, null, 2);
+    if (!dryRun) await refreshLookups();
   } catch (err) {
     $("importStatus").textContent = "";
     alertDialog(errorMessage(err, "Import failed"));
@@ -177,13 +254,46 @@ async function runImport(dryRun) {
 async function init() {
   injectChrome({ active: "/admin/settings", mode: "admin" });
   $("rulesForm").addEventListener("submit", (e) => saveRules(e).catch((err) => { alertDialog(err.message); }));
-  $("lookupKind").addEventListener("change", () => loadLookups().catch((e) => { alertDialog(e.message); }));
-  $("btnAddLookup").addEventListener("click", () => addLookup().catch((e) => { alertDialog(e.message); }));
-  $("lookupList").addEventListener("click", async (ev) => {
-    const btn = ev.target.closest("[data-del-lookup]");
-    if (!btn) return;
-    await api(`/api/admin/lookups/${btn.dataset.delLookup}`, { method: "DELETE" });
-    await loadLookups();
+  $("btnAddRoad")?.addEventListener("click", () => addLookup("road", "roadLookupValue").catch((e) => { alertDialog(e.message); }));
+  $("btnAddCouncil")?.addEventListener("click", () => addLookup("council", "councilLookupValue").catch((e) => { alertDialog(e.message); }));
+  $("roadLookupValue")?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      addLookup("road", "roadLookupValue").catch((e) => { alertDialog(e.message); });
+    }
+  });
+  $("councilLookupValue")?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      addLookup("council", "councilLookupValue").catch((e) => { alertDialog(e.message); });
+    }
+  });
+  document.addEventListener("click", async (ev) => {
+    const saveBtn = ev.target.closest("[data-save-lookup]");
+    if (saveBtn) {
+      await saveLookupRow(saveBtn.closest("li")).catch((e) => { alertDialog(e.message); });
+      return;
+    }
+    const delBtn = ev.target.closest("[data-del-lookup]");
+    if (delBtn) {
+      await api(`/api/admin/lookups/${delBtn.dataset.delLookup}`, { method: "DELETE" });
+      await refreshLookups();
+      return;
+    }
+    const restoreBtn = ev.target.closest("[data-restore-lookup]");
+    if (restoreBtn) {
+      const li = restoreBtn.closest("li");
+      await restoreLookup(restoreBtn.dataset.restoreLookup, li?.dataset.kind, li?.dataset.original).catch((e) => {
+        alertDialog(e.message);
+      });
+    }
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    const input = ev.target.closest("[data-lookup-value]");
+    if (!input) return;
+    ev.preventDefault();
+    saveLookupRow(input.closest("li")).catch((e) => { alertDialog(e.message); });
   });
   $("btnDryRun").addEventListener("click", () => runImport(true).catch((e) => { alertDialog(e.message); }));
   $("btnImport").addEventListener("click", async () => {
@@ -191,7 +301,7 @@ async function init() {
     runImport(false).catch((e) => { alertDialog(e.message); });
   });
   await loadRules();
-  await loadLookups();
+  await refreshLookups();
 }
 
 init().catch((e) => { alertDialog(e.message); });

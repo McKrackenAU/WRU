@@ -2195,6 +2195,33 @@ input[type="number"].num-stepper-input::-webkit-inner-spin-button {
   color: var(--ventia-blue);
 }
 
+.lookup-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lookup-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.35rem;
+}
+
+.lookup-row .lookup-count {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--ventia-muted);
+  white-space: nowrap;
+}
+
+.lookup-list li.is-inactive {
+  opacity: 0.7;
+}
+
+.lookup-list li.is-inactive .lookup-row input {
+  font-style: italic;
+}
+
 .booking-box {
   margin: 0 0 0.85rem;
   padding: 0.7rem 0.8rem;

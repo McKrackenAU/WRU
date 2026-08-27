@@ -1066,9 +1066,7 @@ const ROAD_OTHER = "__other__";
 function knownRoads() {
   const seen = new Set();
   const out = [];
-  const fromMeta = state.meta.roads || [];
-  const fromSites = (state.sites || []).map((s) => s.road_name).filter(Boolean);
-  for (const raw of [...fromMeta, ...fromSites]) {
+  for (const raw of state.meta.roads || []) {
     const name = String(raw || "").trim();
     if (!name) continue;
     const key = name.toLowerCase();

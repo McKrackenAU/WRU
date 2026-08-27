@@ -304,6 +304,9 @@ class LookupOut(BaseModel):
     value: str
     position: int
     active: bool
+    usage_count: int = 0
+    sites_updated: int = 0
+    merged: bool = False
 
 
 class MapLayerOut(BaseModel):

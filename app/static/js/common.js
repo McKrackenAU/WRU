@@ -365,7 +365,7 @@ export const ADMIN_NAV = [
   { href: "/admin", label: "Overview", hint: "Admin home" },
   { href: "/admin/users", label: "Users", hint: "Logins & roles" },
   { href: "/admin/stages", label: "Stages & programs", hint: "Workflow" },
-  { href: "/admin/settings", label: "Rules & import", hint: "SLAs · spreadsheet" },
+  { href: "/admin/settings", label: "Rules & roads", hint: "SLAs · road names · import" },
   { href: "/admin/rates", label: "Traffic rates", hint: "Crew & allowances" },
   { href: "/admin/asphalt", label: "Asphalt rates", hint: "Subcontractors" },
   { href: "/admin/system", label: "System & updates", hint: "Version · GitHub" },

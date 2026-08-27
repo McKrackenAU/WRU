@@ -12,6 +12,7 @@ from ..database import UPLOAD_DIR, get_db
 from ..financial_year import australian_financial_year
 from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
+from ..lookups import ensure_lookup_value
 from ..models import CostEstimate, MapFeature, MapLayer, Site, SiteCouncil
 from ..schemas import (
     SiteArchiveRequest,
@@ -360,6 +361,7 @@ def create_site(payload: SiteCreate, request: Request, db: Session = Depends(get
         site.financial_year = infer_financial_year(site)
     sync_computed_fields(site, db)
     _attach_geometry(db, site, payload.geometry, payload.geometry_name)
+    ensure_lookup_value(db, "road", site.road_name)
     db.commit()
     db.refresh(site)
     notify_from_request(request, site_ids=[site.id], reason="create")
@@ -430,6 +432,7 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     sync_computed_fields(site, db)
     if geometry is not None:
         _attach_geometry(db, site, geometry, geometry_name)
+    ensure_lookup_value(db, "road", site.road_name)
 
     after_stage = snapshot_stage(site, db)
     if workflow is not None:

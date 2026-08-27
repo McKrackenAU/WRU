@@ -68,16 +68,25 @@
       </section>
 
       <section class="panel-card">
-        <h2>Lookup lists</h2>
+        <h2>Roads</h2>
+        <p class="hint">This is the road list used on Add site, the register, Client lists, and Permits/TRIMS exports. Rename a road here to correct it everywhere it is used. Remove hides it from the dropdown; it does not delete sites.</p>
         <div class="filters" style="margin-bottom:0.75rem">
-          <select id="lookupKind">
-            <option value="council">Councils</option>
-            <option value="road">Roads</option>
-          </select>
-          <input id="lookupValue" type="text" placeholder="Add value…" />
-          <button type="button" class="btn btn-primary" id="btnAddLookup">Add</button>
+          <input id="roadLookupValue" type="text" placeholder="Add a road name…" maxlength="255" />
+          <button type="button" class="btn btn-primary" id="btnAddRoad">Add road</button>
         </div>
-        <ul class="event-list" id="lookupList"></ul>
+        <p class="hint" id="roadLookupStatus"></p>
+        <ul class="event-list lookup-list" id="roadLookupList"></ul>
+      </section>
+
+      <section class="panel-card">
+        <h2>Councils</h2>
+        <p class="hint">Rename a council to update every site that uses it. Remove hides it from council dropdowns.</p>
+        <div class="filters" style="margin-bottom:0.75rem">
+          <input id="councilLookupValue" type="text" placeholder="Add a council…" maxlength="128" />
+          <button type="button" class="btn btn-primary" id="btnAddCouncil">Add council</button>
+        </div>
+        <p class="hint" id="councilLookupStatus"></p>
+        <ul class="event-list lookup-list" id="councilLookupList"></ul>
       </section>
 
       <section class="panel-card">

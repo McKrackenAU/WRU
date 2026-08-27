@@ -148,6 +148,7 @@ def ensure_program_seed(db: Session) -> None:
 
 
 def ensure_lookup_seed(db: Session) -> None:
+    from .lookups import sync_usage_into_lookups
     from .models import LookupItem
 
     existing = {
@@ -162,6 +163,8 @@ def ensure_lookup_seed(db: Session) -> None:
         changed = True
     if changed:
         db.commit()
+    sync_usage_into_lookups(db, "road")
+    sync_usage_into_lookups(db, "council")
 
 
 def active_stages(db: Session) -> list[WorkflowStageDef]:
