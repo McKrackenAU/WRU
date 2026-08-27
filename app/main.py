@@ -23,6 +23,7 @@ from .auth import (
 )
 from .database import get_db
 from .financial_year import fy_choices
+from .live_hub import live_identity
 from .migrate import run_migrations
 from .models import DOC_CATEGORIES, LookupItem, Site, SiteCouncil, User
 from .routers import (
@@ -105,6 +106,22 @@ class NoCacheStaticMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class LiveIdentityMiddleware(BaseHTTPMiddleware):
+    """Stamp revision / boot / version on API responses so every screen can stay live."""
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        if request.url.path.startswith("/api/"):
+            try:
+                ident = live_identity()
+                response.headers["X-WRU-Revision"] = str(ident["revision"])
+                response.headers["X-WRU-Boot-Id"] = str(ident["boot_id"])
+                response.headers["X-WRU-Asset-Version"] = str(ident["asset_version"])
+            except Exception:
+                pass
+        return response
+
+
 class AuthGateMiddleware(BaseHTTPMiddleware):
     """Require a login session for app pages and APIs; admins for admin surfaces."""
 
@@ -137,6 +154,7 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
 
 
 # Starlette runs last-added middleware first on the request.
+app.add_middleware(LiveIdentityMiddleware)
 app.add_middleware(NoCacheStaticMiddleware)
 app.add_middleware(AuthGateMiddleware)
 app.add_middleware(

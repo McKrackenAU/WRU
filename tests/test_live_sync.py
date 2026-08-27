@@ -34,6 +34,10 @@ def test_common_has_revision_poll_and_coalesced_refresh():
     assert "boot_id" in COMMON
     assert "asset_version" in COMMON
     assert "hardReloadForUpdate" in COMMON
+    assert "ingestLiveHeaders" in COMMON
+    assert "X-WRU-Revision" in COMMON
+    assert "X-WRU-Boot-Id" in COMMON
+    assert "X-WRU-Asset-Version" in COMMON
     assert "bootstrapLiveSync" in COMMON
     assert "conn_id" not in COMMON  # client uses client_id only
 
@@ -49,6 +53,15 @@ def test_linked_generic_select_does_not_reuse_previous_site():
     assert "selected != null && selected !== \"\" ? String(selected) : sel.value" not in APP
     assert "arguments.length > 0" in APP
     assert "linked_generic_moa_id ?? \"\"" in APP or "linked_generic_moa_id ?? ''" in APP
+    assert "fillGenericSelect(\"\")" in APP
+    assert "state.suppressAutosave = true" in APP
+
+
+def test_api_responses_stamp_live_identity():
+    assert "class LiveIdentityMiddleware" in MAIN
+    assert "X-WRU-Revision" in MAIN
+    assert "X-WRU-Boot-Id" in MAIN
+    assert "X-WRU-Asset-Version" in MAIN
 
 
 def test_register_awaits_chrome_and_syncs_revision():

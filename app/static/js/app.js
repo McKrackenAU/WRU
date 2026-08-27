@@ -1052,7 +1052,20 @@ async function loadAll() {
   state.genericMoas = Array.isArray(generics) ? generics : [];
   fillFilterOptions();
   fillProgramSelect();
-  fillGenericSelect();
+  const prevSuppress = state.suppressAutosave;
+  state.suppressAutosave = true;
+  try {
+    if (state.detailSiteId) {
+      const open = state.sites.find((s) => s.id === Number(state.detailSiteId));
+      fillGenericSelect(
+        open ? (open.linked_generic_moa_id ?? "") : ($("fLinkedGeneric")?.value || "")
+      );
+    } else {
+      fillGenericSelect("");
+    }
+  } finally {
+    state.suppressAutosave = prevSuppress;
+  }
   fillRoadList();
   renderRegister();
   maybeScrollHighlight();

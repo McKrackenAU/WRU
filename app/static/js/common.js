@@ -137,6 +137,11 @@ export async function api(path, options = {}) {
       headers,
       signal: options.signal || ctrl.signal,
     });
+    try {
+      ingestLiveHeaders(res, options.method || "GET");
+    } catch {
+      /* live headers must never break the request */
+    }
     if (res.status === 401 && !String(path).startsWith("/api/auth/")) {
       const next = encodeURIComponent(location.pathname + location.search);
       location.href = `/login?next=${next}`;
@@ -656,7 +661,38 @@ function rememberServerIdentity(data) {
 }
 
 function hardReloadForUpdate() {
-  location.reload();
+  const url = new URL(location.href);
+  if (pageAssetVersion) url.searchParams.set("_av", pageAssetVersion);
+  else url.searchParams.set("_av", String(Date.now()));
+  location.replace(url.toString());
+}
+
+function ingestLiveHeaders(res, method) {
+  if (!res || typeof res.headers?.get !== "function") return;
+  const revisionRaw = res.headers.get("X-WRU-Revision");
+  const boot = res.headers.get("X-WRU-Boot-Id");
+  const version = res.headers.get("X-WRU-Asset-Version");
+  if (revisionRaw == null && !boot && !version) return;
+  const revision = Number(revisionRaw);
+  const data = {
+    revision: Number.isFinite(revision) ? revision : undefined,
+    boot_id: boot || undefined,
+    asset_version: version || undefined,
+  };
+  const ident = rememberServerIdentity(data);
+  if (ident === "reload") {
+    hardReloadForUpdate();
+    return;
+  }
+  if (ident === "restart") {
+    knownRevision = 0;
+    queueLiveRefresh({ type: "sites_changed", reason: "restart", ...data });
+    return;
+  }
+  const verb = String(method || "GET").toUpperCase();
+  if (verb !== "GET" && verb !== "HEAD" && verb !== "OPTIONS" && typeof data.revision === "number") {
+    markLiveRevision(data.revision);
+  }
 }
 
 /** Fetch current server revision — used on boot and as SSE fallback. */
