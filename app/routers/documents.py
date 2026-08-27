@@ -1,20 +1,133 @@
 from __future__ import annotations
 
+import base64
+import json
+import mimetypes
+import secrets
+import shutil
+import time
 import uuid
 from pathlib import Path
 
-import aiofiles
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..database import UPLOAD_DIR, get_db
+from ..database import DATA_DIR, UPLOAD_DIR, get_db
 from ..models import DOC_CATEGORIES, Document, Site
-from ..schemas import DocumentOut
+from ..routers.import_tracker import (
+    CHUNK_SIZE,
+    TrackerChunkBody,
+    assemble_chunks,
+    unwrap_chunk_payload,
+)
+from ..schemas import DocumentOut, DocumentUpdate
 
 router = APIRouter(tags=["documents"])
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_CHUNKS = (MAX_UPLOAD_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
+WRAP_KEY_BYTES = 32
+STAGING_TTL_SEC = 20 * 60
+STAGING_DIR = DATA_DIR / "doc-staging"
+STAGING_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class DocumentUploadBegin(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    size: int = Field(ge=1, le=MAX_UPLOAD_BYTES)
+    category: str = "other"
+    description: str | None = None
+    uploaded_by: str | None = None
+    moa_number: str | None = None
+
+
+def normalize_doc_category(category: str | None, filename: str = "") -> str:
+    category = (category or "other").strip().lower() or "other"
+    if category not in DOC_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Invalid category. Use one of: {', '.join(DOC_CATEGORIES)}")
+    suffix = Path(filename or "").suffix.lower()
+    if category == "other" and suffix in {".eml", ".msg", ".oft"}:
+        return "email"
+    return category
+
+
+def _cleanup_stale_sessions() -> None:
+    cutoff = time.time() - STAGING_TTL_SEC
+    for path in STAGING_DIR.glob("*"):
+        if not path.is_dir():
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def _session_dir(upload_id: str) -> Path:
+    try:
+        uid = uuid.UUID(upload_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid upload id") from exc
+    path = STAGING_DIR / str(uid)
+    if not path.is_dir():
+        raise HTTPException(status_code=404, detail="Upload session expired — start again")
+    return path
+
+
+def _read_meta(folder: Path) -> dict:
+    path = folder / "meta.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Upload session expired — start again")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Corrupt upload session") from exc
+
+
+def _write_meta(folder: Path, meta: dict) -> None:
+    (folder / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def store_document_bytes(
+    db: Session,
+    site: Site,
+    *,
+    content: bytes,
+    filename: str,
+    content_type: str | None,
+    category: str,
+    description: str | None,
+    uploaded_by: str | None,
+    moa_number: str | None,
+) -> Document:
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
+    original = Path(filename or "upload.bin").name
+    category = normalize_doc_category(category, original)
+    suffix = Path(original).suffix[:32]
+    stored_name = f"{site.id}_{uuid.uuid4().hex}{suffix}"
+    dest = UPLOAD_DIR / stored_name
+    dest.write_bytes(content)
+    guessed, _ = mimetypes.guess_type(original)
+    doc = Document(
+        site_id=site.id,
+        moa_number=(moa_number or site.moa_number or "").strip() or None,
+        category=category,
+        description=(description or "").strip() or None,
+        stored_name=stored_name,
+        original_filename=original,
+        content_type=content_type or guessed or "application/octet-stream",
+        size_bytes=len(content),
+        uploaded_by=uploaded_by,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
 
 
 def _doc_out(doc: Document, site: Site | None = None) -> dict:
@@ -93,47 +206,156 @@ async def upload_document(
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
 
-    category = (category or "other").strip().lower()
-    if category not in DOC_CATEGORIES:
-        raise HTTPException(status_code=400, detail=f"Invalid category. Use one of: {', '.join(DOC_CATEGORIES)}")
-
     original = Path(file.filename or "upload.bin").name
-    suffix = Path(original).suffix[:32]
-    # Infer email category from extension when caller left default
-    if category == "other" and suffix.lower() in {".eml", ".msg", ".oft"}:
-        category = "email"
-
-    stored_name = f"{site_id}_{uuid.uuid4().hex}{suffix}"
-    dest = UPLOAD_DIR / stored_name
-
     size = 0
-    async with aiofiles.open(dest, "wb") as out:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
-                await out.close()
-                dest.unlink(missing_ok=True)
-                raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
-            await out.write(chunk)
-
-    doc = Document(
-        site_id=site_id,
-        moa_number=(moa_number or site.moa_number or "").strip() or None,
-        category=category,
-        description=(description or "").strip() or None,
-        stored_name=stored_name,
-        original_filename=original,
+    chunks: list[bytes] = []
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    doc = store_document_bytes(
+        db,
+        site,
+        content=content,
+        filename=original,
         content_type=file.content_type,
-        size_bytes=size,
+        category=category,
+        description=description,
         uploaded_by=uploaded_by,
+        moa_number=moa_number,
     )
-    db.add(doc)
+    return _doc_out(doc, site)
+
+
+@router.post("/api/sites/{site_id}/documents/session")
+def begin_document_session(site_id: int, payload: DocumentUploadBegin, db: Session = Depends(get_db)):
+    """Start a chunked JSON upload (same protocol as tracker import) so SSL inspection does not block files."""
+    site = db.get(Site, site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    _cleanup_stale_sessions()
+    category = normalize_doc_category(payload.category, payload.filename)
+    upload_id = str(uuid.uuid4())
+    folder = STAGING_DIR / upload_id
+    folder.mkdir(parents=True, exist_ok=True)
+    chunks = (payload.size + CHUNK_SIZE - 1) // CHUNK_SIZE
+    wrap_key = base64_wrap_key()
+    _write_meta(
+        folder,
+        {
+            "site_id": site_id,
+            "filename": Path(payload.filename).name,
+            "size": payload.size,
+            "chunks": chunks,
+            "received": [],
+            "created": time.time(),
+            "wrap_key": wrap_key,
+            "category": category,
+            "description": (payload.description or "").strip() or None,
+            "uploaded_by": (payload.uploaded_by or "").strip() or None,
+            "moa_number": (payload.moa_number or "").strip() or None,
+        },
+    )
+    return {
+        "id": upload_id,
+        "chunk_size": CHUNK_SIZE,
+        "chunks": chunks,
+        "wrap_key": wrap_key,
+    }
+
+
+def base64_wrap_key() -> str:
+    return base64.b64encode(secrets.token_bytes(WRAP_KEY_BYTES)).decode("ascii")
+
+
+@router.post("/api/sites/{site_id}/documents/session/{upload_id}/chunk/{index}")
+async def upload_document_chunk(site_id: int, upload_id: str, index: int, request: Request):
+    if index < 0 or index >= MAX_CHUNKS:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    folder = _session_dir(upload_id)
+    meta = _read_meta(folder)
+    if int(meta.get("site_id") or 0) != site_id:
+        raise HTTPException(status_code=400, detail="Upload session does not match this site")
+    expected = int(meta.get("chunks") or 0)
+    if expected and index >= expected:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if ctype != "application/json":
+        raise HTTPException(
+            status_code=415,
+            detail="Upload protocol changed — Check for updates, then retry. Chunks must be JSON, not a file upload.",
+        )
+    wrap_key = meta.get("wrap_key")
+    if not wrap_key:
+        raise HTTPException(status_code=400, detail="Upload session is from an older app version — start again")
+    try:
+        raw_json = await request.json()
+        payload = TrackerChunkBody.model_validate(raw_json)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid chunk payload") from exc
+    data = unwrap_chunk_payload(payload.p, wrap_key)
+    received = set(meta.get("received") or [])
+    dest = folder / f"chunk-{index:05d}.bin"
+    dest.write_bytes(data)
+    received.add(index)
+    meta["received"] = sorted(received)
+    _write_meta(folder, meta)
+    return {"received": len(received), "chunks": meta.get("chunks")}
+
+
+@router.post("/api/sites/{site_id}/documents/session/{upload_id}/commit", response_model=DocumentOut, status_code=201)
+def commit_document_session(site_id: int, upload_id: str, db: Session = Depends(get_db)):
+    site = db.get(Site, site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    folder = _session_dir(upload_id)
+    meta = _read_meta(folder)
+    if int(meta.get("site_id") or 0) != site_id:
+        raise HTTPException(status_code=400, detail="Upload session does not match this site")
+    expected = int(meta.get("chunks") or 0)
+    got = set(meta.get("received") or [])
+    if expected and got != set(range(expected)):
+        missing = sorted(set(range(expected)) - got)[:8]
+        raise HTTPException(status_code=400, detail=f"Missing chunks {missing} — retry the upload")
+    try:
+        content = assemble_chunks(folder, int(meta.get("size") or 0))
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
+        doc = store_document_bytes(
+            db,
+            site,
+            content=content,
+            filename=str(meta.get("filename") or "upload.bin"),
+            content_type=None,
+            category=str(meta.get("category") or "other"),
+            description=meta.get("description"),
+            uploaded_by=meta.get("uploaded_by"),
+            moa_number=meta.get("moa_number"),
+        )
+        return _doc_out(doc, site)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+@router.patch("/api/documents/{document_id}", response_model=DocumentOut)
+def update_document(document_id: int, payload: DocumentUpdate, db: Session = Depends(get_db)):
+    doc = db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if payload.category is not None:
+        doc.category = normalize_doc_category(payload.category, doc.original_filename)
+    if payload.description is not None:
+        doc.description = payload.description.strip() or None
     db.commit()
     db.refresh(doc)
-    return _doc_out(doc, site)
+    return _doc_out(doc)
 
 
 @router.get("/api/documents/{document_id}/download")

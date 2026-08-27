@@ -1010,6 +1010,27 @@ body.map-page .main {
   color: var(--ventia-green);
 }
 
+.doc-cat-select {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  min-height: 1.7rem;
+  padding: 0.12rem 0.4rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.4rem;
+  background: var(--field-bg);
+  color: inherit;
+  text-transform: capitalize;
+  max-width: 11rem;
+}
+
+.doc-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;

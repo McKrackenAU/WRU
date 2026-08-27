@@ -38,6 +38,11 @@ class DocumentOut(BaseModel):
     site_number: str | None = None
 
 
+class DocumentUpdate(BaseModel):
+    category: str | None = None
+    description: str | None = None
+
+
 class TrackingEventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

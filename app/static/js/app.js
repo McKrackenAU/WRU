@@ -16,6 +16,8 @@ import {
   userName,
   onLiveSitesChanged,
   syncLiveRevision,
+  uploadFileChunked,
+  docCategorySelectHtml,
 } from "./common.js";
 
 const state = {
@@ -1601,14 +1603,83 @@ async function refreshDocuments() {
           (d) => `
       <li>
         <div class="top">
-          <span><span class="doc-cat">${escapeHtml(d.category)}</span> · ${(d.size_bytes / 1024).toFixed(1)} KB</span>
+          <span class="doc-meta">
+            ${docCategorySelectHtml(d.id, d.category, { disabled: !canDelete })}
+            · ${(d.size_bytes / 1024).toFixed(1)} KB
+          </span>
           ${canDelete ? `<button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>` : ""}
         </div>
         <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></p>
+        ${d.description ? `<p class="meta">${escapeHtml(d.description)}</p>` : ""}
       </li>`
         )
         .join("")
     : `<li><p class="meta">No documents yet.</p></li>`;
+}
+
+function setDocUploadStatus(text) {
+  const el = $("docUploadStatus");
+  if (!el) return;
+  if (!text) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = text;
+}
+
+async function uploadDoc() {
+  if (!state.detailSiteId) return;
+  const fileInput = $("docFile");
+  const files = [...(fileInput?.files || [])].filter((f) => f && f.size);
+  if (!files.length) {
+    alertDialog("Choose one or more files first");
+    return;
+  }
+  const oversized = files.find((f) => f.size > 25 * 1024 * 1024);
+  if (oversized) {
+    alertDialog(`${oversized.name} exceeds the 25 MB limit`);
+    return;
+  }
+  const category = $("docCategory")?.value || "other";
+  const description = $("docDesc")?.value.trim() || null;
+  const uploadedBy = userName() || null;
+  const btn = $("btnUploadDoc");
+  if (btn) btn.disabled = true;
+  const errors = [];
+  try {
+    for (let i = 0; i < files.length; i += 1) {
+      const file = files[i];
+      const prefix = files.length > 1 ? `${i + 1}/${files.length} · ${file.name}` : file.name;
+      setDocUploadStatus(`${prefix} — starting…`);
+      try {
+        await uploadFileChunked(file, {
+          beginUrl: `/api/sites/${state.detailSiteId}/documents/session`,
+          chunkUrl: (id, idx) =>
+            `/api/sites/${state.detailSiteId}/documents/session/${encodeURIComponent(id)}/chunk/${idx}`,
+          commitUrl: (id) =>
+            `/api/sites/${state.detailSiteId}/documents/session/${encodeURIComponent(id)}/commit`,
+          beginBody: { category, description, uploaded_by: uploadedBy },
+          onProgress: (msg) => setDocUploadStatus(`${prefix} — ${msg}`),
+        });
+      } catch (err) {
+        errors.push(`${file.name}: ${errorMessage(err, "Upload failed")}`);
+      }
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+  fileInput.value = "";
+  if ($("docDesc")) $("docDesc").value = "";
+  await refreshDocuments();
+  await loadAll();
+  if (errors.length) {
+    setDocUploadStatus(`${files.length - errors.length} uploaded · ${errors.length} failed`);
+    alertDialog(errors.join("\n"));
+    return;
+  }
+  setDocUploadStatus(files.length === 1 ? "Uploaded." : `Uploaded ${files.length} files.`);
 }
 
 async function addTracking() {
@@ -1625,30 +1696,6 @@ async function addTracking() {
   });
   $("trackMessage").value = "";
   await refreshTracking();
-  await loadAll();
-}
-
-async function uploadDoc() {
-  if (!state.detailSiteId) return;
-  const fileInput = $("docFile");
-  if (!fileInput.files?.length) {
-      alertDialog("Choose a file first");
-      return;
-    }
-  const fd = new FormData();
-  fd.append("file", fileInput.files[0]);
-  fd.append("category", $("docCategory").value);
-  if ($("docDesc").value.trim()) fd.append("description", $("docDesc").value.trim());
-  if (userName()) fd.append("uploaded_by", userName());
-  const res = await fetch(`/api/sites/${state.detailSiteId}/documents`, { method: "POST", body: fd });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    alertDialog(body.detail || "Upload failed");
-    return;
-  }
-  fileInput.value = "";
-  $("docDesc").value = "";
-  await refreshDocuments();
   await loadAll();
 }
 
@@ -1892,6 +1939,20 @@ function bindEvents() {
     if (!await confirmDialog("Delete this document?")) return;
     await api(`/api/documents/${btn.dataset.delDoc}`, { method: "DELETE" });
     await refreshDocuments();
+  });
+  on("docList", "change", async (ev) => {
+    const sel = ev.target.closest("[data-doc-cat]");
+    if (!sel || sel.disabled) return;
+    try {
+      await api(`/api/documents/${sel.dataset.docCat}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: sel.value }),
+      });
+    } catch (err) {
+      alertDialog(errorMessage(err, "Could not update category"));
+      await refreshDocuments();
+    }
   });
 }
 

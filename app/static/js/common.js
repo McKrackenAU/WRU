@@ -58,7 +58,7 @@ export function humanizeHttpError(status, text, fallback = "Request failed") {
   const raw = String(text || "");
   const code = Number(status) || 0;
   if (/zscaler/i.test(raw) || (looksLikeHtmlOrProxyPage(raw) && /zscaler|z-?scaler/i.test(raw))) {
-    return "Workplace security (Zscaler) blocked this request. File uploads from this network are being intercepted. Check for updates, then retry — import now sends JSON instead of a spreadsheet file. If it still fails, try from a network that is not filtered.";
+    return "Workplace security (Zscaler) blocked this request. File uploads from this network are being intercepted. Check for updates, then retry — files now send as small JSON chunks instead of a raw upload. If it still fails, try from a network that is not filtered.";
   }
   if (/cloudflare|cf-ray|error code 52|attention required/i.test(raw)) {
     return "Cloudflare or the tunnel blocked this request. Check for updates and retry, or import from the LAN.";
@@ -68,7 +68,7 @@ export function humanizeHttpError(status, text, fallback = "Request failed") {
     return `A network filter or login page intercepted this request (${http}). The response was a web page, not an API result.`;
   }
   if (code === 413) {
-    return "A proxy rejected the request as too large. Retry — the importer sends small JSON chunks.";
+    return "A proxy rejected the request as too large. Retry — uploads send small JSON chunks.";
   }
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -182,6 +182,88 @@ export async function api(path, options = {}) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function xorBytes(u8, keyU8) {
+  const out = new Uint8Array(u8.length);
+  const klen = keyU8.length;
+  for (let i = 0; i < u8.length; i += 1) out[i] = u8[i] ^ keyU8[i % klen];
+  return out;
+}
+
+function bytesToB64(u8) {
+  let s = "";
+  const step = 0x8000;
+  for (let i = 0; i < u8.length; i += step) {
+    s += String.fromCharCode(...u8.subarray(i, i + step));
+  }
+  return btoa(s);
+}
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/**
+ * Upload a file as XOR+base64 JSON chunks (same protocol as tracker import).
+ * beginUrl POST { filename, size, ...beginBody } → { id, chunk_size, wrap_key }
+ * chunkUrl(id, index) POST { p }
+ * commitUrl(id) POST
+ */
+export async function uploadFileChunked(file, { beginUrl, chunkUrl, commitUrl, beginBody = {}, onProgress, timeoutMs = 45000 }) {
+  if (!file?.size) throw new Error("That file is empty");
+  const session = await api(beginUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, size: file.size, ...beginBody }),
+    timeoutMs: Math.max(timeoutMs, 20000),
+  });
+  if (!session?.id) throw new Error("Could not start upload session");
+  if (!session.wrap_key) {
+    throw new Error("This server is still on the old upload protocol. Check for updates, then retry.");
+  }
+  const keyBytes = b64ToBytes(session.wrap_key);
+  const chunkSize = Number(session.chunk_size) || 48 * 1024;
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const total = Math.max(1, Math.ceil(buf.length / chunkSize));
+  for (let i = 0; i < total; i += 1) {
+    onProgress?.(`Uploading… ${i + 1}/${total}`);
+    const slice = buf.subarray(i * chunkSize, (i + 1) * chunkSize);
+    const wrapped = xorBytes(slice, keyBytes);
+    await api(chunkUrl(session.id, i), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ p: bytesToB64(wrapped) }),
+      timeoutMs,
+    });
+  }
+  onProgress?.("Saving…");
+  return api(commitUrl(session.id), { method: "POST", timeoutMs: Math.max(timeoutMs, 60000) });
+}
+
+export const DOC_CATEGORY_LABELS = {
+  email: "Email",
+  tgs: "TGS",
+  plan: "Plan",
+  moa: "MoA",
+  correspondence: "Correspondence",
+  photo: "Photo",
+  other: "Other",
+};
+
+export function docCategorySelectHtml(docId, current, { disabled = false, extraClass = "" } = {}) {
+  const opts = Object.entries(DOC_CATEGORY_LABELS)
+    .map(
+      ([key, label]) =>
+        `<option value="${key}" ${key === current ? "selected" : ""}>${label}</option>`
+    )
+    .join("");
+  const cls = ["doc-cat-select", extraClass].filter(Boolean).join(" ");
+  const dis = disabled ? "disabled" : "";
+  return `<select class="${cls}" data-doc-cat="${docId}" ${dis} aria-label="Document category">${opts}</select>`;
 }
 
 export function escapeHtml(str) {

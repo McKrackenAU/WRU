@@ -300,10 +300,12 @@
                 <option value="photo">Photo</option>
                 <option value="other">Other</option>
               </select>
-              <input type="text" id="docDesc" placeholder="Description" />
-              <input type="file" id="docFile" />
+              <input type="text" id="docDesc" placeholder="Description (optional, applies to all)" />
+              <input type="file" id="docFile" multiple />
               <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
             </div>
+            <p class="hint" id="docUploadHint">Select one or more files. They all use this category. Uploads use the same JSON-chunk method as bulk import so workplace filters do not block them.</p>
+            <p class="hint" id="docUploadStatus" hidden></p>
             <ul id="docList" class="event-list"></ul>
             <div class="toolbar" style="margin-top:1rem">
               <a class="btn" id="btnOpenCosts" href="/costs">Cost calculator</a>
