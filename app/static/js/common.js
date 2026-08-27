@@ -1,3 +1,5 @@
+import { initPwaChrome, notifyLiveIfBackground, registerServiceWorker } from "./pwa.js";
+
 export const THEME_KEY = "wru-tgs-theme";
 
 export function $(id) {
@@ -796,6 +798,7 @@ async function flushLiveRefresh() {
   refreshPending = null;
   refreshRunning = true;
   try {
+    notifyLiveIfBackground(event);
     const handlers = [...liveHandlers];
     for (const handler of handlers) {
       try {
@@ -966,6 +969,8 @@ export async function injectChrome({ active, mode } = {}) {
       <div class="topbar-end">
         ${who ? `<span class="session-user" title="Signed in">${who}</span>` : ""}
         ${adminToggle}
+        <button type="button" class="btn" id="btnInstallApp" hidden>Install app</button>
+        <button type="button" class="btn" id="btnLiveAlerts" hidden>Live alerts</button>
         <a class="btn" href="/password" id="changePasswordLink">Change password</a>
       </div>
     `;
@@ -1008,6 +1013,8 @@ export async function injectChrome({ active, mode } = {}) {
   });
   enhanceNumberInputs(document);
   watchNumberInputs();
+  registerServiceWorker();
+  initPwaChrome();
   if (location.pathname !== "/login") bootstrapLiveSync();
 }
 

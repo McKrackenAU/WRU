@@ -245,6 +245,11 @@ def _page(name: str) -> HTMLResponse:
 
     boot = f"""<script type="importmap">{_import_map(ver)}</script>
 <meta name="wru-asset-version" content="{ver}" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" href="/static/brand/pwa-180.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="WRU TGS" />
+<meta name="mobile-web-app-capable" content="yes" />
 <script>
 window.__WRU_ASSET_V={json.dumps(ver)};
 window.addEventListener("error",function(e){{
@@ -277,6 +282,29 @@ window.addEventListener("error",function(e){{
 @app.get("/login")
 def login_page():
     return _page("login.html")
+
+
+@app.get("/manifest.webmanifest")
+def pwa_manifest():
+    path = STATIC_DIR / "manifest.webmanifest"
+    return Response(
+        path.read_text(encoding="utf-8"),
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.get("/sw.js")
+def pwa_service_worker():
+    body = (STATIC_DIR / "sw.js").read_text(encoding="utf-8").replace("__WRU_ASSET_V__", version_string())
+    return Response(
+        body,
+        media_type="text/javascript; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Service-Worker-Allowed": "/",
+        },
+    )
 
 
 @app.get("/password")

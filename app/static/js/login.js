@@ -1,4 +1,5 @@
 import { $, on, safeNextUrl } from "./common.js";
+import { initPwaChrome, registerServiceWorker } from "./pwa.js";
 
 function qs(name) {
   return new URLSearchParams(location.search).get(name) || "";
@@ -40,6 +41,8 @@ async function tryResumeSession() {
 }
 
 async function init() {
+  registerServiceWorker();
+  initPwaChrome();
   const existing = await tryResumeSession();
   if (existing) {
     afterLogin(existing);

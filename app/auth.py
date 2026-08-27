@@ -238,13 +238,22 @@ PASSWORD_CHANGE_ALLOWED_PATHS = {
     "/api/auth/me",
     "/api/auth/change-password",
     "/api/auth/logout",
+    "/manifest.webmanifest",
+    "/sw.js",
 }
 
 
 def is_public_path(path: str) -> bool:
     if path.startswith("/static/"):
         return True
-    if path in {"/login", "/favicon.ico", "/api/auth/login", "/api/auth/logout"}:
+    if path in {
+        "/login",
+        "/favicon.ico",
+        "/api/auth/login",
+        "/api/auth/logout",
+        "/manifest.webmanifest",
+        "/sw.js",
+    }:
         return True
     return False
 
