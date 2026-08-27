@@ -10,6 +10,9 @@ STYLE_CSS = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
 def test_register_has_wait_time_column_header():
     assert 'sortHeader("must", "Must-have")' in APP_JS
     assert 'sortHeader("wait", "Wait time")' in APP_JS
+    assert APP_JS.index('sortHeader("start", "Start")') < APP_JS.index(
+        'sortHeader("shifts", "Shifts")'
+    )
     assert APP_JS.index('sortHeader("must", "Must-have")') < APP_JS.index(
         'sortHeader("wait", "Wait time")'
     )
@@ -22,7 +25,7 @@ def test_register_rows_use_moa_wait_not_must_have_days():
     assert "moaWaitCell" in APP_JS
     assert "m.moa_wait" in APP_JS
     assert "business_days_waiting" in APP_JS
-    assert 'colspan="10"' in APP_JS
+    assert 'colspan="11"' in APP_JS
     # Must-have cell is date/Received only — no inline · Nd suffix.
     assert " · ${escapeHtml(must.label)}" not in APP_JS
 

@@ -150,6 +150,7 @@ class Site(Base):
     register_order: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     tgs_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     indicative_site_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    indicative_shifts_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     moa_must_have_received_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     must_have_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     priority_manual: Mapped[int | None] = mapped_column(Integer, nullable=True)

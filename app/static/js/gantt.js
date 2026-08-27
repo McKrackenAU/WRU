@@ -55,6 +55,20 @@ function fillAddControls() {
         )
         .join("")
     : `<option value="">No sites left to add</option>`;
+  syncAddShiftsFromSite();
+}
+
+function siteIndicativeShifts(site) {
+  const n = Number(site?.indicative_shifts_count);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.min(365, Math.round(n));
+}
+
+function syncAddShiftsFromSite() {
+  const id = Number($("addSite")?.value || 0);
+  const site = state.sites.find((s) => s.id === id);
+  const n = siteIndicativeShifts(site);
+  if ($("addShifts")) $("addShifts").value = String(n || 1);
 }
 
 function addShiftType() {
@@ -127,7 +141,7 @@ function renderChart(items) {
   const chart = $("ganttChart");
   const dated = items.filter((i) => i.planned_start && i.planned_end);
   if (!dated.length) {
-    chart.innerHTML = `<p class="hint">No dated sites yet — set indicative start dates on the sites register, then refresh.</p>`;
+    chart.innerHTML = `<p class="hint">No dated sites yet — set indicative start dates and shifts on the sites register, then refresh.</p>`;
     return;
   }
   const starts = dated.map((i) => new Date(i.planned_start + "T00:00:00"));
@@ -293,6 +307,7 @@ async function init() {
   fillPrograms(prog);
   syncPdfLink();
   wireShiftPair($("addShiftDay"), $("addShiftNight"));
+  on("addSite", "change", () => syncAddShiftsFromSite());
   onLiveSitesChanged(() => loadBoard().catch(() => {}));
   await loadBoard();
   await syncLiveRevision();
@@ -309,7 +324,7 @@ async function init() {
     if (state.board?.schedule_saved) {
       if (
         !(await confirmDialog(
-          "Rebuild this Gantt from site indicative starts? Saved order and dates will be replaced. Weather / missed days on the board calendar are kept."
+          "Rebuild this Gantt from site indicative starts and shifts? Saved order and dates will be replaced. Weather / missed days on the board calendar are kept."
         ))
       ) {
         return;

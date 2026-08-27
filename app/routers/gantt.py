@@ -14,7 +14,7 @@ from ..live_hub import notify_from_request
 from ..gantt_engine import normalize_shift_type, recompute_board_dates
 from ..gantt_export import build_gantt_pdf
 from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site, TrafficContractor
-from ..services import sync_computed_fields
+from ..services import indicative_shifts_count, sync_computed_fields
 
 router = APIRouter(prefix="/api/gantt", tags=["gantt"])
 
@@ -123,7 +123,7 @@ def _recompute_and_save(db: Session, board: GanttBoard, *, write_back_sites: boo
 
 
 def _auto_populate_board(db: Session, board: GanttBoard, *, unlock: bool = False) -> int:
-    """Ensure all active program sites are on the board, seeded from indicative starts.
+    """Ensure all active program sites are on the board, seeded from indicative starts and shifts.
 
     When the Gantt has been saved (``schedule_saved``), existing item order and
     fixed starts are left alone so weather delays can be edited after export.
@@ -156,7 +156,7 @@ def _auto_populate_board(db: Session, board: GanttBoard, *, unlock: bool = False
                 board_id=board.id,
                 site_id=site.id,
                 position=(max_pos + 10) if locked else pos,
-                shifts_count=1,
+                shifts_count=indicative_shifts_count(site),
                 link_mode="fixed_start" if site.indicative_site_start_date else "after_previous",
                 fixed_start=site.indicative_site_start_date,
             )
@@ -170,6 +170,8 @@ def _auto_populate_board(db: Session, board: GanttBoard, *, unlock: bool = False
                 if site.indicative_site_start_date:
                     item.link_mode = "fixed_start"
                     item.fixed_start = site.indicative_site_start_date
+            if getattr(site, "indicative_shifts_count", None):
+                item.shifts_count = indicative_shifts_count(site)
 
     starts = [s.indicative_site_start_date for s in sites if s.indicative_site_start_date]
     if starts and board.anchor_start is None:
@@ -256,11 +258,14 @@ def add_item(
     if payload.fixed_start is None and site.indicative_site_start_date and link_mode == "after_previous":
         # Prefer parking new sites on their indicative start until the chart is reordered
         link_mode = "fixed_start"
+    shifts = payload.model_dump(exclude_unset=True).get("shifts_count")
+    if shifts is None:
+        shifts = indicative_shifts_count(site)
     item = GanttItem(
         board_id=board.id,
         site_id=payload.site_id,
         position=pos,
-        shifts_count=payload.shifts_count,
+        shifts_count=shifts,
         shift_type=normalize_shift_type(payload.shift_type),
         link_mode=link_mode,
         fixed_start=fixed if link_mode == "fixed_start" else payload.fixed_start,
@@ -383,7 +388,7 @@ def sync_program_sites(
     unlock: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    """Refresh the board from active program sites and their indicative start dates."""
+    """Refresh the board from active program sites and their indicative starts / shifts."""
     board = _load_board(db, program)
     added = _auto_populate_board(db, board, unlock=unlock)
     out = _recompute_and_save(db, board, write_back_sites=False)

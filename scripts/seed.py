@@ -34,6 +34,7 @@ def main() -> None:
                 "program": "Lifecycle pavements",
                 "tgs_reference": "TGS-5035-A",
                 "indicative_site_start_date": today + timedelta(days=45),
+                "indicative_shifts_count": 3,
                 "moa_must_have_received_date": today + timedelta(days=30),
                 "comments": "Ventia to review - 3x comments made Re: detours",
                 "moa_number": "0093225",

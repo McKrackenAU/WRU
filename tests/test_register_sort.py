@@ -15,6 +15,7 @@ def test_register_column_headers_are_sortable():
         ("status", "Status"),
         ("pri", "Pri"),
         ("start", "Start"),
+        ("shifts", "Shifts"),
         ("must", "Must-have"),
         ("wait", "Wait time"),
         ("list", "List"),

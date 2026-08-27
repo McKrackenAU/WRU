@@ -77,6 +77,7 @@ class SiteBase(BaseModel):
     register_order: int | None = None
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
+    indicative_shifts_count: int | None = Field(default=None, ge=1, le=365)
     moa_must_have_received_date: date | None = None
     must_have_manual: bool = False
     priority_manual: int | None = Field(default=None, ge=1, le=2)
@@ -108,6 +109,7 @@ class SiteCreate(BaseModel):
     register_order: int | None = None
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
+    indicative_shifts_count: int | None = Field(default=None, ge=1, le=365)
     moa_must_have_received_date: date | None = None
     must_have_manual: bool = False
     priority_manual: int | None = Field(default=None, ge=1, le=2)
@@ -141,6 +143,7 @@ class SiteUpdate(BaseModel):
     register_order: int | None = None
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
+    indicative_shifts_count: int | None = Field(default=None, ge=1, le=365)
     moa_must_have_received_date: date | None = None
     must_have_manual: bool | None = None
     priority_manual: int | None = Field(default=None, ge=1, le=2)

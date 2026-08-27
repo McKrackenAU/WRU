@@ -60,6 +60,10 @@ function updateSiteHint() {
     site.moa_number ? `MoA ${site.moa_number}` : "No MoA # yet",
     site.tgs_reference ? `TGS ${site.tgs_reference}` : null,
   ].filter(Boolean);
+  const shifts = Number(site.indicative_shifts_count);
+  if (Number.isFinite(shifts) && shifts >= 1) {
+    parts.push(`${Math.round(shifts)} indicative shift${shifts === 1 ? "" : "s"}`);
+  }
   hint.textContent = `Saving to: ${parts.join(" · ")}`;
 }
 
@@ -82,6 +86,22 @@ function fillSiteSelect(preselectId = null) {
       .join("");
   if (cur && [...sel.options].some((o) => o.value === cur)) sel.value = cur;
   updateSiteHint();
+}
+
+function applySiteScheduleDefaults(site, { refresh = true } = {}) {
+  if (!site) return;
+  if ($("sStart")) {
+    $("sStart").value = site.indicative_site_start_date || todayISO();
+  }
+  const n = Number(site.indicative_shifts_count);
+  if (Number.isFinite(n) && n >= 1) {
+    if ($("sDays")) $("sDays").value = String(Math.min(365, Math.round(n)));
+    if ($("sPerDay")) $("sPerDay").value = "1";
+  } else {
+    if ($("sDays")) $("sDays").value = "5";
+    if ($("sPerDay")) $("sPerDay").value = "1";
+  }
+  if (refresh) queueScheduleRefresh();
 }
 
 function defaultClosureTimes() {
@@ -843,6 +863,7 @@ async function init() {
   $("sVmsLead").value = settings.vms_lead_days_default;
   $("cVmsLead").value = settings.vms_lead_days_default;
   $("sStart").value = todayISO();
+  applySiteScheduleDefaults(selectedSite(), { refresh: false });
   await refreshSchedule();
   const clo = defaultClosureTimes();
   $("cStart").value = clo.start;
@@ -908,6 +929,7 @@ async function init() {
   });
 
   $("costSite").addEventListener("change", () => {
+    applySiteScheduleDefaults(selectedSite());
     updateSiteHint();
     if ($("historyFilter").value === "assigned") loadEstimates().catch((e) => { alertDialog(e.message); });
   });

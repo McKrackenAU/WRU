@@ -471,6 +471,7 @@ function siteRowHtml(site) {
     </td>
     <td><span class="priority p${site.today_priority}${site.priority_manual ? " is-manual" : ""}" title="${site.priority_manual ? "Manual priority" : "Auto priority"}">${site.today_priority}</span></td>
     <td class="mono">${fmtDate(site.indicative_site_start_date) || "—"}</td>
+    <td class="mono">${site.indicative_shifts_count ? site.indicative_shifts_count : "—"}</td>
     <td class="mono"><span class="${mustBandClass(must.band)}" title="${escapeHtml(must.label || "")}">${mustDisplay}</span></td>
     ${moaWaitCell(m.moa_wait)}
     <td>${listBadge(m.client_list)}</td>
@@ -580,6 +581,10 @@ function registerSortValue(site, key) {
       return Number(site.today_priority) || 99;
     case "start":
       return site.indicative_site_start_date || null;
+    case "shifts": {
+      const n = Number(site.indicative_shifts_count);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
     case "must": {
       const must = m.must_have_status || {};
       if (must.band === "received") return "0000-00-00";
@@ -688,7 +693,7 @@ function ensureEmptyPlaceholder(tbody) {
   if (!hasRows && !empty) {
     tbody.insertAdjacentHTML(
       "beforeend",
-      `<tr class="register-empty-row"><td colspan="10"><span class="hint">Drop sites here</span></td></tr>`
+      `<tr class="register-empty-row"><td colspan="11"><span class="hint">Drop sites here</span></td></tr>`
     );
   }
   if (hasRows && empty) empty.remove();
@@ -969,6 +974,7 @@ function renderRegister() {
         ${sortHeader("status", "Status")}
         ${sortHeader("pri", "Pri")}
         ${sortHeader("start", "Start")}
+        ${sortHeader("shifts", "Shifts")}
         ${sortHeader("must", "Must-have")}
         ${sortHeader("wait", "Wait time")}
         ${sortHeader("list", "List")}
@@ -1305,6 +1311,7 @@ async function openSiteDrawer(site = null) {
   fillProgramSelect(site?.program || "");
   $("fTgs").value = site?.tgs_reference || "";
   $("fStart").value = site?.indicative_site_start_date || "";
+  if ($("fShifts")) $("fShifts").value = site?.indicative_shifts_count || "";
   $("fMustHave").value = site?.moa_must_have_received_date || "";
   $("fMustManual").checked = !!site?.must_have_manual;
   $("fPriority").value = site?.priority_manual ? String(site.priority_manual) : "";
@@ -1394,6 +1401,13 @@ function collectSitePayload() {
     program: $("fProgram").value.trim() || null,
     tgs_reference: $("fTgs").value.trim() || null,
     indicative_site_start_date: $("fStart").value || null,
+    indicative_shifts_count: (() => {
+      const raw = $("fShifts")?.value;
+      if (raw == null || String(raw).trim() === "") return null;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 1) return null;
+      return Math.min(365, Math.round(n));
+    })(),
     moa_must_have_received_date: $("fMustHave").value || null,
     must_have_manual: $("fMustManual").checked,
     priority_manual: $("fPriority").value ? Number($("fPriority").value) : null,

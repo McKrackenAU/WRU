@@ -3330,29 +3330,37 @@ html.dark .leaflet-control-scale-line {
 }
 
 .register-table th:nth-child(5),
-.register-table td:nth-child(5),
+.register-table td:nth-child(5) {
+  width: 7rem;
+}
+
 .register-table th:nth-child(6),
 .register-table td:nth-child(6) {
-  width: 7rem;
+  width: 3.8rem;
 }
 
 .register-table th:nth-child(7),
 .register-table td:nth-child(7) {
-  width: 6.5rem;
+  width: 7rem;
 }
 
 .register-table th:nth-child(8),
 .register-table td:nth-child(8) {
-  width: 5rem;
+  width: 6.5rem;
 }
 
 .register-table th:nth-child(9),
 .register-table td:nth-child(9) {
-  width: 6.5rem;
+  width: 5rem;
 }
 
 .register-table th:nth-child(10),
 .register-table td:nth-child(10) {
+  width: 6.5rem;
+}
+
+.register-table th:nth-child(11),
+.register-table td:nth-child(11) {
   width: 5.6rem;
 }
 
@@ -3399,7 +3407,7 @@ html.dark .leaflet-control-scale-line {
 
 #registerList.is-compact .register-table {
   font-size: 0.82rem;
-  min-width: 52rem;
+  min-width: 56rem;
 }
 
 #registerList.is-compact .register-table th,
@@ -3791,7 +3799,7 @@ body.drawer-open {
 @media (max-width: 1100px) {
   .register-table {
     font-size: 0.84rem;
-    min-width: 56rem;
+    min-width: 60rem;
   }
 
   .register-table th,
@@ -3799,8 +3807,8 @@ body.drawer-open {
     padding: 0.55rem 0.55rem;
   }
 
-  .register-table th:nth-child(10),
-  .register-table td:nth-child(10) {
+  .register-table th:nth-child(11),
+  .register-table td:nth-child(11) {
     width: 10rem;
   }
 }
@@ -3858,7 +3866,7 @@ body.drawer-open {
     flex: 1 1 100%;
   }
   .register-table {
-    min-width: 52rem;
+    min-width: 56rem;
   }
 }
 

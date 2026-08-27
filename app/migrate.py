@@ -71,6 +71,7 @@ def run_migrations() -> None:
     ensure_column("sites", "job_completed_date", "job_completed_date DATE")
     ensure_column("sites", "include_in_totals", "include_in_totals BOOLEAN NOT NULL DEFAULT TRUE")
     ensure_column("sites", "register_order", "register_order INTEGER")
+    ensure_column("sites", "indicative_shifts_count", "indicative_shifts_count INTEGER")
     ensure_column(
         "gantt_items",
         "traffic_contractor_id",

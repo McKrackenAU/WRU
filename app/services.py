@@ -18,6 +18,7 @@ SITE_SCALAR_FIELDS = (
     "program",
     "tgs_reference",
     "indicative_site_start_date",
+    "indicative_shifts_count",
     "moa_must_have_received_date",
     "must_have_manual",
     "priority_manual",
@@ -42,6 +43,18 @@ SITE_SCALAR_FIELDS = (
 def slugify_field_key(name: str) -> str:
     key = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip().lower()).strip("_")
     return key or "custom_field"
+
+
+def indicative_shifts_count(site: Any, default: int = 1) -> int:
+    """Gantt / cost work-shift count from a site's indicative planning field."""
+    raw = getattr(site, "indicative_shifts_count", None) if site is not None else None
+    if raw is None or raw == "":
+        return default
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(365, n))
 
 
 def _stage_context(db: Session | None) -> tuple[list[str], dict[str, str], set[str]]:
@@ -262,6 +275,7 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "register_order": getattr(site, "register_order", None),
         "tgs_reference": site.tgs_reference,
         "indicative_site_start_date": site.indicative_site_start_date,
+        "indicative_shifts_count": getattr(site, "indicative_shifts_count", None),
         "moa_must_have_received_date": site.moa_must_have_received_date,
         "must_have_manual": bool(getattr(site, "must_have_manual", False)),
         "priority_manual": getattr(site, "priority_manual", None),
