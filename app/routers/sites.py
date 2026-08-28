@@ -8,13 +8,14 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from ..database import UPLOAD_DIR, get_db
+from ..database import get_db
 from ..financial_year import australian_financial_year
 from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
 from ..lookups import ensure_lookup_value
 from ..gantt_engine import recompute_board_dates
 from ..models import CostEstimate, GanttBoard, GanttItem, MapFeature, MapLayer, Site, SiteCouncil
+from ..storage import candidate_document_paths, relocate_site_files
 from ..schemas import (
     SiteArchiveRequest,
     SiteBulkArchiveOut,
@@ -98,15 +99,24 @@ def _attach_geometry(db: Session, site: Site, geometry: dict | None, name: str |
 def _site_file_paths(site: Site) -> list[Path]:
     """Local files that must be removed when a site is permanently purged."""
     paths: list[Path] = []
+    seen: set[Path] = set()
     for doc in site.documents or []:
         name = (getattr(doc, "stored_name", None) or "").strip()
-        if name:
-            paths.append(UPLOAD_DIR / name)
+        if not name:
+            continue
+        for path in candidate_document_paths(name):
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
     for est in site.cost_estimates or []:
         for att in getattr(est, "attachments", None) or []:
             name = (getattr(att, "stored_name", None) or "").strip()
-            if name:
-                paths.append(UPLOAD_DIR / "cost-estimates" / name)
+            if not name:
+                continue
+            for path in candidate_document_paths(name, subdir="cost-estimates"):
+                if path not in seen:
+                    seen.add(path)
+                    paths.append(path)
     return paths
 
 
@@ -257,6 +267,8 @@ def bulk_archive_sites(
         site.financial_year = site.financial_year or fy
         archived_ids.append(site.id)
     db.commit()
+    for site_id in archived_ids:
+        relocate_site_files(db, site_id, archived=True)
     notify_from_request(request, site_ids=archived_ids, reason="archive")
     return SiteBulkArchiveOut(archived=len(archived_ids), site_ids=archived_ids, financial_year=fy_used)
 
@@ -367,6 +379,8 @@ def create_site(payload: SiteCreate, request: Request, db: Session = Depends(get
     ensure_lookup_value(db, "road", site.road_name)
     db.commit()
     db.refresh(site)
+    if site.archived:
+        relocate_site_files(db, site.id, archived=True)
     notify_from_request(request, site_ids=[site.id], reason="create")
     return site_to_dict(site, db=db)
 
@@ -471,6 +485,8 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
             detail="Could not save site (database conflict — check council names are unique).",
         ) from exc
     db.refresh(site)
+    if site.archived:
+        relocate_site_files(db, site.id, archived=True)
     notify_from_request(request, site_ids=[site.id], reason="update")
     return site_to_dict(site, db=db)
 
@@ -500,6 +516,7 @@ def archive_site(
     )
     db.commit()
     db.refresh(site)
+    relocate_site_files(db, site.id, archived=True)
     notify_from_request(request, site_ids=[site.id], reason="archive")
     return site_to_dict(site, db=db)
 
@@ -522,6 +539,7 @@ def restore_site(site_id: int, request: Request, db: Session = Depends(get_db)):
     )
     db.commit()
     db.refresh(site)
+    relocate_site_files(db, site.id, archived=False)
     notify_from_request(request, site_ids=[site.id], reason="restore")
     return site_to_dict(site, db=db)
 

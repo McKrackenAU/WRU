@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import require_admin
+from ..database import ARCHIVE_DIR, DATA_DIR, UPLOAD_DIR, build_database_url
 from ..version import version_string, version_tag
 
 router = APIRouter(
@@ -50,6 +51,10 @@ class SystemStatusOut(BaseModel):
     shell_ct: str | None = None
     shell_proxmox: str | None = None
     last_log_tail: str | None = None
+    data_dir: str | None = None
+    upload_dir: str | None = None
+    archive_dir: str | None = None
+    database_location: str | None = None
 
 
 class VersionEntry(BaseModel):
@@ -122,6 +127,22 @@ def _normalize_tag(value: str) -> str:
 
 def _normalize_version(value: str) -> str:
     return (value or "").strip().lstrip("vV")
+
+
+def _database_location() -> str:
+    """Host/db only — never include the password."""
+    url = (os.environ.get("DATABASE_URL") or build_database_url() or "").strip()
+    cleaned = url.replace("postgresql+psycopg2://", "postgresql://", 1).replace(
+        "postgresql+psycopg://", "postgresql://", 1
+    )
+    try:
+        parsed = urlparse(cleaned)
+    except ValueError:
+        return "not configured"
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 5432
+    dbname = (parsed.path or "/wru").lstrip("/").split("?")[0] or "wru"
+    return f"{host}:{port}/{dbname}"
 
 
 def _parse_version_file() -> dict[str, str]:
@@ -494,6 +515,10 @@ def build_status() -> SystemStatusOut:
         shell_ct=SHELL_CT,
         shell_proxmox=SHELL_PROXMOX,
         last_log_tail=_read_log_tail(15),
+        data_dir=str(DATA_DIR),
+        upload_dir=str(UPLOAD_DIR),
+        archive_dir=str(ARCHIVE_DIR),
+        database_location=_database_location(),
     )
 
 

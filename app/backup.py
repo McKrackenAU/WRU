@@ -12,13 +12,14 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from .database import DATA_DIR, UPLOAD_DIR, build_database_url, engine
+from .database import ARCHIVE_DIR, DATA_DIR, UPLOAD_DIR, build_database_url, engine
 from .version import version_string
 
 BACKUP_FORMAT = "wru-backup-v1"
 DUMP_NAME = "database.dump"
 MANIFEST_NAME = "manifest.json"
 UPLOADS_PREFIX = "uploads/"
+ARCHIVE_PREFIX = "archive/"
 CONFIG_PREFIX = "config/"
 CONFIG_FILES = ("nearmap_api_key",)
 SKIP_UPLOAD_PARTS = {"doc-staging", "import-staging", "backup-staging"}
@@ -115,18 +116,46 @@ def unique_zip_path(used: set[str], relative: str) -> str:
         i += 1
 
 
+def _skip_upload_names() -> set[str]:
+    skip = set(SKIP_UPLOAD_PARTS)
+    try:
+        rel = ARCHIVE_DIR.resolve().relative_to(UPLOAD_DIR.resolve())
+        if rel.parts:
+            skip.add(rel.parts[0])
+    except ValueError:
+        pass
+    return skip
+
+
 def iter_upload_files(root: Path | None = None) -> list[Path]:
     base = root or UPLOAD_DIR
     if not base.is_dir():
         return []
+    skip = _skip_upload_names()
     out: list[Path] = []
     for path in sorted(base.rglob("*")):
         if not path.is_file():
             continue
         rel_parts = path.relative_to(base).parts
-        if rel_parts and rel_parts[0] in SKIP_UPLOAD_PARTS:
+        if rel_parts and rel_parts[0] in skip:
             continue
         out.append(path)
+    return out
+
+
+def iter_archive_files(root: Path | None = None) -> list[Path]:
+    base = root or ARCHIVE_DIR
+    if not base.is_dir():
+        return []
+    try:
+        if base.resolve() == UPLOAD_DIR.resolve():
+            return []
+    except OSError:
+        pass
+    out: list[Path] = []
+    for path in sorted(base.rglob("*")):
+        if path.is_file():
+            out.append(path)
     return out
 
 
@@ -137,6 +166,7 @@ def build_manifest(*, extra: dict | None = None) -> dict:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "database": {"format": "pg_dump-Fc", "file": DUMP_NAME},
         "uploads": UPLOADS_PREFIX,
+        "archive": ARCHIVE_PREFIX,
         "config_files": [f"{CONFIG_PREFIX}{name}" for name in CONFIG_FILES],
     }
     if extra:
@@ -150,13 +180,22 @@ def write_backup_zip(dest: Path) -> dict:
         tmp_path = Path(tmp)
         dump_path = tmp_path / DUMP_NAME
         dump_database(dump_path)
-        manifest = build_manifest(extra={"upload_files": len(iter_upload_files())})
+        manifest = build_manifest(
+            extra={
+                "upload_files": len(iter_upload_files()),
+                "archive_files": len(iter_archive_files()),
+            }
+        )
         with ZipFile(dest, "w", compression=ZIP_DEFLATED, compresslevel=6) as zf:
             zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2))
             zf.write(dump_path, DUMP_NAME)
             zf.writestr(f"{UPLOADS_PREFIX}.keep", b"")
             for path in iter_upload_files():
                 arc = f"{UPLOADS_PREFIX}{path.relative_to(UPLOAD_DIR).as_posix()}"
+                zf.write(path, arc)
+            zf.writestr(f"{ARCHIVE_PREFIX}.keep", b"")
+            for path in iter_archive_files():
+                arc = f"{ARCHIVE_PREFIX}{path.relative_to(ARCHIVE_DIR).as_posix()}"
                 zf.write(path, arc)
             for name in CONFIG_FILES:
                 src = DATA_DIR / name
@@ -190,33 +229,46 @@ def _extract_member(zf: ZipFile, name: str, dest_dir: Path) -> Path:
     return target
 
 
-def restore_uploads(extracted_uploads: Path) -> None:
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+def restore_tree(extracted: Path, dest: Path) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    bak = UPLOAD_DIR.parent / f"uploads.bak-{stamp}"
-    if any(UPLOAD_DIR.iterdir()):
-        shutil.move(str(UPLOAD_DIR), str(bak))
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    bak = dest.parent / f"{dest.name}.bak-{stamp}"
+    if any(dest.iterdir()):
+        shutil.move(str(dest), str(bak))
+        dest.mkdir(parents=True, exist_ok=True)
     else:
         bak = None
     try:
-        if extracted_uploads.is_dir():
-            for src in extracted_uploads.rglob("*"):
+        if extracted.is_dir():
+            for src in extracted.rglob("*"):
                 if not src.is_file():
                     continue
                 if src.name == ".keep":
                     continue
-                rel = src.relative_to(extracted_uploads)
-                dest = UPLOAD_DIR / rel
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dest)
+                rel = src.relative_to(extracted)
+                target = dest / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, target)
         if bak and bak.exists():
             shutil.rmtree(bak, ignore_errors=True)
     except Exception:
         if bak and bak.exists():
-            shutil.rmtree(UPLOAD_DIR, ignore_errors=True)
-            shutil.move(str(bak), str(UPLOAD_DIR))
+            shutil.rmtree(dest, ignore_errors=True)
+            shutil.move(str(bak), str(dest))
         raise
+
+
+def restore_uploads(extracted_uploads: Path) -> None:
+    restore_tree(extracted_uploads, UPLOAD_DIR)
+
+
+def restore_archive(extracted_archive: Path) -> None:
+    if not extracted_archive.is_dir():
+        return
+    has_files = any(p.is_file() and p.name != ".keep" for p in extracted_archive.rglob("*"))
+    if not has_files:
+        return
+    restore_tree(extracted_archive, ARCHIVE_DIR)
 
 
 def restore_config_files(extracted_config: Path) -> None:
@@ -243,10 +295,11 @@ def restore_backup_zip(zip_path: Path) -> dict:
             for name in names:
                 if name.endswith("/"):
                     continue
-                if name.startswith(UPLOADS_PREFIX) or name.startswith(CONFIG_PREFIX):
+                if name.startswith(UPLOADS_PREFIX) or name.startswith(ARCHIVE_PREFIX) or name.startswith(CONFIG_PREFIX):
                     _extract_member(zf, name, tmp_path)
         restore_database(dump_path)
         restore_uploads(tmp_path / "uploads")
+        restore_archive(tmp_path / "archive")
         restore_config_files(tmp_path / "config")
         from .migrate import run_migrations
 

@@ -142,6 +142,18 @@ def run_migrations() -> None:
     ensure_column("documents", "moa_number", "moa_number VARCHAR(64)")
     ensure_column("documents", "category", "category VARCHAR(64) NOT NULL DEFAULT 'other'")
     ensure_column("documents", "description", "description VARCHAR(255)")
+    ensure_column("documents", "stored_bytes", "stored_bytes INTEGER")
+    ensure_column(
+        "documents",
+        "stored_encoding",
+        "stored_encoding VARCHAR(16) NOT NULL DEFAULT 'plain'",
+    )
+    ensure_column("cost_estimate_attachments", "stored_bytes", "stored_bytes INTEGER")
+    ensure_column(
+        "cost_estimate_attachments",
+        "stored_encoding",
+        "stored_encoding VARCHAR(16) NOT NULL DEFAULT 'plain'",
+    )
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(64)"))
 

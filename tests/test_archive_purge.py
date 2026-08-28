@@ -8,12 +8,13 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.database import UPLOAD_DIR
+from app.database import ARCHIVE_DIR, UPLOAD_DIR
 from app.routers.sites import (
     _site_file_paths,
     purge_archived_sites,
     require_archived_for_purge,
 )
+from app.storage import candidate_document_paths
 
 
 def test_purge_rejects_missing_site():
@@ -45,22 +46,29 @@ def test_site_file_paths_collects_documents_and_estimate_attachments():
         ],
     )
     paths = _site_file_paths(site)
-    assert paths[0] == UPLOAD_DIR / "12_abc.pdf"
-    assert paths[1] == UPLOAD_DIR / "cost-estimates" / "quote.pdf"
+    for expected in candidate_document_paths("12_abc.pdf"):
+        assert expected in paths
+    for expected in candidate_document_paths("quote.pdf", subdir="cost-estimates"):
+        assert expected in paths
+    assert UPLOAD_DIR / "12_abc.pdf" in paths
+    if ARCHIVE_DIR.resolve() != UPLOAD_DIR.resolve():
+        assert ARCHIVE_DIR / "12_abc.pdf" in paths
 
 
 def test_purge_archived_sites_deletes_and_unlinks(tmp_path, monkeypatch):
-    upload = tmp_path / "uploads"
-    estimates = upload / "cost-estimates"
-    estimates.mkdir(parents=True)
-    doc = upload / "gone.pdf"
-    att = estimates / "quote.pdf"
+    live = tmp_path / "uploads"
+    arch = tmp_path / "archive"
+    (arch / "cost-estimates").mkdir(parents=True)
+    live.mkdir()
+    doc = arch / "gone.pdf"
+    att = arch / "cost-estimates" / "quote.pdf"
     doc.write_text("doc")
     att.write_text("att")
-    leftover = upload / "keep.pdf"
+    leftover = live / "keep.pdf"
     leftover.write_text("keep")
 
-    monkeypatch.setattr("app.routers.sites.UPLOAD_DIR", upload)
+    monkeypatch.setattr("app.storage.UPLOAD_DIR", live)
+    monkeypatch.setattr("app.storage.ARCHIVE_DIR", arch)
 
     site = SimpleNamespace(
         id=9,
@@ -81,7 +89,8 @@ def test_purge_archived_sites_deletes_and_unlinks(tmp_path, monkeypatch):
 
 
 def test_purge_archived_sites_rolls_back_on_active(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.routers.sites.UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr("app.storage.UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr("app.storage.ARCHIVE_DIR", tmp_path / "archive")
     active = SimpleNamespace(id=1, archived=False, documents=[], cost_estimates=[])
     db = MagicMock()
     with pytest.raises(HTTPException) as exc:

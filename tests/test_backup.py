@@ -11,6 +11,7 @@ from app.backup import (
     build_manifest,
     dump_database,
     read_manifest,
+    restore_archive,
     restore_uploads,
     unique_zip_path,
     write_backup_zip,
@@ -28,6 +29,7 @@ def test_manifest_format():
     man = build_manifest()
     assert man["format"] == BACKUP_FORMAT
     assert man["database"]["file"] == DUMP_NAME
+    assert man["archive"] == "archive/"
 
 
 def test_write_backup_zip_roundtrip(tmp_path, monkeypatch):
@@ -43,6 +45,10 @@ def test_write_backup_zip_roundtrip(tmp_path, monkeypatch):
         dest.write_bytes(b"PGDUMPFAKE" + b"\x00" * 64)
 
     monkeypatch.setattr("app.backup.UPLOAD_DIR", uploads)
+    archive = tmp_path / "archive-hdd"
+    archive.mkdir()
+    (archive / "old-site.txt").write_text("archived-hello", encoding="utf-8")
+    monkeypatch.setattr("app.backup.ARCHIVE_DIR", archive)
     monkeypatch.setattr("app.backup.DATA_DIR", data_dir)
     monkeypatch.setattr("app.backup.dump_database", fake_dump)
 
@@ -55,6 +61,7 @@ def test_write_backup_zip_roundtrip(tmp_path, monkeypatch):
         assert MANIFEST_NAME in names
         assert DUMP_NAME in names
         assert "uploads/site1_hello.txt" in names
+        assert "archive/old-site.txt" in names
         assert "config/nearmap_api_key" in names
         read = read_manifest(zf)
         assert read["format"] == BACKUP_FORMAT
@@ -76,6 +83,36 @@ def test_restore_uploads_replaces(tmp_path, monkeypatch):
     assert not (live / "old.bin").exists()
     assert (live / "cost-estimates" / "new.bin").read_bytes() == b"new"
     assert not (live / ".keep").exists()
+
+
+def test_backup_skips_nested_archive_folder(tmp_path, monkeypatch):
+    uploads = tmp_path / "uploads"
+    archived = uploads / "archived"
+    archived.mkdir(parents=True)
+    (uploads / "live.txt").write_text("live")
+    (archived / "old.txt").write_text("old")
+    monkeypatch.setattr("app.backup.UPLOAD_DIR", uploads)
+    monkeypatch.setattr("app.backup.ARCHIVE_DIR", archived)
+    from app.backup import iter_archive_files, iter_upload_files
+
+    live_names = [p.name for p in iter_upload_files()]
+    assert "live.txt" in live_names
+    assert "old.txt" not in live_names
+    arch_names = [p.name for p in iter_archive_files()]
+    assert "old.txt" in arch_names
+
+
+def test_restore_archive_replaces(tmp_path, monkeypatch):
+    live_arch = tmp_path / "live-archive"
+    live_arch.mkdir()
+    (live_arch / "old.bin").write_bytes(b"old")
+    extracted = tmp_path / "extracted" / "archive"
+    extracted.mkdir(parents=True)
+    (extracted / "kept.bin").write_bytes(b"kept")
+    monkeypatch.setattr("app.backup.ARCHIVE_DIR", live_arch)
+    restore_archive(extracted)
+    assert not (live_arch / "old.bin").exists()
+    assert (live_arch / "kept.bin").read_bytes() == b"kept"
 
 
 def test_pg_dump_writes_custom_format(tmp_path):

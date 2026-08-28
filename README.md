@@ -105,14 +105,16 @@ mode=update CTID=230 \
 
 **In the web UI:** open **System** → **Pull & install update** (available after the helper is installed).
 
-App code updates; PostgreSQL data and `/opt/wru-data/uploads` are kept. DB password in `/etc/default/wru` is reused.
+App code updates; PostgreSQL data and document folders are kept. DB password and any `WRU_UPLOAD_DIR` / `WRU_ARCHIVE_DIR` paths in `/etc/default/wru` are reused.
 
 | Path | Purpose |
 |------|---------|
 | `/opt/wru` | Application |
-| `/opt/wru-data/uploads` | Uploaded documents |
-| `/etc/default/wru` | Env (`DATABASE_URL`, Postgres creds, port) |
-| PostgreSQL | Database `wru` / role `wru` |
+| `/opt/wru-data` | App data (can stay on NVMe with the app) |
+| `/opt/wru-data/uploads` | Live documents (default). Point `WRU_UPLOAD_DIR` at a spinning HDD if you want. |
+| `/opt/wru-data/uploads/archived` | Archived site files (default). Point `WRU_ARCHIVE_DIR` at the same or another HDD. |
+| `/etc/default/wru` | Env (`DATABASE_URL`, Postgres creds, port, optional upload/archive paths) |
+| PostgreSQL | Database `wru` / role `wru` — keep the data directory on NVMe |
 | `systemctl status wru` | App service |
 | `systemctl status postgresql` | Database service |
 
@@ -146,6 +148,17 @@ docker compose up --build -d
 
 Starts Postgres + the app. Uploads persist in the `wru_uploads` volume; DB in `wru_pg`.
 
+To keep Postgres on NVMe and documents on a spinning disk, bind-mount the HDD and set the env vars:
+
+```yaml
+volumes:
+  - /mnt/nvme/wru-pg:/var/lib/postgresql/data   # db service
+  - /mnt/hdd/wru-docs:/data/uploads              # app service
+environment:
+  WRU_UPLOAD_DIR: /data/uploads
+  WRU_ARCHIVE_DIR: /data/uploads/archived
+```
+
 ## Environment
 
 | Variable | Default | Purpose |
@@ -156,7 +169,9 @@ Starts Postgres + the app. Uploads persist in the `wru_uploads` volume; DB in `w
 | `POSTGRES_HOST` | `127.0.0.1` | DB host |
 | `POSTGRES_PORT` | `5432` | DB port |
 | `POSTGRES_DB` | `wru` | Database name |
-| `WRU_DATA_DIR` | `./data` (Proxmox: `/opt/wru-data`) | Upload storage |
+| `WRU_DATA_DIR` | `./data` (Proxmox: `/opt/wru-data`) | App data (staging, config). Can stay on NVMe. |
+| `WRU_UPLOAD_DIR` | `$WRU_DATA_DIR/uploads` | Live documents. Point this at a spinning HDD. |
+| `WRU_ARCHIVE_DIR` | `$WRU_UPLOAD_DIR/archived` | Archived site files. Same or another HDD. |
 | `WRU_PORT` | `8000` | HTTP listen port |
 | `WRU_BRANCH` | `main` | Git branch used by helper scripts |
 | `WRU_REPO` | `https://github.com/McKrackenAU/WRU.git` | Git remote used by helper scripts |

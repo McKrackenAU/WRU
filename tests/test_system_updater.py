@@ -50,3 +50,12 @@ def test_updater_copy_avoids_shell_setup():
     assert "setStep(\"helper\", \"bad\")" in JS
     assert "helperMissing" in JS
     assert "left: calc(100% - var(--admin-switch-thumb)" in CSS
+
+
+def test_system_page_shows_storage_paths():
+    assert "WRU_UPLOAD_DIR" in HTML
+    assert "WRU_ARCHIVE_DIR" in HTML
+    assert "s.upload_dir" in JS
+    assert "s.archive_dir" in JS
+    assert "s.database_location" in JS
+    assert "database_location" in (ROOT / "app/routers/system.py").read_text(encoding="utf-8")

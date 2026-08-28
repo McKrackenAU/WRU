@@ -93,6 +93,11 @@
 
       <section class="panel-card" aria-labelledby="verHeading">
         <h2 id="verHeading">Install details</h2>
+        <p class="hint">
+          Keep Postgres on NVMe via <code>DATABASE_URL</code>. Point live documents at a spinning disk with
+          <code>WRU_UPLOAD_DIR</code> and archived files with <code>WRU_ARCHIVE_DIR</code> in
+          <code>/etc/default/wru</code>.
+        </p>
         <div class="version-strip" id="sysMeta">
           <p class="hint">Loading version…</p>
         </div>

@@ -19,9 +19,17 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
 from ..backup import unique_zip_path
-from ..database import DATA_DIR, UPLOAD_DIR, get_db
+from ..database import DATA_DIR, get_db
 from ..doc_categories import FALLBACK_KEY, active_category_keys, category_label_map, ensure_doc_category_seed
 from ..models import Document, Site
+from ..storage import (
+    compress_document,
+    read_document_bytes,
+    stored_payload,
+    unlink_stored_file,
+    upload_dir,
+    write_blob,
+)
 from ..routers.import_tracker import (
     CHUNK_SIZE,
     TrackerChunkBody,
@@ -137,8 +145,9 @@ def store_document_bytes(
     category = normalize_doc_category(category, original, db=db)
     suffix = Path(original).suffix[:32]
     stored_name = f"{site.id}_{uuid.uuid4().hex}{suffix}"
-    dest = UPLOAD_DIR / stored_name
-    dest.write_bytes(content)
+    blob = compress_document(content, original, content_type)
+    dest = upload_dir() / stored_name
+    write_blob(dest, blob)
     guessed, _ = mimetypes.guess_type(original)
     doc = Document(
         site_id=site.id,
@@ -147,8 +156,10 @@ def store_document_bytes(
         description=(description or "").strip() or None,
         stored_name=stored_name,
         original_filename=original,
-        content_type=content_type or guessed or "application/octet-stream",
-        size_bytes=len(content),
+        content_type=blob.content_type or content_type or guessed or "application/octet-stream",
+        size_bytes=blob.logical_size,
+        stored_bytes=blob.stored_size,
+        stored_encoding=blob.encoding,
         uploaded_by=uploaded_by,
     )
     db.add(doc)
@@ -406,10 +417,11 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
     try:
         with ZipFile(dest, "w", compression=ZIP_DEFLATED, compresslevel=6) as zf:
             for doc in docs:
-                path = UPLOAD_DIR / doc.stored_name
-                if not path.is_file():
+                try:
+                    raw = read_document_bytes(doc)
+                except FileNotFoundError:
                     continue
-                size = path.stat().st_size
+                size = len(raw)
                 if total_bytes + size > ZIP_MAX_BYTES:
                     dest.unlink(missing_ok=True)
                     raise HTTPException(
@@ -423,9 +435,9 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
                     "site",
                 )
                 cat = _zip_safe_part(labels.get(doc.category) or doc.category or "Other", "other")
-                name = _zip_safe_part(doc.original_filename or path.name, path.name)
+                name = _zip_safe_part(doc.original_filename or Path(doc.stored_name).name, "file")
                 arc = unique_zip_path(used, f"{folder}/{cat}/{name}")
-                zf.write(path, arc)
+                zf.writestr(arc, raw)
         if not used:
             dest.unlink(missing_ok=True)
             raise HTTPException(status_code=404, detail="Those files are missing on disk")
@@ -436,14 +448,13 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
         raise
 
 
-def _new_download_session(source: Path, filename: str, content_type: str) -> dict:
+def _new_download_session_from_bytes(data: bytes, filename: str, content_type: str) -> dict:
     _cleanup_stale_sessions()
     sid = str(uuid.uuid4())
     folder = DOWNLOAD_STAGING_DIR / sid
     folder.mkdir(parents=True, exist_ok=True)
     bundle = folder / "bundle.bin"
-    if source.resolve() != bundle.resolve():
-        shutil.copyfile(source, bundle)
+    bundle.write_bytes(data)
     size = bundle.stat().st_size
     wrap_key = base64.b64encode(secrets.token_bytes(WRAP_KEY_BYTES)).decode("ascii")
     chunks = max(1, (size + CHUNK_SIZE - 1) // CHUNK_SIZE)
@@ -458,6 +469,10 @@ def _new_download_session(source: Path, filename: str, content_type: str) -> dic
     }
     (folder / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     return {"id": sid, **meta}
+
+
+def _new_download_session(source: Path, filename: str, content_type: str) -> dict:
+    return _new_download_session_from_bytes(source.read_bytes(), filename, content_type)
 
 
 def _download_session_dir(session_id: str) -> Path:
@@ -507,12 +522,13 @@ def begin_document_download_session(document_id: int, db: Session = Depends(get_
     doc = db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    path = UPLOAD_DIR / doc.stored_name
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="File missing on disk")
-    return _new_download_session(
-        path,
-        doc.original_filename or path.name,
+    try:
+        raw = read_document_bytes(doc)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="File missing on disk") from exc
+    return _new_download_session_from_bytes(
+        raw,
+        doc.original_filename or Path(doc.stored_name).name,
         doc.content_type or "application/octet-stream",
     )
 
@@ -565,14 +581,25 @@ def download_document(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    path = UPLOAD_DIR / doc.stored_name
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="File missing on disk")
-
+    try:
+        path, raw = stored_payload(doc)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="File missing on disk") from exc
+    if path is not None:
+        return FileResponse(
+            path,
+            media_type=doc.content_type or "application/octet-stream",
+            filename=doc.original_filename,
+        )
+    tmp = tempfile.NamedTemporaryFile(prefix="wru-dl-", suffix=Path(doc.original_filename or "").suffix, delete=False)
+    tmp.write(raw or b"")
+    tmp.close()
+    dest = Path(tmp.name)
     return FileResponse(
-        path,
+        dest,
         media_type=doc.content_type or "application/octet-stream",
         filename=doc.original_filename,
+        background=BackgroundTask(dest.unlink, missing_ok=True),
     )
 
 
@@ -582,8 +609,7 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    path = UPLOAD_DIR / doc.stored_name
-    path.unlink(missing_ok=True)
+    unlink_stored_file(doc.stored_name)
     db.delete(doc)
     db.commit()
     return None

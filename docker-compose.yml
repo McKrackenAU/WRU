@@ -20,8 +20,12 @@ services:
       - "8000:8000"
     volumes:
       - wru_uploads:/data
+      # Bind a spinning disk for documents if Postgres is on NVMe:
+      # - /mnt/hdd/wru-docs:/data/uploads
     environment:
       WRU_DATA_DIR: /data
+      # WRU_UPLOAD_DIR: /data/uploads
+      # WRU_ARCHIVE_DIR: /data/uploads/archived
       POSTGRES_USER: wru
       POSTGRES_PASSWORD: wru
       POSTGRES_HOST: db

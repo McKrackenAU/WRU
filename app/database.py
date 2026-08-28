@@ -10,8 +10,21 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("WRU_DATA_DIR", BASE_DIR / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-UPLOAD_DIR = DATA_DIR / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _env_dir(name: str, default: Path) -> Path:
+    raw = (os.environ.get(name) or "").strip()
+    path = Path(raw).expanduser() if raw else default
+    if not path.is_absolute():
+        path = (BASE_DIR / path).resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+# Documents on HDD: set WRU_UPLOAD_DIR (live) and WRU_ARCHIVE_DIR (archived sites).
+# Postgres stays on whatever disk DATABASE_URL points at (typically NVMe).
+UPLOAD_DIR = _env_dir("WRU_UPLOAD_DIR", DATA_DIR / "uploads")
+ARCHIVE_DIR = _env_dir("WRU_ARCHIVE_DIR", UPLOAD_DIR / "archived")
 
 
 def build_database_url() -> str:

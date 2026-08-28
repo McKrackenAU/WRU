@@ -326,6 +326,8 @@ EXISTING_ADMIN_USER="$(read_default_var WRU_ADMIN_USER || true)"
 EXISTING_ADMIN_PASSWORD="$(read_default_var WRU_ADMIN_PASSWORD || true)"
 EXISTING_ADMIN_NAME="$(read_default_var WRU_ADMIN_NAME || true)"
 EXISTING_COOKIE_HTTPS="$(read_default_var WRU_COOKIE_HTTPS || true)"
+EXISTING_UPLOAD_DIR="$(read_default_var WRU_UPLOAD_DIR || true)"
+EXISTING_ARCHIVE_DIR="$(read_default_var WRU_ARCHIVE_DIR || true)"
 if [[ -z "${WRU_SECRET_KEY:-}" ]]; then
   if [[ -n "$EXISTING_SECRET" ]]; then
     WRU_SECRET_KEY="$EXISTING_SECRET"
@@ -342,6 +344,8 @@ if [[ -z "${WRU_ADMIN_USER:-}" ]]; then WRU_ADMIN_USER="${EXISTING_ADMIN_USER:-a
 if [[ -z "${WRU_ADMIN_NAME:-}" ]]; then WRU_ADMIN_NAME="${EXISTING_ADMIN_NAME:-Administrator}"; fi
 if [[ -z "${WRU_ADMIN_PASSWORD:-}" ]]; then WRU_ADMIN_PASSWORD="${EXISTING_ADMIN_PASSWORD:-}"; fi
 if [[ -z "${WRU_COOKIE_HTTPS:-}" ]]; then WRU_COOKIE_HTTPS="${EXISTING_COOKIE_HTTPS:-}"; fi
+if [[ -z "${WRU_UPLOAD_DIR:-}" ]]; then WRU_UPLOAD_DIR="${EXISTING_UPLOAD_DIR:-}"; fi
+if [[ -z "${WRU_ARCHIVE_DIR:-}" ]]; then WRU_ARCHIVE_DIR="${EXISTING_ARCHIVE_DIR:-}"; fi
 
 # Quote every value — DATABASE_URL contains &client_encoding=… which breaks unquoted
 # /etc/default files when sourced (KeyError: DATABASE_URL / truncated URL).
@@ -363,6 +367,12 @@ if [[ -z "${WRU_COOKIE_HTTPS:-}" ]]; then WRU_COOKIE_HTTPS="${EXISTING_COOKIE_HT
   if [[ -n "$WRU_COOKIE_HTTPS" ]]; then
     echo "WRU_COOKIE_HTTPS=${WRU_COOKIE_HTTPS@Q}"
   fi
+  if [[ -n "${WRU_UPLOAD_DIR:-}" ]]; then
+    echo "WRU_UPLOAD_DIR=${WRU_UPLOAD_DIR@Q}"
+  fi
+  if [[ -n "${WRU_ARCHIVE_DIR:-}" ]]; then
+    echo "WRU_ARCHIVE_DIR=${WRU_ARCHIVE_DIR@Q}"
+  fi
 } >/etc/default/wru
 chmod 640 /etc/default/wru
 chown root:"${APP_USER}" /etc/default/wru
@@ -371,6 +381,14 @@ msg_ok "Wrote /etc/default/wru"
 msg_info "Setting permissions"
 chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$DATA_DIR"
 chmod 755 "$APP_DIR" "$DATA_DIR"
+if [[ -n "${WRU_UPLOAD_DIR:-}" ]]; then
+  mkdir -p "$WRU_UPLOAD_DIR"
+  chown -R "${APP_USER}:${APP_USER}" "$WRU_UPLOAD_DIR" || true
+fi
+if [[ -n "${WRU_ARCHIVE_DIR:-}" ]]; then
+  mkdir -p "$WRU_ARCHIVE_DIR"
+  chown -R "${APP_USER}:${APP_USER}" "$WRU_ARCHIVE_DIR" || true
+fi
 msg_ok "Permissions set"
 
 msg_info "Migrating and seeding database"
