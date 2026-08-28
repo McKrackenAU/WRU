@@ -499,8 +499,12 @@ UPDATE_SRC="${APP_DIR}/scripts/wru-update.sh"
 ONLINE_SRC="${APP_DIR}/scripts/wru-online-update.sh"
 if [[ -f "$UPDATE_SRC" ]]; then
   install -m 755 "$UPDATE_SRC" /usr/local/sbin/wru-update
+  install -m 755 "$UPDATE_SRC" /usr/bin/wru-update
+  ln -sfn /usr/local/sbin/wru-update /usr/local/sbin/WRU-update
+  ln -sfn /usr/bin/wru-update /usr/bin/WRU-update
   if [[ -f "$ONLINE_SRC" ]]; then
     install -m 755 "$ONLINE_SRC" /usr/local/sbin/wru-online-update
+    install -m 755 "$ONLINE_SRC" /usr/bin/wru-online-update
   fi
   # Minimal LXCs may lack /etc/sudoers.d until sudo is installed
   $STD apt-get install -y sudo >/dev/null 2>&1 || true
@@ -511,7 +515,11 @@ if [[ -f "$UPDATE_SRC" ]]; then
   cat >/etc/sudoers.d/wru-update <<'EOF'
 # Allow WRU service user to pull/install updates from GitHub without a password
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-online-update
+wru ALL=(root) NOPASSWD: /usr/bin/wru-online-update
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
+wru ALL=(root) NOPASSWD: /usr/local/sbin/WRU-update
+wru ALL=(root) NOPASSWD: /usr/bin/wru-update
+wru ALL=(root) NOPASSWD: /usr/bin/WRU-update
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed wru-online-update*
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update*
@@ -521,7 +529,7 @@ EOF
     msg_warn "sudoers file invalid — removed; in-app updates may need a manual fix"
     rm -f /etc/sudoers.d/wru-update
   else
-    msg_ok "Installed /usr/local/sbin/wru-update (+ online entrypoint, sudo for user wru)"
+    msg_ok "Installed sudo wru-update (also WRU-update) for user wru"
   fi
 else
   msg_warn "scripts/wru-update.sh missing — skipped update helper"

@@ -17,7 +17,7 @@ if [[ "${1:-}" == "--check" ]]; then
     echo "Must run as root (via sudo)." >&2
     exit 1
   fi
-  if [[ ! -x "$UPDATE_BIN" ]]; then
+  if [[ ! -x "$UPDATE_BIN" && ! -x /usr/bin/wru-update ]]; then
     echo "Missing ${UPDATE_BIN}" >&2
     exit 3
   fi
@@ -33,4 +33,12 @@ fi
 export WRU_BRANCH="${1:-${WRU_BRANCH:-main}}"
 export WRU_REPO="${2:-${WRU_REPO:-$DEFAULT_REPO}}"
 
-exec "$UPDATE_BIN"
+if [[ -x "$UPDATE_BIN" ]]; then
+  exec "$UPDATE_BIN"
+fi
+if [[ -x /usr/bin/wru-update ]]; then
+  exec /usr/bin/wru-update
+fi
+
+# Helper missing — still repair the site from GitHub.
+exec bash -c "$(curl -fsSL --connect-timeout 15 --max-time 90 https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh)"

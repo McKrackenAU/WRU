@@ -58,6 +58,26 @@ def test_update_script_traps_before_stopping_wru():
     assert trap_at < stop_at
 
 
+def test_update_script_refreshes_from_github_before_lock():
+    text = (ROOT / "scripts" / "wru-update.sh").read_text(encoding="utf-8")
+    self_at = text.find("WRU_UPDATE_SELF")
+    flock_at = text.find("flock -n 9")
+    stop_at = text.find("systemctl stop wru")
+    assert self_at != -1 and flock_at != -1 and stop_at != -1
+    assert self_at < flock_at < stop_at
+    assert "sudo wru-update" in text
+    assert "/usr/bin/wru-update" in text
+    assert "/usr/bin/WRU-update" in text
+
+
+def test_install_puts_sudo_wru_update_on_path():
+    text = (ROOT / "install" / "wru-install.sh").read_text(encoding="utf-8")
+    assert "install -m 755 \"$UPDATE_SRC\" /usr/bin/wru-update" in text
+    assert "ln -sfn /usr/bin/wru-update /usr/bin/WRU-update" in text
+    assert "NOPASSWD: /usr/bin/wru-update" in text
+    assert "NOPASSWD: /usr/bin/WRU-update" in text
+
+
 def test_install_does_not_abort_on_hdd_or_optional_jpeg():
     text = (ROOT / "install" / "wru-install.sh").read_text(encoding="utf-8")
     assert 'mkdir -p "$WRU_UPLOAD_DIR" || true' in text

@@ -4,10 +4,10 @@
 #
 # Run as root inside the WRU LXC / VM — any of:
 #
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh)"
 #   sudo wru-update
-#   WRU_BRANCH=main /usr/local/sbin/wru-update
-#   WRU_BRANCH=v0.1 /usr/local/sbin/wru-update   # install / roll back to a tagged release
+#   sudo WRU-update
+#   WRU_BRANCH=main sudo wru-update
+#   WRU_BRANCH=v0.1 sudo wru-update   # install / roll back to a tagged release
 #
 # From the Proxmox HOST (updates an existing CT):
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/ct/wru.sh)"
@@ -34,8 +34,31 @@ MAX_HISTORY=5
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Must run as root (or via sudo)." >&2
-  echo "  sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh)\"" >&2
+  echo "  sudo wru-update" >&2
   exit 1
+fi
+
+# Stale copies of this helper on the box used to stop WRU and then die.
+# Fetch the GitHub script first (before the lock) so `sudo wru-update` always
+# runs the current installer.
+if [[ -z "${WRU_UPDATE_SELF:-}" ]]; then
+  _self_tmp="/tmp/wru-update.github.sh"
+  _self_ok=0
+  _self_ref="${WRU_BRANCH:-main}"
+  if curl -fsSL --connect-timeout 15 --max-time 90 \
+      "https://raw.githubusercontent.com/McKrackenAU/WRU/${_self_ref}/scripts/wru-update.sh" \
+      -o "$_self_tmp"; then
+    _self_ok=1
+  elif curl -fsSL --connect-timeout 15 --max-time 90 \
+      "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh" \
+      -o "$_self_tmp"; then
+    _self_ok=1
+  fi
+  if [[ "$_self_ok" -eq 1 ]] && grep -q "trap restore_wru EXIT" "$_self_tmp"; then
+    chmod +x "$_self_tmp"
+    export WRU_UPDATE_SELF=1
+    exec bash "$_self_tmp" "$@"
+  fi
 fi
 
 exec 9>"$LOCK_FILE"
@@ -161,22 +184,34 @@ export WRU_REPO="$APP_GIT" WRU_BRANCH="$APP_BRANCH" WRU_PORT="$APP_PORT"
 bash "$tmp"
 rm -f "$tmp"
 
-# Always (re)install the in-app / CLI updater helpers
+# Always (re)install the in-app / CLI updater helpers onto sudo's PATH
 ONLINE_BIN="/usr/local/sbin/wru-online-update"
+install_update_bins() {
+  local src="$1"
+  install -m 755 "$src" /usr/local/sbin/wru-update
+  install -m 755 "$src" /usr/bin/wru-update
+  ln -sfn /usr/local/sbin/wru-update /usr/local/sbin/WRU-update
+  ln -sfn /usr/bin/wru-update /usr/bin/WRU-update
+}
 if [[ -f "${APP_DIR}/scripts/wru-update.sh" ]]; then
-  install -m 755 "${APP_DIR}/scripts/wru-update.sh" "$HELPER_BIN"
+  install_update_bins "${APP_DIR}/scripts/wru-update.sh"
 else
   curl -fsSL "${RAW_BASE}/scripts/wru-update.sh" -o "$HELPER_BIN" \
     || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh" -o "$HELPER_BIN"
   chmod 755 "$HELPER_BIN"
+  install_update_bins "$HELPER_BIN"
 fi
 if [[ -f "${APP_DIR}/scripts/wru-online-update.sh" ]]; then
   install -m 755 "${APP_DIR}/scripts/wru-online-update.sh" "$ONLINE_BIN"
+  install -m 755 "${APP_DIR}/scripts/wru-online-update.sh" /usr/bin/wru-online-update
 else
   curl -fsSL "${RAW_BASE}/scripts/wru-online-update.sh" -o "$ONLINE_BIN" \
     || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-online-update.sh" -o "$ONLINE_BIN" \
     || true
-  [[ -f "$ONLINE_BIN" ]] && chmod 755 "$ONLINE_BIN"
+  if [[ -f "$ONLINE_BIN" ]]; then
+    chmod 755 "$ONLINE_BIN"
+    install -m 755 "$ONLINE_BIN" /usr/bin/wru-online-update || true
+  fi
 fi
 # Minimal LXCs may lack sudo /etc/sudoers.d
 apt-get install -y sudo >/dev/null 2>&1 || true
@@ -187,7 +222,11 @@ fi
 cat >/etc/sudoers.d/wru-update <<'EOF'
 # Allow WRU service user to pull/install updates from GitHub without a password
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-online-update
+wru ALL=(root) NOPASSWD: /usr/bin/wru-online-update
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
+wru ALL=(root) NOPASSWD: /usr/local/sbin/WRU-update
+wru ALL=(root) NOPASSWD: /usr/bin/wru-update
+wru ALL=(root) NOPASSWD: /usr/bin/WRU-update
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed wru-online-update*
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update*

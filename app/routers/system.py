@@ -29,6 +29,12 @@ VERSION_FILE = Path("/opt/wru_version.txt")
 HISTORY_FILE = Path("/opt/wru_version_history.json")
 UPDATE_LOG = Path("/var/log/wru-update.log")
 UPDATE_BIN = Path("/usr/local/sbin/wru-update")
+UPDATE_BIN_PATHS = (
+    Path("/usr/local/sbin/wru-update"),
+    Path("/usr/bin/wru-update"),
+    Path("/usr/local/sbin/WRU-update"),
+    Path("/usr/bin/WRU-update"),
+)
 ONLINE_UPDATE = Path("/usr/local/sbin/wru-online-update")
 APP_MAIN = Path(__file__).resolve().parent.parent / "main.py"
 VERSION_TXT = Path(__file__).resolve().parent.parent.parent / "VERSION"
@@ -233,13 +239,20 @@ def _read_history() -> list[VersionEntry]:
         return []
 
 
+def _resolve_update_bin() -> Path | None:
+    for path in UPDATE_BIN_PATHS:
+        if path.is_file():
+            return path
+    return None
+
+
 def _probe_can_update() -> tuple[bool, str | None]:
     """Return (can_update, detail). Fast + never hangs the API.
 
     Prefer reading sudoers / file presence. Optional short sudo --check with a
     hard 2s timeout — on timeout we still allow the button (actual update reports errors).
     """
-    if not UPDATE_BIN.is_file():
+    if not any(path.is_file() for path in UPDATE_BIN_PATHS):
         return False, (
             "The updater isn't installed on this server yet. "
             "Ask whoever set up WRU to finish the install, then hit Refresh."
@@ -294,7 +307,7 @@ def _probe_can_update() -> tuple[bool, str | None]:
         if probe.returncode == 0 and "wru-update" in listing:
             return True, None
     except (subprocess.TimeoutExpired, OSError):
-        if UPDATE_BIN.is_file():
+        if _resolve_update_bin() is not None:
             return True, "Could not verify updater permission quickly; you can still try an update."
 
     return False, (
@@ -508,7 +521,7 @@ def build_status() -> SystemStatusOut:
         repo=meta.get("repo") or DEFAULT_REPO,
         commit=meta.get("commit") or _local_git_commit(),
         updated_at=meta.get("updated_at"),
-        update_available_via="sudo /usr/local/sbin/wru-update" if can else "shell curl one-liner",
+        update_available_via="sudo wru-update",
         can_update=can,
         can_rollback=can and bool(history),
         detail=detail,
@@ -528,13 +541,15 @@ def _start_update_job(*, ref: str, repo: str) -> str:
     Critical: systemd-run must use --no-block. Without it, the API waits for the
     oneshot; the oneshot stops wru.service and kills the waiter mid-request.
     """
-    if not UPDATE_BIN.is_file():
-        raise HTTPException(status_code=503, detail="Update helper missing at /usr/local/sbin/wru-update")
+    helper = _resolve_update_bin()
+    if helper is None:
+        raise HTTPException(status_code=503, detail="Update helper missing — install sudo wru-update")
 
     unit = f"wru-online-update-{int(time.time())}"
-    runner = ONLINE_UPDATE if ONLINE_UPDATE.is_file() else UPDATE_BIN
+    online = Path("/usr/bin/wru-online-update") if Path("/usr/bin/wru-online-update").is_file() else ONLINE_UPDATE
+    runner = online if online.is_file() else helper
 
-    if runner == ONLINE_UPDATE:
+    if "online-update" in runner.name:
         cmd = [
             "sudo",
             "-n",
@@ -543,7 +558,7 @@ def _start_update_job(*, ref: str, repo: str) -> str:
             f"--unit={unit}",
             "--collect",
             "--property=Type=oneshot",
-            str(ONLINE_UPDATE),
+            str(runner),
             ref,
             repo,
         ]
@@ -558,7 +573,7 @@ def _start_update_job(*, ref: str, repo: str) -> str:
             "--property=Type=oneshot",
             f"--setenv=WRU_BRANCH={ref}",
             f"--setenv=WRU_REPO={repo}",
-            str(UPDATE_BIN),
+            str(helper),
         ]
 
     try:
