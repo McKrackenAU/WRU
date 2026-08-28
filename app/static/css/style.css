@@ -426,19 +426,24 @@ html.dark .user-menu-btn:hover {
 }
 
 .admin-switch {
+  --admin-switch-w: 6.6rem;
+  --admin-switch-h: 2.05rem;
+  --admin-switch-pad: 3px;
+  --admin-switch-thumb: 4.15rem;
   position: relative;
   display: inline-flex;
   align-items: center;
-  width: 5.7rem;
-  height: 1.85rem;
-  min-height: 1.85rem;
-  padding: 0;
+  width: var(--admin-switch-w);
+  height: var(--admin-switch-h);
+  min-height: var(--admin-switch-h);
+  padding: var(--admin-switch-pad);
   border-radius: 999px;
-  border: 1px solid var(--ventia-border);
-  background: color-mix(in srgb, var(--ventia-muted) 22%, var(--field-bg));
+  border: 1.5px solid var(--ventia-border);
+  background: color-mix(in srgb, var(--ventia-muted) 28%, var(--field-bg));
   cursor: pointer;
   flex-shrink: 0;
   overflow: hidden;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .admin-switch:focus-visible {
@@ -446,32 +451,26 @@ html.dark .user-menu-btn:hover {
   outline-offset: 2px;
 }
 
+.admin-switch-thumb,
 .admin-switch-label {
   position: absolute;
-  inset: 0;
+  top: var(--admin-switch-pad);
+  left: var(--admin-switch-pad);
+  height: calc(100% - (var(--admin-switch-pad) * 2));
+  width: var(--admin-switch-thumb);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 0.58rem 0 1.85rem;
-  font-size: 0.7rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ventia-muted);
-  pointer-events: none;
-}
-
-.admin-switch .switch-knob {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 1.4rem;
-  height: 1.4rem;
-  border-radius: 50%;
+  justify-content: center;
+  border-radius: 999px;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
-  transition: transform 0.18s ease;
-  z-index: 1;
+  color: #1a2420;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  transition: transform 0.2s ease, color 0.2s ease;
 }
 
 .admin-switch[aria-checked="true"] {
@@ -479,18 +478,10 @@ html.dark .user-menu-btn:hover {
   border-color: var(--ventia-green);
 }
 
+.admin-switch[aria-checked="true"] .admin-switch-thumb,
 .admin-switch[aria-checked="true"] .admin-switch-label {
-  justify-content: flex-start;
-  padding: 0 1.85rem 0 0.58rem;
+  transform: translateX(calc(100% - var(--admin-switch-thumb) - (var(--admin-switch-pad) * 2)));
   color: #042014;
-}
-
-html.dark .admin-switch[aria-checked="true"] .admin-switch-label {
-  color: #042014;
-}
-
-.admin-switch[aria-checked="true"] .switch-knob {
-  transform: translateX(3.7rem);
 }
 
 .admin-mode-toggle .switch,

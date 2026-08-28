@@ -1040,8 +1040,7 @@ export async function injectChrome({ active, mode } = {}) {
           aria-checked="${isAdmin ? "true" : "false"}"
           aria-label="${isAdmin ? "Admin console on. Switch to tracker" : "Admin console off. Switch to admin"}"
           title="${isAdmin ? "Back to tracker" : "Open admin console"}">
-          <span class="admin-switch-label" aria-hidden="true">Admin</span>
-          <span class="switch-knob" aria-hidden="true"></span>
+          <span class="admin-switch-thumb admin-switch-label" aria-hidden="true">Admin</span>
         </button>`
       : "";
     const userMenu = who

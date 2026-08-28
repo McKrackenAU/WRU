@@ -220,8 +220,8 @@ def _probe_can_update() -> tuple[bool, str | None]:
     """
     if not UPDATE_BIN.is_file():
         return False, (
-            "Updater not installed yet. Use “Update from the shell” once as root — "
-            "that installs the helper so this button works next time."
+            "The updater isn’t installed on this server yet. "
+            "Ask whoever set up WRU to finish the install, then hit Refresh."
         )
 
     sudoers = Path("/etc/sudoers.d/wru-update")
@@ -248,8 +248,8 @@ def _probe_can_update() -> tuple[bool, str | None]:
             err = ((probe.stderr or "") + (probe.stdout or "")).strip().lower()
             if "password" in err:
                 return False, (
-                    "Passwordless sudo is missing. Run the shell updater once as root "
-                    "to refresh /etc/sudoers.d/wru-update."
+                    "This server isn’t allowed to update from the app yet. "
+                    "Ask whoever set up WRU to finish the updater setup, then hit Refresh."
                 )
         except subprocess.TimeoutExpired:
             # Don't block the System page — let the user try; start-job will surface errors.
@@ -274,11 +274,11 @@ def _probe_can_update() -> tuple[bool, str | None]:
             return True, None
     except (subprocess.TimeoutExpired, OSError):
         if UPDATE_BIN.is_file():
-            return True, "Could not verify sudo quickly; try an update or use the shell command."
+            return True, "Could not verify updater permission quickly; you can still try an update."
 
     return False, (
-        "In-app updates need passwordless sudo for the wru user. "
-        "Run the shell updater once as root, then refresh this page."
+        "In-app updates aren’t ready on this server yet. "
+        "Ask whoever set up WRU to finish the updater setup, then hit Refresh."
     )
 
 

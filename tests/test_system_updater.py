@@ -27,12 +27,22 @@ def test_system_js_progress_and_log_toggle():
     assert "updBranch" not in JS
     assert "Need a first-time" not in JS
     assert "DEFAULT_BRANCH" in JS
+    assert 's.branch || "main"' not in JS
 
 
 def test_admin_switch_has_label_inside():
     assert 'class="admin-switch"' in COMMON
-    assert 'admin-switch-label' in COMMON
+    assert "admin-switch-thumb" in COMMON
+    assert "admin-switch-label" in COMMON
     assert ">Admin</span>" in COMMON
+    assert ".admin-switch-thumb" in CSS
     assert 'id="adminModeLabel"' not in COMMON
-    assert ".admin-switch" in CSS
-    assert ".admin-switch-label" in CSS
+
+
+def test_updater_copy_avoids_shell_setup():
+    py = (ROOT / "app/routers/system.py").read_text(encoding="utf-8")
+    probe = py.split("def _probe_can_update")[1].split("def _parse_github_slug")[0]
+    assert "shell updater" not in probe.lower()
+    assert "update from the shell" not in probe.lower()
+    assert "shell command" not in probe.lower()
+    assert "Ask whoever set up WRU" in probe

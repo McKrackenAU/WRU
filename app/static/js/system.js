@@ -112,9 +112,7 @@ function renderStatus(s) {
 
   if ($("nowVersion")) $("nowVersion").textContent = tag;
   if ($("nowMeta")) {
-    $("nowMeta").textContent = [s.branch || "main", commit !== "—" ? commit : null, when !== "—" ? when : null]
-      .filter(Boolean)
-      .join(" · ");
+    $("nowMeta").textContent = when !== "—" ? when : "";
   }
 
   $("sysMeta").innerHTML = `
