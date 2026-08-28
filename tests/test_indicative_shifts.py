@@ -30,12 +30,21 @@ def test_indicative_shifts_count_defaults_and_clamps():
 
 
 def test_site_schema_accepts_indicative_shifts():
-    created = SiteCreate(road_name="DYNON RD - 5035", site_number="S48", indicative_shifts_count=3)
+    created = SiteCreate(
+        road_name="DYNON RD - 5035",
+        site_number="S48",
+        indicative_shifts_count=3,
+        indicative_shift_type="night",
+    )
     assert created.indicative_shifts_count == 3
-    updated = SiteUpdate(indicative_shifts_count=5)
+    assert created.indicative_shift_type == "night"
+    updated = SiteUpdate(indicative_shifts_count=5, indicative_shift_type="day")
     assert updated.indicative_shifts_count == 5
+    assert updated.indicative_shift_type == "day"
     with pytest.raises(ValidationError):
         SiteUpdate(indicative_shifts_count=0)
+    with pytest.raises(ValidationError):
+        SiteUpdate(indicative_shift_type="evening")
 
 
 def test_drawer_and_register_expose_shifts():
@@ -46,15 +55,24 @@ def test_drawer_and_register_expose_shifts():
     assert "site.indicative_shifts_count" in APP_JS
     assert "indicative_shifts_count" in MODELS
     assert 'ensure_column("sites", "indicative_shifts_count"' in MIGRATE
+    assert "indicative_shift_type" in APP_JS
+    assert 'id="fShiftType"' in INDEX
+    assert "Day / night" in INDEX
+    assert "indicative_shift_type" in MODELS
+    assert "indicative_shift_type" in MIGRATE
 
 
 def test_gantt_seeds_shifts_from_site():
     assert "shifts_count=indicative_shifts_count(site)" in GANTT_PY
+    assert "shift_type=indicative_shift_type(site)" in GANTT_PY
     assert "syncAddShiftsFromSite" in GANTT_JS
     assert "siteIndicativeShifts" in GANTT_JS
+    assert "addShiftNight" in GANTT_JS
 
 
 def test_traffic_costs_prefill_from_site_shifts():
     assert "function applySiteScheduleDefaults" in COSTS_JS
     assert "applySiteScheduleDefaults(selectedSite()" in COSTS_JS
     assert "$(\"sDays\").value" in COSTS_JS or '$("sDays").value' in COSTS_JS
+    assert 'sType' in COSTS_JS
+    assert "indicative_shift_type" in COSTS_JS

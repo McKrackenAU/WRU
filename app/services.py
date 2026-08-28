@@ -19,6 +19,7 @@ SITE_SCALAR_FIELDS = (
     "tgs_reference",
     "indicative_site_start_date",
     "indicative_shifts_count",
+    "indicative_shift_type",
     "moa_must_have_received_date",
     "must_have_manual",
     "priority_manual",
@@ -43,6 +44,12 @@ SITE_SCALAR_FIELDS = (
 def slugify_field_key(name: str) -> str:
     key = re.sub(r"[^a-zA-Z0-9]+", "_", name.strip().lower()).strip("_")
     return key or "custom_field"
+
+
+def indicative_shift_type(site: Any, default: str = "day") -> str:
+    raw = getattr(site, "indicative_shift_type", None) if site is not None else None
+    kind = str(raw or default).strip().lower()
+    return "night" if kind == "night" else "day"
 
 
 def indicative_shifts_count(site: Any, default: int = 1) -> int:
@@ -276,6 +283,9 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "tgs_reference": site.tgs_reference,
         "indicative_site_start_date": site.indicative_site_start_date,
         "indicative_shifts_count": getattr(site, "indicative_shifts_count", None),
+        "indicative_shift_type": (
+            "night" if str(getattr(site, "indicative_shift_type", "") or "").strip().lower() == "night" else "day"
+        ),
         "moa_must_have_received_date": site.moa_must_have_received_date,
         "must_have_manual": bool(getattr(site, "must_have_manual", False)),
         "priority_manual": getattr(site, "priority_manual", None),

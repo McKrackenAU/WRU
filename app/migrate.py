@@ -74,6 +74,11 @@ def run_migrations() -> None:
     ensure_column("sites", "register_order", "register_order INTEGER")
     ensure_column("sites", "indicative_shifts_count", "indicative_shifts_count INTEGER")
     ensure_column(
+        "sites",
+        "indicative_shift_type",
+        "indicative_shift_type VARCHAR(16) NOT NULL DEFAULT 'day'",
+    )
+    ensure_column(
         "gantt_items",
         "traffic_contractor_id",
         "traffic_contractor_id INTEGER REFERENCES traffic_contractors(id) ON DELETE SET NULL",

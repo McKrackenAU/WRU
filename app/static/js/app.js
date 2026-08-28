@@ -1326,6 +1326,7 @@ async function openSiteDrawer(site = null) {
   $("fTgs").value = site?.tgs_reference || "";
   $("fStart").value = site?.indicative_site_start_date || "";
   if ($("fShifts")) $("fShifts").value = site?.indicative_shifts_count || "";
+  if ($("fShiftType")) $("fShiftType").value = site?.indicative_shift_type === "night" ? "night" : "day";
   $("fMustHave").value = site?.moa_must_have_received_date || "";
   $("fMustManual").checked = !!site?.must_have_manual;
   $("fPriority").value = site?.priority_manual ? String(site.priority_manual) : "";
@@ -1420,6 +1421,7 @@ function collectSitePayload() {
       if (!Number.isFinite(n) || n < 1) return null;
       return Math.min(365, Math.round(n));
     })(),
+    indicative_shift_type: $("fShiftType")?.value === "night" ? "night" : "day",
     moa_must_have_received_date: $("fMustHave").value || null,
     must_have_manual: $("fMustManual").checked,
     priority_manual: $("fPriority").value ? Number($("fPriority").value) : null,
@@ -1710,11 +1712,11 @@ async function refreshDocuments() {
         <div class="top">
           <label class="doc-pick">
             <input type="checkbox" data-doc-pick="${d.id}" aria-label="Select ${escapeHtml(d.original_filename)}" />
-            <span class="doc-meta">
+          </label>
+          <span class="doc-meta">
             ${docCategorySelectHtml(d.id, d.category, { disabled: !canDelete })}
             · ${(d.size_bytes / 1024).toFixed(1)} KB
-            </span>
-          </label>
+          </span>
           ${canDelete ? `<button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>` : ""}
         </div>
         <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></p>
@@ -1748,8 +1750,9 @@ async function downloadSiteDocs({ all = false } = {}) {
   const btn = $(all ? "btnDownloadAllDocs" : "btnDownloadDocs");
   if (btn) btn.disabled = true;
   try {
-    await downloadDocumentsZip(ids, all ? "WRU-documents-all.zip" : "WRU-documents.zip");
+    await downloadDocumentsZip(ids, all ? "WRU-documents-all.zip" : "WRU-documents.zip", setDocUploadStatus);
   } finally {
+    setDocUploadStatus("");
     if (btn) btn.disabled = false;
   }
 }
@@ -1917,6 +1920,10 @@ function bindEvents() {
     document.querySelectorAll("#docList input[data-doc-pick]").forEach((box) => {
       box.checked = on;
     });
+    syncDocSelectAll();
+  });
+  document.addEventListener("change", (ev) => {
+    if (ev.target?.matches?.("#docList input[data-doc-pick]")) syncDocSelectAll();
   });
   wireDocDropzone();
   on("siteForm", "submit", (ev) =>

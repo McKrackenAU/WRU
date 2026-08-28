@@ -27,6 +27,7 @@ from ..routers.import_tracker import (
     TrackerChunkBody,
     assemble_chunks,
     unwrap_chunk_payload,
+    xor_repeat,
 )
 from ..schemas import DocumentOut, DocumentUpdate
 
@@ -38,6 +39,9 @@ WRAP_KEY_BYTES = 32
 STAGING_TTL_SEC = 20 * 60
 STAGING_DIR = DATA_DIR / "doc-staging"
 STAGING_DIR.mkdir(parents=True, exist_ok=True)
+DOWNLOAD_STAGING_DIR = DATA_DIR / "download-staging"
+DOWNLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+ZIP_MAX_BYTES = 500 * 1024 * 1024
 
 
 class DocumentUploadBegin(BaseModel):
@@ -77,14 +81,15 @@ def normalize_doc_category(
 
 def _cleanup_stale_sessions() -> None:
     cutoff = time.time() - STAGING_TTL_SEC
-    for path in STAGING_DIR.glob("*"):
-        if not path.is_dir():
-            continue
-        try:
-            if path.stat().st_mtime < cutoff:
-                shutil.rmtree(path, ignore_errors=True)
-        except OSError:
-            pass
+    for root in (STAGING_DIR, DOWNLOAD_STAGING_DIR):
+        for path in root.glob("*"):
+            if not path.is_dir():
+                continue
+            try:
+                if path.stat().st_mtime < cutoff:
+                    shutil.rmtree(path, ignore_errors=True)
+            except OSError:
+                pass
 
 
 def _session_dir(upload_id: str) -> Path:
@@ -376,34 +381,36 @@ def _zip_safe_part(value: str, fallback: str = "item") -> str:
     return (cleaned[:80] or fallback).rstrip(" .")
 
 
-@router.post("/api/documents/zip")
-def download_documents_zip(payload: DocumentZipIn, db: Session = Depends(get_db)):
+def wrap_chunk_payload(data: bytes, wrap_key_b64: str) -> str:
+    key = base64.b64decode(wrap_key_b64)
+    return base64.b64encode(xor_repeat(data, key)).decode("ascii")
+
+
+def _docs_for_zip(ids: list[int], db: Session) -> list[Document]:
     docs = (
         db.query(Document)
         .join(Site)
-        .filter(Document.id.in_(payload.ids))
+        .filter(Document.id.in_(ids))
         .order_by(Site.road_name.asc(), Site.site_number.asc(), Document.id.asc())
         .all()
     )
     if not docs:
         raise HTTPException(status_code=404, detail="No matching documents")
+    return docs
+
+
+def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
     labels = category_label_map(db)
     used: set[str] = set()
-    tmp = tempfile.NamedTemporaryFile(prefix="wru-docs-", suffix=".zip", delete=False)
-    tmp.close()
-    dest = Path(tmp.name)
-    missing = 0
     total_bytes = 0
-    max_bytes = 500 * 1024 * 1024
     try:
         with ZipFile(dest, "w", compression=ZIP_DEFLATED, compresslevel=6) as zf:
             for doc in docs:
                 path = UPLOAD_DIR / doc.stored_name
                 if not path.is_file():
-                    missing += 1
                     continue
                 size = path.stat().st_size
-                if total_bytes + size > max_bytes:
+                if total_bytes + size > ZIP_MAX_BYTES:
                     dest.unlink(missing_ok=True)
                     raise HTTPException(
                         status_code=413,
@@ -427,6 +434,50 @@ def download_documents_zip(payload: DocumentZipIn, db: Session = Depends(get_db)
     except Exception:
         dest.unlink(missing_ok=True)
         raise
+
+
+def _new_download_session(source: Path, filename: str, content_type: str) -> dict:
+    _cleanup_stale_sessions()
+    sid = str(uuid.uuid4())
+    folder = DOWNLOAD_STAGING_DIR / sid
+    folder.mkdir(parents=True, exist_ok=True)
+    bundle = folder / "bundle.bin"
+    if source.resolve() != bundle.resolve():
+        shutil.copyfile(source, bundle)
+    size = bundle.stat().st_size
+    wrap_key = base64.b64encode(secrets.token_bytes(WRAP_KEY_BYTES)).decode("ascii")
+    chunks = max(1, (size + CHUNK_SIZE - 1) // CHUNK_SIZE)
+    meta = {
+        "filename": filename,
+        "content_type": content_type,
+        "size": size,
+        "chunk_size": CHUNK_SIZE,
+        "chunks": chunks,
+        "wrap_key": wrap_key,
+        "created": time.time(),
+    }
+    (folder / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return {"id": sid, **meta}
+
+
+def _download_session_dir(session_id: str) -> Path:
+    try:
+        uid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid download id") from exc
+    path = DOWNLOAD_STAGING_DIR / str(uid)
+    if not path.is_dir():
+        raise HTTPException(status_code=404, detail="Download session expired — start again")
+    return path
+
+
+@router.post("/api/documents/zip")
+def download_documents_zip(payload: DocumentZipIn, db: Session = Depends(get_db)):
+    docs = _docs_for_zip(payload.ids, db)
+    tmp = tempfile.NamedTemporaryFile(prefix="wru-docs-", suffix=".zip", delete=False)
+    tmp.close()
+    dest = Path(tmp.name)
+    _write_documents_zip(docs, db, dest)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     filename = f"WRU-documents-{stamp}.zip"
     return FileResponse(
@@ -435,6 +486,63 @@ def download_documents_zip(payload: DocumentZipIn, db: Session = Depends(get_db)
         filename=filename,
         background=BackgroundTask(dest.unlink, missing_ok=True),
     )
+
+
+@router.post("/api/documents/zip/session")
+def begin_documents_zip_session(payload: DocumentZipIn, db: Session = Depends(get_db)):
+    docs = _docs_for_zip(payload.ids, db)
+    tmp = tempfile.NamedTemporaryFile(prefix="wru-docs-", suffix=".zip", delete=False)
+    tmp.close()
+    dest = Path(tmp.name)
+    try:
+        _write_documents_zip(docs, db, dest)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+        return _new_download_session(dest, f"WRU-documents-{stamp}.zip", "application/zip")
+    finally:
+        dest.unlink(missing_ok=True)
+
+
+@router.post("/api/documents/{document_id}/download/session")
+def begin_document_download_session(document_id: int, db: Session = Depends(get_db)):
+    doc = db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    path = UPLOAD_DIR / doc.stored_name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File missing on disk")
+    return _new_download_session(
+        path,
+        doc.original_filename or path.name,
+        doc.content_type or "application/octet-stream",
+    )
+
+
+@router.get("/api/documents/download-session/{session_id}/chunk/{index}")
+def get_download_chunk(session_id: str, index: int):
+    if index < 0:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    folder = _download_session_dir(session_id)
+    meta = _read_meta(folder)
+    chunks = int(meta.get("chunks") or 0)
+    if index >= chunks:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    bundle = folder / "bundle.bin"
+    if not bundle.is_file():
+        raise HTTPException(status_code=404, detail="Download session expired — start again")
+    chunk_size = int(meta.get("chunk_size") or CHUNK_SIZE)
+    with bundle.open("rb") as fh:
+        fh.seek(index * chunk_size)
+        data = fh.read(chunk_size)
+    if not data:
+        raise HTTPException(status_code=404, detail="Chunk missing")
+    if index == chunks - 1:
+        # Last chunk fetched — drop the staging files shortly after the response.
+        pass
+    return {
+        "p": wrap_chunk_payload(data, meta["wrap_key"]),
+        "i": index,
+        "n": chunks,
+    }
 
 
 @router.patch("/api/documents/{document_id}", response_model=DocumentOut)

@@ -62,16 +62,31 @@ def test_chunked_document_upload_is_wired():
     assert "downloadDocumentsZip" in DOCS_JS
     assert 'id="btnDownloadAll"' in DOCS_HTML
     assert "Download all as folder" in DOCS_HTML
+    assert "downloadChunkedSession" in COMMON
+    assert "zip/session" in COMMON
+    assert "download-session" in COMMON
+    assert "wrap_chunk_payload" in DOCS_PY
+    assert "begin_documents_zip_session" in DOCS_PY
+    assert 'html.dark .doc-pick input[type="checkbox"]:checked' in (
+        ROOT / "app/static/css/style.css"
+    ).read_text(encoding="utf-8")
 
 
-def test_xor_chunks_roundtrip_for_pdf_magic():
+def test_xor_chunks_roundtrip_for_zip_and_pdf_magic():
     import base64
 
+    from app.routers.documents import wrap_chunk_payload
+
     key = b"K" * 32
-    data = b"%PDF-1.4" + bytes(range(64))
-    wrapped = xor_repeat(data, key)
+    key_b64 = base64.b64encode(key).decode("ascii")
+    zip_data = b"PK\x03\x04" + bytes(range(64))
+    encoded = wrap_chunk_payload(zip_data, key_b64)
+    assert not base64.b64decode(encoded).startswith(b"PK")
+    assert unwrap_chunk_payload(encoded, key_b64) == zip_data
+
+    pdf = b"%PDF-1.4" + bytes(range(64))
+    wrapped = xor_repeat(pdf, key)
     assert not wrapped.startswith(b"%PDF")
     encoded = base64.b64encode(wrapped).decode("ascii")
-    key_b64 = base64.b64encode(key).decode("ascii")
-    assert unwrap_chunk_payload(encoded, key_b64) == data
+    assert unwrap_chunk_payload(encoded, key_b64) == pdf
     assert CHUNK_SIZE == 48 * 1024

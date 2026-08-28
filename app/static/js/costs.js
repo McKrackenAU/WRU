@@ -101,6 +101,12 @@ function applySiteScheduleDefaults(site, { refresh = true } = {}) {
     if ($("sDays")) $("sDays").value = "5";
     if ($("sPerDay")) $("sPerDay").value = "1";
   }
+  if ($("sType")) {
+    $("sType").value = site.indicative_shift_type === "night" ? "night" : "day";
+  }
+  if (site.indicative_shift_type === "night" && $("sStartTime") && !$("sStartTime").dataset.userSet) {
+    $("sStartTime").value = "20:00";
+  }
   if (refresh) queueScheduleRefresh();
 }
 

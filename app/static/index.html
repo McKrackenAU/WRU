@@ -187,7 +187,13 @@
               <label>Indicative shifts
                 <input id="fShifts" type="number" min="1" max="365" step="1" placeholder="e.g. 3" />
               </label>
-              <p class="hint full">Gantt bar length and traffic cost work days use this (one shift per work day).</p>
+              <label>Day / night
+                <select id="fShiftType">
+                  <option value="day">Day</option>
+                  <option value="night">Night</option>
+                </select>
+              </label>
+              <p class="hint full">Gantt bar length uses the shift count (one shift per work day). Day / night sets the Gantt row and traffic cost rates.</p>
               <label>MoA must-have
                 <input id="fMustHave" type="date" />
               </label>
@@ -323,7 +329,7 @@
                   <input type="file" id="docFile" multiple />
                   <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
                 </div>
-                <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads use JSON chunks so workplace filters do not block them.</p>
+                <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads and folder downloads use JSON chunks so workplace filters do not block them.</p>
                 <p class="hint" id="docUploadStatus" hidden></p>
                 <div class="doc-select-bar" id="docSelectBar">
                   <label class="doc-select-all"><input type="checkbox" id="docSelectAll" /> Select all</label>

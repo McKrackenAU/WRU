@@ -10,14 +10,16 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import Flowable, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .gantt_engine import normalize_shift_type
 from .pdf_brand import GREEN, GREEN_MID, MUTED, ROW_ALT, RULE, branded_margins, draw_branded_page
 
-MIN_TIMELINE_ROW_H = 13
-MAX_TIMELINE_ROW_H = 20
+MIN_TIMELINE_ROW_H = 18
+MAX_TIMELINE_ROW_H = 24
 TIMELINE_HEADER_H = 22
+LABEL_DATE_W = 32 * mm
 
 
 def timeline_rows_for_height(avail_height: float, row_h: float = MIN_TIMELINE_ROW_H) -> int:
@@ -45,6 +47,26 @@ def _fmt(d: date | None) -> str:
     if not d:
         return "—"
     return d.strftime("%d/%m/%Y")
+
+
+def clip_text(text: str, font: str, size: float, max_w: float) -> str:
+    """Fit a single line into max_w with an ellipsis so Gantt labels never overlap dates."""
+    raw = str(text or "").replace("\n", " ").strip()
+    if max_w <= 1:
+        return ""
+    if stringWidth(raw, font, size) <= max_w:
+        return raw
+    ell = "…"
+    if stringWidth(ell, font, size) > max_w:
+        return ""
+    lo, hi = 0, len(raw)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if stringWidth(raw[:mid] + ell, font, size) <= max_w:
+            lo = mid
+        else:
+            hi = mid - 1
+    return (raw[:lo] + ell) if lo else ell
 
 
 class GanttTimeline(Flowable):
@@ -90,7 +112,7 @@ class GanttTimeline(Flowable):
         # space, but draw() uses self.height — leaving it at 0 paints a strip
         # along the bottom of an otherwise empty landscape page.
         self.width = max(40, float(availWidth or 0))
-        self.label_w = min(78 * mm, max(50, self.width * 0.30))
+        self.label_w = min(90 * mm, max(58 * mm, self.width * 0.34))
         n = max(1, len(self.items))
         min_h = self.header_h + MIN_TIMELINE_ROW_H + 4
         room = max(min_h, float(availHeight or 0))
@@ -168,30 +190,35 @@ class GanttTimeline(Flowable):
                 c.drawString(x + 1, self.height - 14, d.strftime("%d/%m"))
 
         # Rows
+        date_w = min(LABEL_DATE_W, max(22 * mm, self.label_w * 0.38))
+        text_w = max(12, self.label_w - date_w - 8)
         for idx, item in enumerate(self.items):
             y = self.height - self.header_h - (idx + 1) * self.row_h
             if idx % 2:
                 c.setFillColor(ROW_ALT)
                 c.rect(0, y, self.width, self.row_h, fill=1, stroke=0)
 
-            road = (item.get("site_road_name") or "Site")[:34]
-            site_no = item.get("site_number") or ""
-            label = f"{self.start_index + idx + 1}. {road}"
+            road = item.get("site_road_name") or "Site"
+            site_no = str(item.get("site_number") or "").strip()
+            kind = normalize_shift_type(item.get("shift_type")).title()
+            n = self.start_index + idx + 1
+            title = clip_text(f"{n}. {road}", "Helvetica", 7, text_w)
+            meta = " · ".join(p for p in (site_no, kind) if p)
+            meta = clip_text(meta, "Helvetica", 6, text_w)
+
             c.setFillColor(colors.HexColor("#1a1a1a"))
             c.setFont("Helvetica", 7)
-            c.drawString(3, y + 5, label)
-            kind = normalize_shift_type(item.get("shift_type"))
-            if site_no:
-                c.setFillColor(MUTED)
-                c.setFont("Helvetica", 6)
-                c.drawString(3, y + 0.5, f"{str(site_no)[:12]} · {kind}")
+            c.drawString(4, y + self.row_h - 8.2, title)
+            c.setFillColor(MUTED)
+            c.setFont("Helvetica", 6)
+            c.drawString(4, y + 3.2, meta)
 
             start = _parse_iso(item.get("planned_start"))
             end = _parse_iso(item.get("planned_end"))
-            date_txt = f"{_fmt(start)}–{_fmt(end)}"
+            date_txt = clip_text(f"{_fmt(start)}–{_fmt(end)}", "Helvetica", 6, date_w - 4)
             c.setFillColor(MUTED)
             c.setFont("Helvetica", 6)
-            c.drawRightString(self.label_w - 3, y + 4, date_txt)
+            c.drawRightString(self.label_w - 4, y + self.row_h / 2 - 2, date_txt)
 
             # Vertical separator
             c.setStrokeColor(RULE)

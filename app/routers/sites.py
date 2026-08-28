@@ -13,7 +13,8 @@ from ..financial_year import australian_financial_year
 from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
 from ..lookups import ensure_lookup_value
-from ..models import CostEstimate, MapFeature, MapLayer, Site, SiteCouncil
+from ..gantt_engine import recompute_board_dates
+from ..models import CostEstimate, GanttBoard, GanttItem, MapFeature, MapLayer, Site, SiteCouncil
 from ..schemas import (
     SiteArchiveRequest,
     SiteBulkArchiveOut,
@@ -31,6 +32,8 @@ from ..services import (
     apply_workflow,
     ensure_workflow_steps,
     infer_financial_year,
+    indicative_shift_type,
+    indicative_shifts_count,
     set_councils,
     site_to_dict,
     sync_computed_fields,
@@ -433,6 +436,27 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     if geometry is not None:
         _attach_geometry(db, site, geometry, geometry_name)
     ensure_lookup_value(db, "road", site.road_name)
+
+    if getattr(site, "indicative_shift_type", None) not in ("day", "night"):
+        site.indicative_shift_type = "day"
+    kind = indicative_shift_type(site)
+    gantt_items = db.query(GanttItem).filter(GanttItem.site_id == site.id).all()
+    board_ids = {gi.board_id for gi in gantt_items}
+    for gi in gantt_items:
+        gi.shift_type = kind
+        if getattr(site, "indicative_shifts_count", None):
+            gi.shifts_count = indicative_shifts_count(site)
+    for bid in board_ids:
+        board = db.get(GanttBoard, bid)
+        if not board:
+            continue
+        board_items = (
+            db.query(GanttItem)
+            .filter(GanttItem.board_id == board.id)
+            .order_by(GanttItem.position.asc(), GanttItem.id.asc())
+            .all()
+        )
+        recompute_board_dates(board, board_items)
 
     after_stage = snapshot_stage(site, db)
     if workflow is not None:

@@ -76,6 +76,7 @@ class SiteBase(BaseModel):
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     indicative_shifts_count: int | None = Field(default=None, ge=1, le=365)
+    indicative_shift_type: str = Field(default="day", pattern="^(day|night)$")
     moa_must_have_received_date: date | None = None
     must_have_manual: bool = False
     priority_manual: int | None = Field(default=None, ge=1, le=2)
@@ -108,6 +109,7 @@ class SiteCreate(BaseModel):
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     indicative_shifts_count: int | None = Field(default=None, ge=1, le=365)
+    indicative_shift_type: str = Field(default="day", pattern="^(day|night)$")
     moa_must_have_received_date: date | None = None
     must_have_manual: bool = False
     priority_manual: int | None = Field(default=None, ge=1, le=2)
@@ -142,6 +144,7 @@ class SiteUpdate(BaseModel):
     tgs_reference: str | None = None
     indicative_site_start_date: date | None = None
     indicative_shifts_count: int | None = Field(default=None, ge=1, le=365)
+    indicative_shift_type: str | None = Field(default=None, pattern="^(day|night)$")
     moa_must_have_received_date: date | None = None
     must_have_manual: bool | None = None
     priority_manual: int | None = Field(default=None, ge=1, le=2)

@@ -14,7 +14,7 @@ from ..live_hub import notify_from_request
 from ..gantt_engine import normalize_shift_type, recompute_board_dates
 from ..gantt_export import build_gantt_pdf
 from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site, TrafficContractor
-from ..services import indicative_shifts_count, sync_computed_fields
+from ..services import indicative_shifts_count, indicative_shift_type, sync_computed_fields
 
 router = APIRouter(prefix="/api/gantt", tags=["gantt"])
 
@@ -157,6 +157,7 @@ def _auto_populate_board(db: Session, board: GanttBoard, *, unlock: bool = False
                 site_id=site.id,
                 position=(max_pos + 10) if locked else pos,
                 shifts_count=indicative_shifts_count(site),
+                shift_type=indicative_shift_type(site),
                 link_mode="fixed_start" if site.indicative_site_start_date else "after_previous",
                 fixed_start=site.indicative_site_start_date,
             )
@@ -172,6 +173,7 @@ def _auto_populate_board(db: Session, board: GanttBoard, *, unlock: bool = False
                     item.fixed_start = site.indicative_site_start_date
             if getattr(site, "indicative_shifts_count", None):
                 item.shifts_count = indicative_shifts_count(site)
+            item.shift_type = indicative_shift_type(site)
 
     starts = [s.indicative_site_start_date for s in sites if s.indicative_site_start_date]
     if starts and board.anchor_start is None:
@@ -261,12 +263,14 @@ def add_item(
     shifts = payload.model_dump(exclude_unset=True).get("shifts_count")
     if shifts is None:
         shifts = indicative_shifts_count(site)
+    raw_shift = payload.model_dump(exclude_unset=True).get("shift_type")
+    shift_kind = indicative_shift_type(site) if raw_shift is None else normalize_shift_type(raw_shift)
     item = GanttItem(
         board_id=board.id,
         site_id=payload.site_id,
         position=pos,
         shifts_count=shifts,
-        shift_type=normalize_shift_type(payload.shift_type),
+        shift_type=shift_kind,
         link_mode=link_mode,
         fixed_start=fixed if link_mode == "fixed_start" else payload.fixed_start,
         subcontractor_id=payload.subcontractor_id,

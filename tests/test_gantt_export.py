@@ -121,6 +121,19 @@ def test_gantt_timeline_splits_tall_board_to_fill_pages():
     assert abs(chunks[0].height - h) < 1
 
 
+def test_gantt_clip_text_keeps_long_roads_inside_label():
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from app.gantt_export import clip_text
+
+    long = "54. FOOTSCRAY-CAROLINE SPRINGS RD - 55"
+    fitted = clip_text(long, "Helvetica", 7, 90)
+    assert stringWidth(fitted, "Helvetica", 7) <= 90.1
+    assert fitted.endswith("…")
+    assert "FOOTSCRAY" in fitted
+    assert clip_text("S48 · Night", "Helvetica", 6, 200) == "S48 · Night"
+
+
 def test_gantt_page_has_day_night_not_contractor_filters():
     assert 'id="addShiftDay"' in GANTT_HTML
     assert 'id="addShiftNight"' in GANTT_HTML

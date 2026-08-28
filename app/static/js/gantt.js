@@ -69,6 +69,9 @@ function syncAddShiftsFromSite() {
   const site = state.sites.find((s) => s.id === id);
   const n = siteIndicativeShifts(site);
   if ($("addShifts")) $("addShifts").value = String(n || 1);
+  const night = site?.indicative_shift_type === "night";
+  if ($("addShiftDay")) $("addShiftDay").checked = !night;
+  if ($("addShiftNight")) $("addShiftNight").checked = night;
 }
 
 function addShiftType() {

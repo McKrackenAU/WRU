@@ -60,7 +60,7 @@ export function humanizeHttpError(status, text, fallback = "Request failed") {
   const raw = String(text || "");
   const code = Number(status) || 0;
   if (/zscaler/i.test(raw) || (looksLikeHtmlOrProxyPage(raw) && /zscaler|z-?scaler/i.test(raw))) {
-    return "Workplace security (Zscaler) blocked this request. File uploads from this network are being intercepted. Check for updates, then retry — files now send as small JSON chunks instead of a raw upload. If it still fails, try from a network that is not filtered.";
+    return "Workplace security (Zscaler) blocked this request. File uploads and downloads from this network are being intercepted. Check for updates, then retry — files now travel as small JSON chunks instead of a raw transfer. If it still fails, try from a network that is not filtered.";
   }
   if (/cloudflare|cf-ray|error code 52|attention required/i.test(raw)) {
     return "Cloudflare or the tunnel blocked this request. Check for updates and retry, or import from the LAN.";
@@ -306,37 +306,57 @@ export function docCategorySelectHtml(docId, current, { disabled = false, extraC
   return `<select class="${cls}" data-doc-cat="${docId}" ${dis} aria-label="Document category">${opts}</select>`;
 }
 
-export async function downloadDocumentsZip(ids, filename = "documents.zip") {
-  const list = [...new Set((ids || []).map((n) => Number(n)).filter((n) => n > 0))];
-  if (!list.length) throw new Error("Select one or more documents first");
-  const res = await fetch("/api/documents/zip", {
+export async function downloadChunkedSession({ beginUrl, beginBody = {}, chunkUrl, onProgress, timeoutMs = 45000 }) {
+  const session = await api(beginUrl, {
     method: "POST",
-    credentials: "include",
-    cache: "no-store",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids: list }),
+    body: JSON.stringify(beginBody),
+    timeoutMs: Math.max(timeoutMs, 60000),
   });
-  if (!res.ok) {
-    const ct = res.headers.get("content-type") || "";
-    let detail = res.statusText || `HTTP ${res.status}`;
-    if (ct.includes("application/json")) {
-      const body = await res.json().catch(() => ({}));
-      detail = formatApiDetail(body?.detail ?? body, detail);
-    } else {
-      const text = await res.text().catch(() => "");
-      detail = humanizeHttpError(res.status, text, detail);
-    }
-    throw new Error(detail);
+  if (!session?.id || !session.wrap_key) {
+    throw new Error("Could not start a filtered download. Check for updates, then retry.");
   }
-  const blob = await res.blob();
+  const keyBytes = b64ToBytes(session.wrap_key);
+  const total = Math.max(1, Number(session.chunks) || 1);
+  const parts = [];
+  for (let i = 0; i < total; i += 1) {
+    onProgress?.(`Downloading… ${i + 1}/${total}`);
+    const piece = await api(chunkUrl(session.id, i), { timeoutMs });
+    if (!piece?.p) throw new Error("Download chunk was empty — retry");
+    parts.push(xorBytes(b64ToBytes(piece.p), keyBytes));
+  }
+  onProgress?.("Saving…");
+  const blob = new Blob(parts, { type: session.content_type || "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = session.filename || "download";
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+export async function downloadDocumentsZip(ids, filename = "documents.zip", onProgress) {
+  const list = [...new Set((ids || []).map((n) => Number(n)).filter((n) => n > 0))];
+  if (!list.length) throw new Error("Select one or more documents first");
+  await downloadChunkedSession({
+    beginUrl: "/api/documents/zip/session",
+    beginBody: { ids: list },
+    chunkUrl: (id, i) => `/api/documents/download-session/${encodeURIComponent(id)}/chunk/${i}`,
+    onProgress,
+  });
+}
+
+export async function downloadDocumentById(documentId, onProgress) {
+  const id = Number(documentId);
+  if (!id) throw new Error("Missing document");
+  await downloadChunkedSession({
+    beginUrl: `/api/documents/${id}/download/session`,
+    beginBody: {},
+    chunkUrl: (sid, i) => `/api/documents/download-session/${encodeURIComponent(sid)}/chunk/${i}`,
+    onProgress,
+  });
 }
 
 export function escapeHtml(str) {
@@ -1126,6 +1146,20 @@ export async function injectChrome({ active, mode } = {}) {
   registerServiceWorker();
   initPwaChrome();
   if (location.pathname !== "/login") bootstrapLiveSync();
+  if (!document.documentElement.dataset.wruDocDl) {
+    document.documentElement.dataset.wruDocDl = "1";
+    document.addEventListener("click", (ev) => {
+      const a = ev.target.closest("a[href]");
+      if (!a) return;
+      const href = a.getAttribute("href") || "";
+      const m = href.match(/^\/api\/documents\/(\d+)\/download\/?$/);
+      if (!m) return;
+      ev.preventDefault();
+      downloadDocumentById(m[1]).catch((err) => {
+        alertDialog(errorMessage(err, "Could not download"));
+      });
+    });
+  }
 }
 
 const CHEVRON_UP = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 4.2 2.6 9.6l1.5 1.5L8 7.2l3.9 3.9 1.5-1.5z"/></svg>`;
