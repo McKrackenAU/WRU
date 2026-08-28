@@ -220,7 +220,7 @@ def _probe_can_update() -> tuple[bool, str | None]:
     """
     if not UPDATE_BIN.is_file():
         return False, (
-            "The updater isn’t installed on this server yet. "
+            "The updater isn't installed on this server yet. "
             "Ask whoever set up WRU to finish the install, then hit Refresh."
         )
 
@@ -248,7 +248,7 @@ def _probe_can_update() -> tuple[bool, str | None]:
             err = ((probe.stderr or "") + (probe.stdout or "")).strip().lower()
             if "password" in err:
                 return False, (
-                    "This server isn’t allowed to update from the app yet. "
+                    "This server isn't allowed to update from the app yet. "
                     "Ask whoever set up WRU to finish the updater setup, then hit Refresh."
                 )
         except subprocess.TimeoutExpired:
@@ -277,7 +277,7 @@ def _probe_can_update() -> tuple[bool, str | None]:
             return True, "Could not verify updater permission quickly; you can still try an update."
 
     return False, (
-        "In-app updates aren’t ready on this server yet. "
+        "In-app updates aren't ready on this server yet. "
         "Ask whoever set up WRU to finish the updater setup, then hit Refresh."
     )
 

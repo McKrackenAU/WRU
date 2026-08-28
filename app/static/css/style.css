@@ -470,7 +470,7 @@ html.dark .user-menu-btn:hover {
   text-transform: uppercase;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
   pointer-events: none;
-  transition: transform 0.2s ease, color 0.2s ease;
+  transition: left 0.2s ease, color 0.2s ease;
 }
 
 .admin-switch[aria-checked="true"] {
@@ -480,7 +480,7 @@ html.dark .user-menu-btn:hover {
 
 .admin-switch[aria-checked="true"] .admin-switch-thumb,
 .admin-switch[aria-checked="true"] .admin-switch-label {
-  transform: translateX(calc(100% - var(--admin-switch-thumb) - (var(--admin-switch-pad) * 2)));
+  left: calc(100% - var(--admin-switch-thumb) - var(--admin-switch-pad));
   color: #042014;
 }
 

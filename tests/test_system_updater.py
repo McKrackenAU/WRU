@@ -46,3 +46,7 @@ def test_updater_copy_avoids_shell_setup():
     assert "update from the shell" not in probe.lower()
     assert "shell command" not in probe.lower()
     assert "Ask whoever set up WRU" in probe
+    assert "isn't installed" in probe
+    assert "setStep(\"helper\", \"bad\")" in JS
+    assert "helperMissing" in JS
+    assert "left: calc(100% - var(--admin-switch-thumb)" in CSS

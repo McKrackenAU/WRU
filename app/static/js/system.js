@@ -90,7 +90,9 @@ function setStep(name, state) {
 }
 
 function renderSteps(s) {
-  if (!s.can_update && (s.detail || "").toLowerCase().includes("not installed")) {
+  const detail = (s.detail || "").toLowerCase();
+  const helperMissing = /not installed|isn['’]t installed/.test(detail);
+  if (!s.can_update && helperMissing) {
     setStep("helper", "bad");
     setStep("sudo", "pending");
     setStep("ready", "bad");
@@ -130,7 +132,7 @@ function renderStatus(s) {
 
   if (!s.can_update) {
     $("updHint").textContent =
-      s.detail || "The updater isn’t ready on this server yet. Ask whoever installed WRU to finish setup, then hit Refresh.";
+      s.detail || "The updater isn't ready on this server yet. Ask whoever installed WRU to finish setup, then hit Refresh.";
     setAlert(
       "warn",
       `<strong>Updater not ready.</strong> ${escapeHtml(
