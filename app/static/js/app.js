@@ -1245,6 +1245,14 @@ function buildCustomFields(values) {
     .join("");
 }
 
+function setSiteExtrasVisible(visible) {
+  const show = Boolean(visible);
+  if ($("activityHint")) $("activityHint").hidden = show;
+  if ($("activityBody")) $("activityBody").hidden = !show;
+  if ($("docsHint")) $("docsHint").hidden = show;
+  if ($("docsBody")) $("docsBody").hidden = !show;
+}
+
 function setTab(name) {
   state.activeTab = name;
   document.querySelectorAll(".drawer-tab").forEach((t) => {
@@ -1286,7 +1294,7 @@ function setDrawerReadOnly(readOnly) {
   if ($("btnArchiveSite")) $("btnArchiveSite").hidden = state.readOnlyArchive || !$("siteId")?.value;
   const compose = document.querySelector(".track-compose");
   if (compose) compose.hidden = state.readOnlyArchive;
-  const upload = document.querySelector("#activityBody .upload-row");
+  const upload = document.querySelector("#docDropzone .upload-row");
   if (upload) upload.hidden = state.readOnlyArchive;
   const dropzone = $("docDropzone");
   if (dropzone) dropzone.classList.toggle("is-readonly", state.readOnlyArchive);
@@ -1354,13 +1362,11 @@ async function openSiteDrawer(site = null) {
   if ($("autosaveStatus") && archived) $("autosaveStatus").hidden = false;
   setTab("overview");
   if (site) {
-    $("activityHint").hidden = true;
-    $("activityBody").hidden = false;
+    setSiteExtrasVisible(true);
     $("btnOpenCosts").href = `/costs?site_id=${site.id}`;
     await Promise.all([refreshTracking(), refreshDocuments(), refreshCosts()]);
   } else {
-    $("activityHint").hidden = false;
-    $("activityBody").hidden = true;
+    setSiteExtrasVisible(false);
   }
   openDrawer();
   setDrawerReadOnly(archived);

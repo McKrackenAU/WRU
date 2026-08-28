@@ -156,6 +156,7 @@
         <button type="button" class="drawer-tab" data-tab="councils">Councils</button>
         <button type="button" class="drawer-tab" data-tab="workflow">Workflow</button>
         <button type="button" class="drawer-tab" data-tab="activity">Activity</button>
+        <button type="button" class="drawer-tab" data-tab="documents">Documents</button>
       </div>
       <form id="siteForm" class="drawer-body">
         <input type="hidden" id="siteId" />
@@ -285,7 +286,7 @@
         </section>
 
         <section class="tab-panel" data-panel="activity">
-          <p class="hint" id="activityHint">Save the site first to add tracking and documents.</p>
+          <p class="hint" id="activityHint">Save the site first to add tracking.</p>
           <div id="activityBody" hidden>
             <h3>Activity</h3>
             <div class="track-compose">
@@ -299,32 +300,40 @@
               <button type="button" class="btn btn-primary" id="btnAddTrack">Add</button>
             </div>
             <ul id="trackList" class="event-list"></ul>
-            <h3 style="margin-top:1.25rem">Documents</h3>
-            <div class="doc-dropzone" id="docDropzone">
-              <div class="upload-row" style="flex-wrap:wrap">
-                <select id="docCategory">
-                  <option value="email">Email</option>
-                  <option value="tgs">TGS</option>
-                  <option value="plan">Plan</option>
-                  <option value="moa">MoA</option>
-                  <option value="correspondence">Correspondence</option>
-                  <option value="photo">Photo</option>
-                  <option value="other">Other</option>
-                </select>
-                <input type="text" id="docDesc" placeholder="Description (optional, applies to all)" />
-                <input type="file" id="docFile" multiple />
-                <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
-              </div>
-              <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads use JSON chunks so workplace filters do not block them.</p>
-              <p class="hint" id="docUploadStatus" hidden></p>
-              <ul id="docList" class="event-list"></ul>
-            </div>
             <div class="toolbar" style="margin-top:1rem">
               <a class="btn" id="btnOpenCosts" href="/costs">Cost calculator</a>
               <a class="btn" id="btnOpenSpend" href="/spend">Actual spend</a>
             </div>
             <p class="hint" id="spendSummary" style="margin:0.75rem 0 0.25rem"></p>
             <ul id="costList" class="event-list"></ul>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-panel="documents">
+          <p class="hint" id="docsHint">Save the site first to upload documents.</p>
+          <div id="docsBody" hidden>
+            <div class="form-section">
+              <h3>Documents</h3>
+              <div class="doc-dropzone" id="docDropzone">
+                <div class="upload-row" style="flex-wrap:wrap">
+                  <select id="docCategory">
+                    <option value="email">Email</option>
+                    <option value="tgs">TGS</option>
+                    <option value="plan">Plan</option>
+                    <option value="moa">MoA</option>
+                    <option value="correspondence">Correspondence</option>
+                    <option value="photo">Photo</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <input type="text" id="docDesc" placeholder="Description (optional, applies to all)" />
+                  <input type="file" id="docFile" multiple />
+                  <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
+                </div>
+                <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads use JSON chunks so workplace filters do not block them.</p>
+                <p class="hint" id="docUploadStatus" hidden></p>
+                <ul id="docList" class="event-list"></ul>
+              </div>
+            </div>
           </div>
         </section>
 

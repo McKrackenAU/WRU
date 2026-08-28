@@ -44,6 +44,10 @@ def test_chunked_document_upload_is_wired():
     assert "update_document" in DOCS_PY
     assert 'id="docUploadStatus"' in INDEX
     assert 'id="docDropzone"' in INDEX
+    assert 'data-tab="documents"' in INDEX
+    assert 'data-panel="documents"' in INDEX
+    activity = INDEX.split('data-panel="activity"', 1)[1].split("</section>", 1)[0]
+    assert "docDropzone" not in activity
     assert "wireDocDropzone" in APP_JS
     assert 'addEventListener("drop"' in APP_JS
     assert "Drop files here" in INDEX
