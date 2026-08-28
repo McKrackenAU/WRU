@@ -125,8 +125,6 @@ function renderStatus(s) {
     <div class="version-chip" style="grid-column:1/-1"><span class="k">Repository</span><span class="v">${escapeHtml(s.repo || "—")}</span></div>
     <div class="version-chip" style="grid-column:1/-1"><span class="k">Database</span><span class="v">${escapeHtml(s.database_location || "—")}</span></div>
     <div class="version-chip" style="grid-column:1/-1"><span class="k">App data</span><span class="v">${escapeHtml(s.data_dir || "—")}</span></div>
-    <div class="version-chip" style="grid-column:1/-1"><span class="k">Documents</span><span class="v">${escapeHtml(s.upload_dir || "—")}</span></div>
-    <div class="version-chip" style="grid-column:1/-1"><span class="k">Archive files</span><span class="v">${escapeHtml(s.archive_dir || "—")}</span></div>
   `;
 
   const btn = $("btnUpdate");

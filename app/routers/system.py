@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import require_admin
-from ..database import ARCHIVE_DIR, DATA_DIR, UPLOAD_DIR, build_database_url
+from ..database import DATA_DIR, build_database_url
 from ..version import version_string, version_tag
 
 router = APIRouter(
@@ -58,8 +58,6 @@ class SystemStatusOut(BaseModel):
     shell_proxmox: str | None = None
     last_log_tail: str | None = None
     data_dir: str | None = None
-    upload_dir: str | None = None
-    archive_dir: str | None = None
     database_location: str | None = None
 
 
@@ -529,8 +527,6 @@ def build_status() -> SystemStatusOut:
         shell_proxmox=SHELL_PROXMOX,
         last_log_tail=_read_log_tail(15),
         data_dir=str(DATA_DIR),
-        upload_dir=str(UPLOAD_DIR),
-        archive_dir=str(ARCHIVE_DIR),
         database_location=_database_location(),
     )
 

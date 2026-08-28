@@ -143,11 +143,10 @@ def test_unlink_clears_live_and_archive(tmp_path, monkeypatch):
     assert not (arch / "gone.pdf").exists()
 
 
-def test_install_keeps_hdd_paths():
+def test_install_does_not_write_hdd_paths():
     from pathlib import Path
 
     script = (Path(__file__).resolve().parent.parent / "install/wru-install.sh").read_text(encoding="utf-8")
-    assert "EXISTING_UPLOAD_DIR" in script
-    assert "EXISTING_ARCHIVE_DIR" in script
-    assert "WRU_UPLOAD_DIR=${WRU_UPLOAD_DIR@Q}" in script
-    assert "WRU_ARCHIVE_DIR=${WRU_ARCHIVE_DIR@Q}" in script
+    assert "EXISTING_UPLOAD_DIR" not in script
+    assert "WRU_UPLOAD_DIR" not in script
+    assert "WRU_ARCHIVE_DIR" not in script

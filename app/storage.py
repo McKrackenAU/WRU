@@ -1,7 +1,7 @@
 """Document file locations, compression, and archive moves.
 
-Postgres (the site register) can live on NVMe. Uploaded files and archived
-files can sit on spinning disks via WRU_UPLOAD_DIR and WRU_ARCHIVE_DIR.
+Live files sit in the app data dir (`uploads/`). Archived site files sit in
+`uploads/archived/`. Directories are created on first use, never at import.
 """
 
 from __future__ import annotations

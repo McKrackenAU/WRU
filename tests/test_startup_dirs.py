@@ -14,9 +14,9 @@ def test_ensure_dir_swallows_unwritable_path():
 
 
 def test_env_path_does_not_mkdir(tmp_path, monkeypatch):
-    missing = tmp_path / "not-created" / "uploads"
-    monkeypatch.setenv("WRU_UPLOAD_DIR", str(missing))
-    parsed = env_path("WRU_UPLOAD_DIR", tmp_path / "default")
+    missing = tmp_path / "not-created" / "data"
+    monkeypatch.setenv("WRU_DATA_DIR", str(missing))
+    parsed = env_path("WRU_DATA_DIR", tmp_path / "default")
     assert parsed == missing
     assert not missing.exists()
     assert not missing.parent.exists()
@@ -25,10 +25,10 @@ def test_env_path_does_not_mkdir(tmp_path, monkeypatch):
 def test_import_does_not_mkdir_storage_paths():
     db = (ROOT / "app" / "database.py").read_text(encoding="utf-8")
     assert "DATA_DIR = env_path(" in db
-    assert "UPLOAD_DIR = env_path(" in db
-    assert "ARCHIVE_DIR = env_path(" in db
-    assert "UPLOAD_DIR = _env_dir" not in db
-    assert "DATA_DIR = ensure_dir(" not in db
+    assert 'UPLOAD_DIR = DATA_DIR / "uploads"' in db
+    assert 'ARCHIVE_DIR = UPLOAD_DIR / "archived"' in db
+    assert "WRU_UPLOAD_DIR" not in db
+    assert "WRU_ARCHIVE_DIR" not in db
     docs = (ROOT / "app" / "routers" / "documents.py").read_text(encoding="utf-8")
     maps = (ROOT / "app" / "routers" / "map_layers.py").read_text(encoding="utf-8")
     backup = (ROOT / "app" / "routers" / "backup.py").read_text(encoding="utf-8")
@@ -80,7 +80,8 @@ def test_install_puts_sudo_wru_update_on_path():
 
 def test_install_does_not_abort_on_hdd_or_optional_jpeg():
     text = (ROOT / "install" / "wru-install.sh").read_text(encoding="utf-8")
-    assert 'mkdir -p "$WRU_UPLOAD_DIR" || true' in text
+    assert "WRU_UPLOAD_DIR" not in text
+    assert "WRU_ARCHIVE_DIR" not in text
     assert "libjpeg62-turbo ||" in text
     assert 'mv "$NEW_APP" "$APP_DIR"' in text
     assert 'python3 -m venv "$NEW_APP/.venv"' in text

@@ -28,12 +28,12 @@ def env_path(name: str, default: Path) -> Path:
     return path
 
 
-# Documents on HDD: set WRU_UPLOAD_DIR (live) and WRU_ARCHIVE_DIR (archived sites).
-# Postgres stays on whatever disk DATABASE_URL points at (typically NVMe).
-# Paths are resolved at import; directories are created on first use.
+# App data lives under WRU_DATA_DIR (Proxmox: /opt/wru-data). Documents and
+# archives stay in that tree — extra HDD env vars from v1.80 are ignored so a
+# missing mount cannot take the site down.
 DATA_DIR = env_path("WRU_DATA_DIR", BASE_DIR / "data")
-UPLOAD_DIR = env_path("WRU_UPLOAD_DIR", DATA_DIR / "uploads")
-ARCHIVE_DIR = env_path("WRU_ARCHIVE_DIR", UPLOAD_DIR / "archived")
+UPLOAD_DIR = DATA_DIR / "uploads"
+ARCHIVE_DIR = UPLOAD_DIR / "archived"
 
 
 def build_database_url() -> str:

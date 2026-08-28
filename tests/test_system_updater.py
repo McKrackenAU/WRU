@@ -53,9 +53,10 @@ def test_updater_copy_avoids_shell_setup():
 
 
 def test_system_page_shows_storage_paths():
-    assert "WRU_UPLOAD_DIR" in HTML
-    assert "WRU_ARCHIVE_DIR" in HTML
-    assert "s.upload_dir" in JS
-    assert "s.archive_dir" in JS
+    assert "WRU_UPLOAD_DIR" not in HTML
+    assert "WRU_ARCHIVE_DIR" not in HTML
+    assert "s.upload_dir" not in JS
+    assert "s.archive_dir" not in JS
+    assert "s.data_dir" in JS
     assert "s.database_location" in JS
     assert "database_location" in (ROOT / "app/routers/system.py").read_text(encoding="utf-8")
