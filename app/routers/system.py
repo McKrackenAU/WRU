@@ -640,7 +640,7 @@ def system_update(payload: SystemUpdateRequest | None = None):
         ok=True,
         message=(
             f"Update started from {repo} @ {ref} (unit {unit}). "
-            "The service will restart shortly — refresh this page in 1–2 minutes."
+            "The service will restart shortly — open tabs refresh on their own once it is back."
         ),
         log_tail=_read_log_tail(20)
         or f"Follow progress: journalctl -u {unit} -f  (or /var/log/wru-update.log)",
@@ -670,7 +670,7 @@ def system_rollback(payload: RollbackRequest):
 
     return SystemUpdateOut(
         ok=True,
-        message=f"Rollback to {ref} started (unit {unit}). Refresh in 1–2 minutes.",
+        message=f"Rollback to {ref} started (unit {unit}). Open tabs refresh once the service is back.",
         log_tail=_read_log_tail(20)
         or f"Follow progress: journalctl -u {unit} -f  (or /var/log/wru-update.log)",
         status=status,

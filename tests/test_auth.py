@@ -27,6 +27,8 @@ def test_public_paths():
     assert is_public_path("/static/js/common.js")
     assert is_public_path("/manifest.webmanifest")
     assert is_public_path("/sw.js")
+    assert is_public_path("/api/live/version")
+    assert not is_public_path("/api/live/revision")
     assert not is_public_path("/")
     assert not is_public_path("/api/sites")
     assert not is_public_path("/password")

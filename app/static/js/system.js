@@ -250,7 +250,7 @@ async function waitForChange(beforeUpdatedAt, successLabel) {
           "ok",
           `<strong>${escapeHtml(successLabel)}.</strong> You’re now on ${escapeHtml(
             s.version_tag || s.app_version
-          )}.`
+          )}. Other open tabs will refresh on their own.`
         );
         await refreshLog();
         stopLogPoll();

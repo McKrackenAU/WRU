@@ -142,7 +142,9 @@ export function notifyLiveIfBackground(event) {
       ? `${who} updated the Gantt`
       : reason === "restart"
         ? "Tracker reconnected — refreshing"
-        : `${who} saved — live update`;
+        : reason === "app_update"
+          ? "WRU updated — refreshing this tab"
+          : `${who} saved — live update`;
   try {
     const n = new Notification("WRU TGS Tracker", {
       body,
