@@ -1036,15 +1036,13 @@ export async function injectChrome({ active, mode } = {}) {
   if (header) {
     header.classList.toggle("topbar-admin", isAdmin);
     const adminToggle = canAdmin
-      ? `<div class="admin-mode-toggle">
-        <span id="adminModeLabel">Admin</span>
-        <button type="button" class="switch" id="adminModeToggle" role="switch"
+      ? `<button type="button" class="admin-switch" id="adminModeToggle" role="switch"
           aria-checked="${isAdmin ? "true" : "false"}"
-          aria-labelledby="adminModeLabel"
+          aria-label="${isAdmin ? "Admin console on. Switch to tracker" : "Admin console off. Switch to admin"}"
           title="${isAdmin ? "Back to tracker" : "Open admin console"}">
+          <span class="admin-switch-label" aria-hidden="true">Admin</span>
           <span class="switch-knob" aria-hidden="true"></span>
-        </button>
-      </div>`
+        </button>`
       : "";
     const userMenu = who
       ? `<div class="user-menu">

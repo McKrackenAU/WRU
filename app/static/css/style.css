@@ -425,14 +425,72 @@ html.dark .user-menu-btn:hover {
   white-space: nowrap;
 }
 
-.admin-mode-toggle {
+.admin-switch {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 650;
-  color: var(--ventia-muted);
+  width: 5.7rem;
+  height: 1.85rem;
+  min-height: 1.85rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--ventia-border);
+  background: color-mix(in srgb, var(--ventia-muted) 22%, var(--field-bg));
+  cursor: pointer;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.admin-switch:focus-visible {
+  outline: 2px solid var(--ventia-green);
+  outline-offset: 2px;
+}
+
+.admin-switch-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 0.58rem 0 1.85rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ventia-muted);
+  pointer-events: none;
+}
+
+.admin-switch .switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  transition: transform 0.18s ease;
+  z-index: 1;
+}
+
+.admin-switch[aria-checked="true"] {
+  background: var(--ventia-green);
+  border-color: var(--ventia-green);
+}
+
+.admin-switch[aria-checked="true"] .admin-switch-label {
+  justify-content: flex-start;
+  padding: 0 1.85rem 0 0.58rem;
+  color: #042014;
+}
+
+html.dark .admin-switch[aria-checked="true"] .admin-switch-label {
+  color: #042014;
+}
+
+.admin-switch[aria-checked="true"] .switch-knob {
+  transform: translateX(3.7rem);
 }
 
 .admin-mode-toggle .switch,
@@ -2686,6 +2744,50 @@ body.admin-mode .shell-sidebar {
   min-width: 0;
 }
 
+.upd-progress {
+  margin: 0.85rem 0 0.35rem;
+}
+
+.upd-progress-track {
+  height: 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--ventia-border);
+  background: var(--field-bg);
+  overflow: hidden;
+}
+
+.upd-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--ventia-green-mid), var(--ventia-green));
+  transition: width 0.45s ease;
+}
+
+.upd-progress.is-busy .upd-progress-fill {
+  background-size: 1.4rem 1.4rem;
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.28) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0.28) 75%,
+    transparent 75%,
+    transparent
+  );
+  animation: upd-progress-stripes 0.9s linear infinite;
+}
+
+@keyframes upd-progress-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 1.4rem 0; }
+}
+
+.upd-progress #updProgressLabel {
+  margin: 0.4rem 0 0;
+}
+
 .cost-subhead {
   margin: 1.1rem 0 0.45rem;
   font-size: 0.95rem;
@@ -4086,7 +4188,7 @@ html.pwa-standalone .topbar {
 }
 
 body.must-change-password .side-nav,
-body.must-change-password .admin-mode-toggle {
+body.must-change-password .admin-switch {
   pointer-events: none;
   opacity: 0.42;
 }

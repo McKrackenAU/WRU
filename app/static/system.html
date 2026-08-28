@@ -58,29 +58,16 @@
           <button type="button" class="btn btn-primary" id="btnUpdate">Pull &amp; install update</button>
           <button type="button" class="btn" id="btnCheckUpdate">Check for updates</button>
           <button type="button" class="btn" id="btnRefresh">Refresh</button>
+          <button type="button" class="btn" id="btnToggleLog" aria-expanded="false" aria-controls="updLog">Logs</button>
           <span class="hint" id="updStatus" aria-live="polite"></span>
         </div>
 
-        <details class="upd-options">
-          <summary>Branch &amp; repository</summary>
-          <div class="form-grid">
-            <label>Git branch or tag
-              <input id="updBranch" type="text" value="main" placeholder="main or v0.9" autocomplete="off" />
-            </label>
-            <label class="full">Git repository URL
-              <input id="updRepo" type="url" value="https://github.com/McKrackenAU/WRU.git" autocomplete="off" />
-            </label>
+        <div class="upd-progress" id="updProgress" hidden>
+          <div class="upd-progress-track" id="updProgressBar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Update progress">
+            <div class="upd-progress-fill" id="updProgressFill"></div>
           </div>
-        </details>
-
-        <details class="upd-advanced" id="shellHelp">
-          <summary>Need a first-time shell setup?</summary>
-          <p class="hint">Only needed if the green button is disabled. Run once as root, then come back here.</p>
-          <p><strong>Inside the WRU container</strong></p>
-          <pre id="shellCt" class="code-block"></pre>
-          <p><strong>From the Proxmox host</strong></p>
-          <pre id="shellPve" class="code-block"></pre>
-        </details>
+          <p class="hint" id="updProgressLabel">Installing…</p>
+        </div>
 
         <pre id="updLog" class="code-block upd-log" hidden aria-label="Update log"></pre>
       </section>

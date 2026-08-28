@@ -10,6 +10,60 @@ import {
 } from "./common.js";
 
 let logPollTimer = null;
+let logOpen = false;
+let progressValue = 0;
+const DEFAULT_BRANCH = "main";
+const DEFAULT_REPO = "https://github.com/McKrackenAU/WRU.git";
+
+function updatePayload() {
+  return { branch: DEFAULT_BRANCH, repo: DEFAULT_REPO };
+}
+
+function setProgress(pct, label, { busy = true } = {}) {
+  const wrap = $("updProgress");
+  const fill = $("updProgressFill");
+  const bar = $("updProgressBar");
+  const text = $("updProgressLabel");
+  if (!wrap || !fill) return;
+  progressValue = Math.max(0, Math.min(100, Math.round(pct)));
+  wrap.hidden = false;
+  wrap.classList.toggle("is-busy", busy && progressValue < 100);
+  fill.style.width = `${progressValue}%`;
+  if (bar) bar.setAttribute("aria-valuenow", String(progressValue));
+  if (text) text.textContent = label || (progressValue >= 100 ? "Done." : `Installing… ${progressValue}%`);
+}
+
+function hideProgress() {
+  const wrap = $("updProgress");
+  if (wrap) {
+    wrap.hidden = true;
+    wrap.classList.remove("is-busy");
+  }
+  progressValue = 0;
+  const fill = $("updProgressFill");
+  if (fill) fill.style.width = "0%";
+}
+
+function progressFromLog(text) {
+  const t = (text || "").toLowerCase();
+  let n = Math.max(progressValue, 12);
+  if (/start|queued|begin/.test(t)) n = Math.max(n, 18);
+  if (/git|fetch|pull|clone/.test(t)) n = Math.max(n, 38);
+  if (/install|pip|copy|unpack/.test(t)) n = Math.max(n, 58);
+  if (/restart|systemd|waiting|coming back/.test(t)) n = Math.max(n, 82);
+  return Math.min(n, 90);
+}
+
+function setLogOpen(open) {
+  logOpen = Boolean(open);
+  const log = $("updLog");
+  const btn = $("btnToggleLog");
+  if (log) log.hidden = !logOpen;
+  if (btn) {
+    btn.setAttribute("aria-expanded", logOpen ? "true" : "false");
+    btn.textContent = logOpen ? "Hide logs" : "Logs";
+  }
+}
 
 function setAlert(kind, html) {
   const el = $("sysAlert");
@@ -71,29 +125,18 @@ function renderStatus(s) {
     <div class="version-chip" style="grid-column:1/-1"><span class="k">Repository</span><span class="v">${escapeHtml(s.repo || "—")}</span></div>
   `;
 
-  if ($("updBranch") && !$("updBranch").dataset.touched) {
-    $("updBranch").value = s.branch || "main";
-  }
-  if ($("updRepo") && !$("updRepo").dataset.touched) {
-    $("updRepo").value = s.repo || "https://github.com/McKrackenAU/WRU.git";
-  }
-
   const btn = $("btnUpdate");
   if (btn) btn.disabled = !s.can_update;
-
-  if ($("shellCt")) $("shellCt").textContent = s.shell_ct || "";
-  if ($("shellPve")) $("shellPve").textContent = s.shell_proxmox || "";
 
   renderSteps(s);
 
   if (!s.can_update) {
     $("updHint").textContent =
-      s.detail ||
-      "Almost there — open “Need a first-time shell setup?” below, run the command once, then hit Refresh.";
+      s.detail || "The updater isn’t ready on this server yet. Ask whoever installed WRU to finish setup, then hit Refresh.";
     setAlert(
       "warn",
-      `<strong>One quick setup step left.</strong> ${escapeHtml(
-        s.detail || "Run the shell update once as root, then refresh this page."
+      `<strong>Updater not ready.</strong> ${escapeHtml(
+        s.detail || "The update helper isn’t installed on this server yet."
       )}`
     );
   } else {
@@ -159,9 +202,14 @@ async function refreshLog() {
   try {
     const payload = await api("/api/system/update-log", { timeoutMs: 10000 });
     if (payload.log) {
-      $("updLog").hidden = false;
-      $("updLog").textContent = payload.log;
-      $("updLog").scrollTop = $("updLog").scrollHeight;
+      if ($("updLog")) $("updLog").textContent = payload.log;
+      if (logOpen) {
+        $("updLog").hidden = false;
+        $("updLog").scrollTop = $("updLog").scrollHeight;
+      }
+      if (!$("updProgress")?.hidden) {
+        setProgress(progressFromLog(payload.log), $("updProgressLabel")?.textContent, { busy: true });
+      }
     }
   } catch (_) {
     /* ignore while service restarts */
@@ -186,10 +234,13 @@ async function waitForChange(beforeUpdatedAt, successLabel) {
   startLogPoll();
   for (let i = 0; i < 80; i++) {
     await new Promise((r) => setTimeout(r, 3000));
+    const bump = Math.min(90, progressValue + 2);
+    setProgress(bump, $("updProgressLabel")?.textContent || "Installing…", { busy: true });
     try {
       const payload = await loadVersions();
       const s = payload.current;
       if (s.updated_at && s.updated_at !== beforeUpdatedAt) {
+        setProgress(100, `${successLabel} · ${s.version_tag || s.app_version}`, { busy: false });
         $("updStatus").textContent = `${successLabel} · ${s.version_tag || s.app_version}`;
         setAlert(
           "ok",
@@ -206,8 +257,8 @@ async function waitForChange(beforeUpdatedAt, successLabel) {
     }
   }
   stopLogPoll();
-  $("updStatus").textContent = "Still working — check the log, or refresh in a minute.";
-  setAlert("warn", "<strong>Still updating.</strong> Give it another minute, or peek at the log below.");
+  $("updStatus").textContent = "Still working — open Logs, or refresh in a minute.";
+  setAlert("warn", "<strong>Still updating.</strong> Give it another minute, or open Logs.");
   await refreshLog();
 }
 
@@ -220,10 +271,7 @@ async function checkForUpdate() {
     const result = await api("/api/system/check-update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        branch: $("updBranch")?.value.trim() || "main",
-        repo: $("updRepo")?.value.trim(),
-      }),
+      body: JSON.stringify(updatePayload()),
       timeoutMs: 20000,
     });
     const detail = result.detail || "Check finished.";
@@ -259,29 +307,28 @@ async function runUpdate() {
   if ($("btnCheckUpdate")) $("btnCheckUpdate").disabled = true;
   $("updStatus").textContent = "Starting…";
   setAlert("pending", "<strong>Update underway.</strong> Hang tight — the page will refresh when it’s back.");
-  $("updLog").hidden = false;
-  $("updLog").textContent = "Starting…";
+  setProgress(8, "Starting update…");
+  if ($("updLog")) $("updLog").textContent = "Starting…";
   startLogPoll();
   try {
     const result = await api("/api/system/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        branch: $("updBranch").value.trim() || "main",
-        repo: $("updRepo").value.trim(),
-      }),
+      body: JSON.stringify(updatePayload()),
       timeoutMs: 30000,
     });
     $("updStatus").textContent = result.message || "Update started.";
-    if (result.log_tail) $("updLog").textContent = result.log_tail;
+    if (result.log_tail && $("updLog")) $("updLog").textContent = result.log_tail;
+    setProgress(progressFromLog(result.log_tail || result.message || ""), "Installing — waiting for the app to come back…");
     const before = result.status?.updated_at || "";
     $("updStatus").textContent = "Installing — waiting for the app to come back…";
     await waitForChange(before, "All done");
   } catch (err) {
     stopLogPoll();
     $("updStatus").textContent = "";
-    $("updLog").hidden = false;
-    $("updLog").textContent = String(err.message || err);
+    hideProgress();
+    if ($("updLog")) $("updLog").textContent = String(err.message || err);
+    setLogOpen(true);
     setAlert("bad", `<strong>Couldn’t start the update.</strong> ${escapeHtml(err.message || err)}`);
     await loadVersions().catch(() => {});
   } finally {
@@ -302,8 +349,8 @@ async function runRollback(version) {
   $("btnUpdate").disabled = true;
   $("updStatus").textContent = `Rolling back to ${version}…`;
   setAlert("pending", `<strong>Rolling back to ${escapeHtml(version)}.</strong>`);
-  $("updLog").hidden = false;
-  $("updLog").textContent = "Starting…";
+  setProgress(8, `Rolling back to ${version}…`);
+  if ($("updLog")) $("updLog").textContent = "Starting…";
   startLogPoll();
   try {
     const result = await api("/api/system/rollback", {
@@ -313,14 +360,16 @@ async function runRollback(version) {
       timeoutMs: 30000,
     });
     $("updStatus").textContent = result.message || "Rollback started.";
-    if (result.log_tail) $("updLog").textContent = result.log_tail;
+    if (result.log_tail && $("updLog")) $("updLog").textContent = result.log_tail;
+    setProgress(progressFromLog(result.log_tail || ""), `Rolling back to ${version}…`);
     const before = result.status?.updated_at || "";
     await waitForChange(before, `Back on ${version}`);
   } catch (err) {
     stopLogPoll();
     $("updStatus").textContent = "";
-    $("updLog").hidden = false;
-    $("updLog").textContent = String(err.message || err);
+    hideProgress();
+    if ($("updLog")) $("updLog").textContent = String(err.message || err);
+    setLogOpen(true);
     setAlert("bad", `<strong>Rollback didn’t start.</strong> ${escapeHtml(err.message || err)}`);
     await loadVersions().catch(() => {});
   } finally {
@@ -383,15 +432,16 @@ async function saveNearmapKey(clear = false) {
 
 async function init() {
   injectChrome({ active: "/admin/system", mode: "admin" });
-  on("updBranch", "input", () => {
-    if ($("updBranch")) $("updBranch").dataset.touched = "1";
-  });
-  on("updRepo", "input", () => {
-    if ($("updRepo")) $("updRepo").dataset.touched = "1";
+  on("btnToggleLog", "click", () => {
+    setLogOpen(!logOpen);
+    if (logOpen) refreshLog().catch(() => {});
   });
   on("btnRefresh", "click", () => {
     loadVersions()
-      .then(() => refreshLog())
+      .then(() => {
+        if (logOpen) return refreshLog();
+        return null;
+      })
       .catch((e) => showPageError("sysMeta", e, "Could not load system status"));
     loadNearmapConfig().catch(() => {});
   });

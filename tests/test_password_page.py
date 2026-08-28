@@ -30,6 +30,7 @@ def test_chrome_exposes_change_password():
 
 def test_chrome_admin_toggle_lives_in_topbar():
     assert "adminModeToggle" in COMMON
+    assert 'class="admin-switch"' in COMMON
     assert 'role="switch"' in COMMON
     assert "btn-admin-link" not in COMMON
     assert "← Back to tracker" not in COMMON
