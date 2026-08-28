@@ -111,10 +111,13 @@ def test_admin_settings_lists_document_types():
 def test_drawer_and_library_have_selection_and_zip():
     assert 'id="docSelectAll"' in INDEX
     assert 'id="btnDownloadDocs"' in INDEX
+    assert 'id="btnDownloadAllDocs"' in INDEX
+    assert "Download all as folder" in INDEX
     assert "downloadDocumentsZip" in APP_JS
     assert "downloadDocumentsZip" in DOCS_JS
     assert 'id="libSelectAll"' in DOCS_HTML
     assert 'id="btnDownloadSelected"' in DOCS_HTML
+    assert 'id="btnDownloadAll"' in DOCS_HTML
     assert "download_documents_zip" in DOCS_PY
     assert 'id="docSelectBar"' in INDEX
     assert "applyDocCategories" in COMMON

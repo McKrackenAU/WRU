@@ -13,6 +13,7 @@ import {
 } from "./common.js";
 
 let categories = [];
+let listedIds = [];
 
 function debounce(fn, ms) {
   let t;
@@ -40,6 +41,7 @@ async function load() {
   if ($("search").value.trim()) params.set("q", $("search").value.trim());
   if ($("categoryFilter").value) params.set("category", $("categoryFilter").value);
   const docs = await api(`/api/documents?${params}`);
+  listedIds = docs.map((d) => d.id);
   $("tbody").innerHTML = docs.length
     ? docs
         .map(
@@ -57,6 +59,9 @@ async function load() {
         .join("")
     : `<tr><td class="empty" colspan="8">No documents match.</td></tr>`;
   $("statusLine").textContent = `${docs.length} document${docs.length === 1 ? "" : "s"}`;
+  if ($("btnDownloadSelected")) $("btnDownloadSelected").disabled = !docs.length;
+  if ($("btnDownloadAll")) $("btnDownloadAll").disabled = !docs.length;
+  if ($("libSelectAll")) $("libSelectAll").disabled = !docs.length;
   syncSelectAll();
 }
 
@@ -73,16 +78,18 @@ async function changeCategory(sel) {
   }
 }
 
-async function downloadSelected() {
-  const ids = selectedIds();
+async function downloadListed({ all = false } = {}) {
+  const ids = all ? [...listedIds] : selectedIds();
   if (!ids.length) {
-    await alertDialog("Tick the documents you want, then Download selected.");
+    await alertDialog(
+      all ? "No documents match the current filters." : "Tick the documents you want, then Download selected."
+    );
     return;
   }
-  const btn = $("btnDownloadSelected");
+  const btn = $(all ? "btnDownloadAll" : "btnDownloadSelected");
   if (btn) btn.disabled = true;
   try {
-    await downloadDocumentsZip(ids, "WRU-documents.zip");
+    await downloadDocumentsZip(ids, all ? "WRU-documents-all.zip" : "WRU-documents.zip");
   } catch (err) {
     await alertDialog(errorMessage(err, "Could not download"));
   } finally {
@@ -107,7 +114,8 @@ async function init() {
   $("categoryFilter").addEventListener("change", load);
   $("moaFilter").addEventListener("input", debounce(load, 250));
   $("search").addEventListener("input", debounce(load, 250));
-  $("btnDownloadSelected")?.addEventListener("click", () => downloadSelected());
+  $("btnDownloadSelected")?.addEventListener("click", () => downloadListed());
+  $("btnDownloadAll")?.addEventListener("click", () => downloadListed({ all: true }));
   $("libSelectAll")?.addEventListener("change", (ev) => {
     const on = ev.target.checked;
     document.querySelectorAll("#tbody input[data-doc-pick]").forEach((box) => {

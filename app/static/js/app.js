@@ -52,6 +52,7 @@ const state = {
   _knownPrograms: new Set(),
   _knownStages: new Set(),
   _knownCouncils: new Set(),
+  siteDocIds: [],
 };
 
 const DENSITY_KEY = "wru-register-density";
@@ -1692,9 +1693,15 @@ async function refreshDocuments() {
   if (!state.detailSiteId) return;
   const docs = await api(`/api/sites/${state.detailSiteId}/documents`);
   const canDelete = !state.readOnlyArchive;
-  const bar = $("docSelectBar");
-  if (bar) bar.hidden = !docs.length;
-  if ($("docSelectAll")) $("docSelectAll").checked = false;
+  state.siteDocIds = docs.map((d) => d.id);
+  if ($("docSelectAll")) {
+    $("docSelectAll").checked = false;
+    $("docSelectAll").indeterminate = false;
+  }
+  const empty = !docs.length;
+  if ($("btnDownloadDocs")) $("btnDownloadDocs").disabled = empty;
+  if ($("btnDownloadAllDocs")) $("btnDownloadAllDocs").disabled = empty;
+  if ($("docSelectAll")) $("docSelectAll").disabled = empty;
   $("docList").innerHTML = docs.length
     ? docs
         .map(
@@ -1702,7 +1709,7 @@ async function refreshDocuments() {
       <li data-doc-id="${d.id}">
         <div class="top">
           <label class="doc-pick">
-            <input type="checkbox" data-doc-pick="${d.id}" />
+            <input type="checkbox" data-doc-pick="${d.id}" aria-label="Select ${escapeHtml(d.original_filename)}" />
             <span class="doc-meta">
             ${docCategorySelectHtml(d.id, d.category, { disabled: !canDelete })}
             · ${(d.size_bytes / 1024).toFixed(1)} KB
@@ -1730,16 +1737,18 @@ function syncDocSelectAll() {
   all.indeterminate = boxes.some((b) => b.checked) && !all.checked;
 }
 
-async function downloadSelectedDocs() {
-  const ids = selectedDocIds($("docList") || document);
+async function downloadSiteDocs({ all = false } = {}) {
+  const ids = all ? [...(state.siteDocIds || [])] : selectedDocIds($("docList") || document);
   if (!ids.length) {
-    await alertDialog("Tick the documents you want, then Download selected.");
+    await alertDialog(
+      all ? "This site has no documents to download." : "Tick the documents you want, then Download selected."
+    );
     return;
   }
-  const btn = $("btnDownloadDocs");
+  const btn = $(all ? "btnDownloadAllDocs" : "btnDownloadDocs");
   if (btn) btn.disabled = true;
   try {
-    await downloadDocumentsZip(ids, "WRU-documents.zip");
+    await downloadDocumentsZip(ids, all ? "WRU-documents-all.zip" : "WRU-documents.zip");
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1901,7 +1910,8 @@ function bindEvents() {
   on("btnArchiveSite", "click", () => archiveSite().catch((e) => { alertDialog(e.message); }));
   on("btnAddTrack", "click", () => addTracking().catch((e) => { alertDialog(e.message); }));
   on("btnUploadDoc", "click", () => uploadDoc().catch((e) => { alertDialog(e.message); }));
-  on("btnDownloadDocs", "click", () => downloadSelectedDocs().catch((e) => { alertDialog(errorMessage(e, "Could not download")); }));
+  on("btnDownloadDocs", "click", () => downloadSiteDocs().catch((e) => { alertDialog(errorMessage(e, "Could not download")); }));
+  on("btnDownloadAllDocs", "click", () => downloadSiteDocs({ all: true }).catch((e) => { alertDialog(errorMessage(e, "Could not download")); }));
   on("docSelectAll", "change", (ev) => {
     const on = ev.target.checked;
     document.querySelectorAll("#docList input[data-doc-pick]").forEach((box) => {

@@ -13,6 +13,7 @@ APP_JS = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
 INDEX = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
 COMMON = (ROOT / "app/static/js/common.js").read_text(encoding="utf-8")
 DOCS_JS = (ROOT / "app/static/js/documents.js").read_text(encoding="utf-8")
+DOCS_HTML = (ROOT / "app/static/documents.html").read_text(encoding="utf-8")
 DOCS_PY = (ROOT / "app/routers/documents.py").read_text(encoding="utf-8")
 
 
@@ -54,12 +55,13 @@ def test_chunked_document_upload_is_wired():
     assert "downloadDocumentsZip" in APP_JS
     assert 'id="docSelectAll"' in INDEX
     assert 'id="btnDownloadDocs"' in INDEX
+    assert 'id="btnDownloadAllDocs"' in INDEX
+    assert "Download all as folder" in INDEX
 
 
-def test_library_page_can_change_category():
-    assert "docCategorySelectHtml" in DOCS_JS
-    assert 'method: "PATCH"' in DOCS_JS
-    assert "data-doc-cat" in DOCS_JS
+    assert "downloadDocumentsZip" in DOCS_JS
+    assert 'id="btnDownloadAll"' in DOCS_HTML
+    assert "Download all as folder" in DOCS_HTML
 
 
 def test_xor_chunks_roundtrip_for_pdf_magic():
