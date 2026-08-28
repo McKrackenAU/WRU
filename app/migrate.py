@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from sqlalchemy import inspect, text
 
 from .database import Base, engine
@@ -35,25 +37,40 @@ from .models import (  # noqa: F401 — register metadata
 )
 
 
+def _warn(what: str, exc: BaseException) -> None:
+    print(f"WRU migration warning ({what}): {exc}", file=sys.stderr)
+
+
 def column_names(table: str) -> set[str]:
-    insp = inspect(engine)
-    if table not in insp.get_table_names():
+    try:
+        insp = inspect(engine)
+        if table not in insp.get_table_names():
+            return set()
+        return {c["name"] for c in insp.get_columns(table)}
+    except Exception as exc:  # noqa: BLE001 — boot even if inspect fails
+        _warn(f"inspect {table}", exc)
         return set()
-    return {c["name"] for c in insp.get_columns(table)}
 
 
 def ensure_column(table: str, column: str, ddl: str) -> None:
-    names = column_names(table)
-    if not names:
-        return
-    if column in names:
-        return
-    with engine.begin() as conn:
-        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+    try:
+        names = column_names(table)
+        if not names:
+            return
+        if column in names:
+            return
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+    except Exception as exc:  # noqa: BLE001
+        _warn(f"ensure_column {table}.{column}", exc)
 
 
 def run_migrations() -> None:
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as exc:  # noqa: BLE001
+        _warn("create_all", exc)
+        return
 
     # sites expansions
     ensure_column("sites", "program", "program VARCHAR(128)")
@@ -101,45 +118,51 @@ def run_migrations() -> None:
     ensure_column("actual_spends", "inputs", "inputs JSONB NOT NULL DEFAULT '{}'::jsonb")
     ensure_column("actual_spends", "results", "results JSONB NOT NULL DEFAULT '{}'::jsonb")
     ensure_column("asphalt_rates", "rate_type", "rate_type VARCHAR(16) NOT NULL DEFAULT 'unit'")
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                UPDATE asphalt_rates
-                SET rate_type = 'shift'
-                WHERE rate_type = 'unit'
-                  AND (
-                    lower(unit) IN ('shift', 'day', 'crew', 'mob', 'mobilisation', 'mobilization')
-                    OR lower(name) LIKE '%mobilis%'
-                    OR lower(name) LIKE '%mobiliz%'
-                    OR lower(name) LIKE '%crew%'
-                  )
-                """
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    UPDATE asphalt_rates
+                    SET rate_type = 'shift'
+                    WHERE rate_type = 'unit'
+                      AND (
+                        lower(unit) IN ('shift', 'day', 'crew', 'mob', 'mobilisation', 'mobilization')
+                        OR lower(name) LIKE '%mobilis%'
+                        OR lower(name) LIKE '%mobiliz%'
+                        OR lower(name) LIKE '%crew%'
+                      )
+                    """
+                )
             )
-        )
+    except Exception as exc:  # noqa: BLE001
+        _warn("asphalt_rates rate_type", exc)
 
     # Seed register_order from current start-date ordering when missing
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                WITH ranked AS (
-                  SELECT id,
-                         ROW_NUMBER() OVER (
-                           PARTITION BY COALESCE(NULLIF(BTRIM(program), ''), 'Unassigned')
-                           ORDER BY indicative_site_start_date ASC NULLS LAST, id ASC
-                         ) * 10 AS ord
-                  FROM sites
-                  WHERE register_order IS NULL
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    WITH ranked AS (
+                      SELECT id,
+                             ROW_NUMBER() OVER (
+                               PARTITION BY COALESCE(NULLIF(BTRIM(program), ''), 'Unassigned')
+                               ORDER BY indicative_site_start_date ASC NULLS LAST, id ASC
+                             ) * 10 AS ord
+                      FROM sites
+                      WHERE register_order IS NULL
+                    )
+                    UPDATE sites
+                    SET register_order = ranked.ord
+                    FROM ranked
+                    WHERE sites.id = ranked.id
+                    """
                 )
-                UPDATE sites
-                SET register_order = ranked.ord
-                FROM ranked
-                WHERE sites.id = ranked.id
-                """
             )
-        )
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_register_order ON sites (register_order)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_register_order ON sites (register_order)"))
+    except Exception as exc:  # noqa: BLE001
+        _warn("register_order", exc)
 
     # documents expansions
     ensure_column("documents", "moa_number", "moa_number VARCHAR(64)")
@@ -157,8 +180,11 @@ def run_migrations() -> None:
         "stored_encoding",
         "stored_encoding VARCHAR(16) NOT NULL DEFAULT 'plain'",
     )
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(64)"))
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(64)"))
+    except Exception as exc:  # noqa: BLE001
+        _warn("documents.category type", exc)
 
     # cost estimate expansions (MoA history + attachments)
     ensure_column("cost_estimates", "site_id", "site_id INTEGER REFERENCES sites(id) ON DELETE CASCADE")
@@ -202,19 +228,22 @@ def run_migrations() -> None:
     ensure_column("site_councils", "submitted_to_council_date", "submitted_to_council_date DATE")
     ensure_column("site_councils", "no_objection_date", "no_objection_date DATE")
 
-    with engine.begin() as conn:
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_financial_year ON sites (financial_year)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived_fy ON sites (archived_fy)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_moa_number ON sites (moa_number)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_program ON sites (program)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_moa_number ON documents (moa_number)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_category ON documents (category)"))
-        conn.execute(
-            text("CREATE INDEX IF NOT EXISTS ix_cost_estimates_moa_number ON cost_estimates (moa_number)")
-        )
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_is_generic_moa ON sites (is_generic_moa)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lookup_items_kind ON lookup_items (kind)"))
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_financial_year ON sites (financial_year)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived_fy ON sites (archived_fy)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_moa_number ON sites (moa_number)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_program ON sites (program)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_moa_number ON documents (moa_number)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_category ON documents (category)"))
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_cost_estimates_moa_number ON cost_estimates (moa_number)")
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_is_generic_moa ON sites (is_generic_moa)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lookup_items_kind ON lookup_items (kind)"))
+    except Exception as exc:  # noqa: BLE001
+        _warn("indexes", exc)
 
     # Seed configurable stages / program categories / settings / lookups
     from .database import SessionLocal
@@ -233,6 +262,8 @@ def run_migrations() -> None:
         ensure_settings(db)
         ensure_admin_user(db)
         ensure_root_user(db)
+    except Exception as exc:  # noqa: BLE001
+        _warn("seed", exc)
     finally:
         db.close()
 

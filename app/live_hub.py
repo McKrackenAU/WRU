@@ -63,8 +63,11 @@ def _write_state_locked() -> None:
         "updated_at": time.time(),
     }
     tmp = STATE_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload), encoding="utf-8")
-    tmp.replace(STATE_PATH)
+    try:
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(STATE_PATH)
+    except OSError:
+        return
     try:
         _state_mtime_ns = int(STATE_PATH.stat().st_mtime_ns)
     except OSError:

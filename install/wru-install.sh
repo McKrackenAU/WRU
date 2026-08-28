@@ -150,7 +150,6 @@ $STD apt-get install -y \
   python3 \
   python3-venv \
   python3-pip \
-  python3-full \
   git \
   curl \
   ca-certificates \
@@ -158,9 +157,10 @@ $STD apt-get install -y \
   locales \
   postgresql \
   postgresql-contrib \
-  libpq5 \
-  libjpeg62-turbo \
-  zlib1g
+  libpq5
+$STD apt-get install -y python3-full || true
+$STD apt-get install -y libjpeg62-turbo || $STD apt-get install -y libjpeg-turbo8 || true
+$STD apt-get install -y zlib1g || true
 # Ensure UTF-8 locale so seed/app strings are not forced through ASCII
 if ! locale -a 2>/dev/null | grep -qiE '^(C\.UTF-8|en_US\.utf8|en_US\.UTF-8)$'; then
   sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen 2>/dev/null || true
@@ -283,41 +283,66 @@ fi
 msg_ok "Application user ready"
 
 msg_info "Deploying ${APP}"
-mkdir -p "$DATA_DIR/uploads"
+mkdir -p "$DATA_DIR/uploads" || true
 TMP_APP="$(mktemp -d)"
-if ! git clone --depth 1 --branch "$APP_BRANCH" "$APP_GIT" "$TMP_APP/wru" >/dev/null 2>&1; then
+NEW_APP="$TMP_APP/wru"
+if ! git clone --depth 1 --branch "$APP_BRANCH" "$APP_GIT" "$NEW_APP" >/dev/null 2>&1; then
+  rm -rf "$NEW_APP"
+  msg_warn "Clone by ref name failed — retrying (commit SHA / tag)"
+  if git clone --depth 50 "$APP_GIT" "$NEW_APP" >/dev/null 2>&1; then
+    git -C "$NEW_APP" fetch --depth 50 origin "$APP_BRANCH" >/dev/null 2>&1 || true
+    git -C "$NEW_APP" checkout "$APP_BRANCH" >/dev/null 2>&1 || true
+  fi
+fi
+if [[ ! -f "$NEW_APP/app/main.py" ]]; then
   msg_error "Failed to clone ${APP_GIT} (${APP_BRANCH})"
+  rm -rf "$TMP_APP"
   exit 1
 fi
-rm -rf "$APP_DIR"
-mv "$TMP_APP/wru" "$APP_DIR"
-rm -rf "$TMP_APP"
-rm -rf "$APP_DIR/data"
-msg_ok "Deployed ${APP} (${APP_BRANCH})"
 
 msg_info "Creating Python virtualenv"
-if ! python3 -m venv "$APP_DIR/.venv"; then
+if ! python3 -m venv "$NEW_APP/.venv"; then
   msg_error "python3 -m venv failed — installing python3-venv and retrying"
-  $STD apt-get install -y python3-venv python3-full
-  python3 -m venv "$APP_DIR/.venv"
+  $STD apt-get install -y python3-venv python3-full || true
+  python3 -m venv "$NEW_APP/.venv"
 fi
 # shellcheck disable=SC1091
-source "$APP_DIR/.venv/bin/activate"
+source "$NEW_APP/.venv/bin/activate"
 if ! command -v pip >/dev/null 2>&1; then
   msg_error "venv pip missing after create"
+  deactivate || true
+  rm -rf "$TMP_APP"
   exit 1
 fi
 pip install --upgrade pip
-if ! pip install -r "$APP_DIR/requirements.txt"; then
+if ! pip install -r "$NEW_APP/requirements.txt"; then
   msg_warn "Bulk pip install failed — retrying packages individually so WRU can still start"
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" || "$line" == \#* ]] && continue
     pip install "$line" || msg_warn "Could not install $line"
-  done < "$APP_DIR/requirements.txt"
+  done < "$NEW_APP/requirements.txt"
 fi
 pip install "pillow==11.1.0" || msg_warn "Pillow not installed — uploads still work, photos will not recompress"
 deactivate
-msg_ok "Installed Python packages"
+if [[ ! -x "$NEW_APP/.venv/bin/uvicorn" ]]; then
+  if [[ -x "$APP_DIR/.venv/bin/uvicorn" ]]; then
+    msg_warn "New venv is incomplete — keeping existing ${APP_DIR}"
+    rm -rf "$TMP_APP"
+  else
+    msg_error "uvicorn missing after pip install"
+    rm -rf "$TMP_APP"
+    exit 1
+  fi
+else
+  rm -rf "${APP_DIR}.prev"
+  if [[ -d "$APP_DIR" ]]; then
+    mv "$APP_DIR" "${APP_DIR}.prev"
+  fi
+  mv "$NEW_APP" "$APP_DIR"
+  rm -rf "$TMP_APP"
+  rm -rf "$APP_DIR/data"
+  msg_ok "Deployed ${APP} (${APP_BRANCH})"
+fi
 
 msg_info "Writing environment"
 # Read a quoted KEY=value from /etc/default/wru without sourcing the whole file
@@ -384,18 +409,19 @@ if [[ -z "${WRU_ARCHIVE_DIR:-}" ]]; then WRU_ARCHIVE_DIR="${EXISTING_ARCHIVE_DIR
   fi
 } >/etc/default/wru
 chmod 640 /etc/default/wru
-chown root:"${APP_USER}" /etc/default/wru
+chown root:"${APP_USER}" /etc/default/wru || true
 msg_ok "Wrote /etc/default/wru"
 
 msg_info "Setting permissions"
-chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$DATA_DIR"
-chmod 755 "$APP_DIR" "$DATA_DIR"
+chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" || true
+chown -R "${APP_USER}:${APP_USER}" "$DATA_DIR" || true
+chmod 755 "$APP_DIR" "$DATA_DIR" || true
 if [[ -n "${WRU_UPLOAD_DIR:-}" ]]; then
-  mkdir -p "$WRU_UPLOAD_DIR"
+  mkdir -p "$WRU_UPLOAD_DIR" || true
   chown -R "${APP_USER}:${APP_USER}" "$WRU_UPLOAD_DIR" || true
 fi
 if [[ -n "${WRU_ARCHIVE_DIR:-}" ]]; then
-  mkdir -p "$WRU_ARCHIVE_DIR"
+  mkdir -p "$WRU_ARCHIVE_DIR" || true
   chown -R "${APP_USER}:${APP_USER}" "$WRU_ARCHIVE_DIR" || true
 fi
 msg_ok "Permissions set"
@@ -410,13 +436,12 @@ set +a
 # Belt-and-suspenders: ensure DATABASE_URL is exported even if source was odd
 export DATABASE_URL="${DATABASE_URL:-}"
 if [[ -z "$DATABASE_URL" ]]; then
-  msg_error "DATABASE_URL missing after writing /etc/default/wru"
-  exit 1
+  msg_warn "DATABASE_URL missing after writing /etc/default/wru — starting the app anyway"
 fi
 cd "$APP_DIR"
 
 # Prove DB login works before migrations (shows real errors)
-python3 - <<'PY'
+python3 - <<'PY' || msg_warn "Database connection failed — starting the app anyway"
 import os, sys
 from sqlalchemy import create_engine, text
 url = os.environ.get("DATABASE_URL")
@@ -424,7 +449,7 @@ if not url:
     print("DATABASE_URL is not set in the environment", file=sys.stderr)
     sys.exit(1)
 try:
-    eng = create_engine(url, pool_pre_ping=True)
+    eng = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
     with eng.connect() as conn:
         conn.execute(text("SELECT 1"))
 except Exception as exc:
@@ -459,6 +484,7 @@ EnvironmentFile=/etc/default/wru
 ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port \${WRU_PORT}
 Restart=on-failure
 RestartSec=5
+TimeoutStartSec=25
 LimitNOFILE=65535
 
 [Install]

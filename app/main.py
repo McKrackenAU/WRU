@@ -177,6 +177,12 @@ app.add_middleware(
 )
 
 
+@app.get("/health")
+def health():
+    """Liveness for proxies — no disk, no database."""
+    return {"ok": True, "version": version_string()}
+
+
 @app.get("/api/meta", response_model=MetaOut)
 def meta(db: Session = Depends(get_db)):
     # Auth is enforced by middleware; meta is available to any logged-in user.

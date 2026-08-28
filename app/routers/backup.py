@@ -35,7 +35,7 @@ router = APIRouter(
 MAX_BACKUP_BYTES = 2 * 1024 * 1024 * 1024
 MAX_CHUNKS = (MAX_BACKUP_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
 STAGING_TTL_SEC = 60 * 60
-STAGING_DIR = ensure_dir(DATA_DIR / "backup-staging")
+STAGING_DIR = DATA_DIR / "backup-staging"
 
 
 class BackupBegin(BaseModel):
@@ -45,6 +45,8 @@ class BackupBegin(BaseModel):
 
 def _cleanup_stale() -> None:
     cutoff = time.time() - STAGING_TTL_SEC
+    if not STAGING_DIR.is_dir():
+        return
     for path in STAGING_DIR.glob("*"):
         try:
             if path.is_dir() and path.stat().st_mtime < cutoff:
@@ -115,6 +117,7 @@ def export_backup():
     _cleanup_stale()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     filename = f"wru-backup-{stamp}.zip"
+    ensure_dir(STAGING_DIR)
     dest = STAGING_DIR / filename
     try:
         write_backup_zip(dest)
@@ -139,8 +142,7 @@ def begin_backup_session(payload: BackupBegin):
     if not name.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Choose a WRU backup .zip file")
     upload_id = str(uuid.uuid4())
-    folder = STAGING_DIR / upload_id
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = ensure_dir(STAGING_DIR / upload_id)
     wrap_key = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
     meta = {
         "filename": Path(payload.filename).name,

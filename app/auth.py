@@ -252,6 +252,7 @@ def is_public_path(path: str) -> bool:
         "/api/auth/login",
         "/api/auth/logout",
         "/api/live/version",
+        "/health",
         "/manifest.webmanifest",
         "/sw.js",
     }:

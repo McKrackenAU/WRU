@@ -41,7 +41,7 @@ CHUNK_SIZE = 48 * 1024
 MAX_CHUNKS = (MAX_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
 WRAP_KEY_BYTES = 32
 STAGING_TTL_SEC = 20 * 60
-STAGING_DIR = ensure_dir(DATA_DIR / "import-staging")
+STAGING_DIR = DATA_DIR / "import-staging"
 
 
 class TrackerUploadBegin(BaseModel):
@@ -84,6 +84,8 @@ def unwrap_chunk_payload(encoded_b64: str, wrap_key_b64: str) -> bytes:
 
 def _cleanup_stale_sessions() -> None:
     cutoff = time.time() - STAGING_TTL_SEC
+    if not STAGING_DIR.is_dir():
+        return
     for path in STAGING_DIR.glob("*"):
         if not path.is_dir():
             continue
@@ -245,8 +247,7 @@ def begin_tracker_session(payload: TrackerUploadBegin):
     if not _filename_ok(payload.filename) and not payload.filename.lower().endswith(".bin"):
         raise HTTPException(status_code=400, detail="Upload an Excel .xlsx / .xlsm tracker file")
     upload_id = str(uuid.uuid4())
-    folder = STAGING_DIR / upload_id
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = ensure_dir(STAGING_DIR / upload_id)
     chunks = (payload.size + CHUNK_SIZE - 1) // CHUNK_SIZE
     wrap_key = base64.b64encode(secrets.token_bytes(WRAP_KEY_BYTES)).decode("ascii")
     _write_meta(

@@ -19,21 +19,21 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
-DATA_DIR = ensure_dir(Path(os.environ.get("WRU_DATA_DIR", BASE_DIR / "data")))
-
-
-def _env_dir(name: str, default: Path) -> Path:
+def env_path(name: str, default: Path) -> Path:
+    """Resolve an env path. Do not mkdir — a wedged HDD mount would hang import."""
     raw = (os.environ.get(name) or "").strip()
     path = Path(raw).expanduser() if raw else default
     if not path.is_absolute():
-        path = (BASE_DIR / path).resolve()
-    return ensure_dir(path)
+        path = BASE_DIR / path
+    return path
 
 
 # Documents on HDD: set WRU_UPLOAD_DIR (live) and WRU_ARCHIVE_DIR (archived sites).
 # Postgres stays on whatever disk DATABASE_URL points at (typically NVMe).
-UPLOAD_DIR = _env_dir("WRU_UPLOAD_DIR", DATA_DIR / "uploads")
-ARCHIVE_DIR = _env_dir("WRU_ARCHIVE_DIR", UPLOAD_DIR / "archived")
+# Paths are resolved at import; directories are created on first use.
+DATA_DIR = env_path("WRU_DATA_DIR", BASE_DIR / "data")
+UPLOAD_DIR = env_path("WRU_UPLOAD_DIR", DATA_DIR / "uploads")
+ARCHIVE_DIR = env_path("WRU_ARCHIVE_DIR", UPLOAD_DIR / "archived")
 
 
 def build_database_url() -> str:
@@ -58,6 +58,7 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
+    connect_args={"connect_timeout": 5},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

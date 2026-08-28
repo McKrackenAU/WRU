@@ -45,8 +45,8 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_CHUNKS = (MAX_UPLOAD_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
 WRAP_KEY_BYTES = 32
 STAGING_TTL_SEC = 20 * 60
-STAGING_DIR = ensure_dir(DATA_DIR / "doc-staging")
-DOWNLOAD_STAGING_DIR = ensure_dir(DATA_DIR / "download-staging")
+STAGING_DIR = DATA_DIR / "doc-staging"
+DOWNLOAD_STAGING_DIR = DATA_DIR / "download-staging"
 ZIP_MAX_BYTES = 500 * 1024 * 1024
 
 
@@ -88,6 +88,8 @@ def normalize_doc_category(
 def _cleanup_stale_sessions() -> None:
     cutoff = time.time() - STAGING_TTL_SEC
     for root in (STAGING_DIR, DOWNLOAD_STAGING_DIR):
+        if not root.is_dir():
+            continue
         for path in root.glob("*"):
             if not path.is_dir():
                 continue
@@ -277,8 +279,7 @@ def begin_document_session(site_id: int, payload: DocumentUploadBegin, db: Sessi
     _cleanup_stale_sessions()
     category = normalize_doc_category(payload.category, payload.filename, db=db)
     upload_id = str(uuid.uuid4())
-    folder = STAGING_DIR / upload_id
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = ensure_dir(STAGING_DIR / upload_id)
     chunks = (payload.size + CHUNK_SIZE - 1) // CHUNK_SIZE
     wrap_key = base64_wrap_key()
     _write_meta(
@@ -449,8 +450,7 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
 def _new_download_session_from_bytes(data: bytes, filename: str, content_type: str) -> dict:
     _cleanup_stale_sessions()
     sid = str(uuid.uuid4())
-    folder = DOWNLOAD_STAGING_DIR / sid
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = ensure_dir(DOWNLOAD_STAGING_DIR / sid)
     bundle = folder / "bundle.bin"
     bundle.write_bytes(data)
     size = bundle.stat().st_size

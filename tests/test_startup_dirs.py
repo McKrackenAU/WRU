@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from app.database import ensure_dir
+from app.database import ensure_dir, env_path
 from app.migrate import column_names, ensure_column
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,6 +11,32 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_ensure_dir_swallows_unwritable_path():
     path = Path("/dev/null/wru-cannot-create")
     assert ensure_dir(path) == path
+
+
+def test_env_path_does_not_mkdir(tmp_path, monkeypatch):
+    missing = tmp_path / "not-created" / "uploads"
+    monkeypatch.setenv("WRU_UPLOAD_DIR", str(missing))
+    parsed = env_path("WRU_UPLOAD_DIR", tmp_path / "default")
+    assert parsed == missing
+    assert not missing.exists()
+    assert not missing.parent.exists()
+
+
+def test_import_does_not_mkdir_storage_paths():
+    db = (ROOT / "app" / "database.py").read_text(encoding="utf-8")
+    assert "DATA_DIR = env_path(" in db
+    assert "UPLOAD_DIR = env_path(" in db
+    assert "ARCHIVE_DIR = env_path(" in db
+    assert "UPLOAD_DIR = _env_dir" not in db
+    assert "DATA_DIR = ensure_dir(" not in db
+    docs = (ROOT / "app" / "routers" / "documents.py").read_text(encoding="utf-8")
+    maps = (ROOT / "app" / "routers" / "map_layers.py").read_text(encoding="utf-8")
+    backup = (ROOT / "app" / "routers" / "backup.py").read_text(encoding="utf-8")
+    tracker = (ROOT / "app" / "routers" / "import_tracker.py").read_text(encoding="utf-8")
+    assert "STAGING_DIR = ensure_dir" not in docs
+    assert "STAGING_DIR = ensure_dir" not in backup
+    assert "STAGING_DIR = ensure_dir" not in tracker
+    assert "KML_DIR = ensure_dir" not in maps
 
 
 def test_ensure_column_skips_missing_table():
@@ -30,3 +56,23 @@ def test_update_script_traps_before_stopping_wru():
     stop_at = text.find("systemctl stop wru")
     assert trap_at != -1 and stop_at != -1
     assert trap_at < stop_at
+
+
+def test_install_does_not_abort_on_hdd_or_optional_jpeg():
+    text = (ROOT / "install" / "wru-install.sh").read_text(encoding="utf-8")
+    assert 'mkdir -p "$WRU_UPLOAD_DIR" || true' in text
+    assert "libjpeg62-turbo ||" in text
+    assert 'mv "$NEW_APP" "$APP_DIR"' in text
+    assert 'python3 -m venv "$NEW_APP/.venv"' in text
+    # Must pip into the new tree before replacing /opt/wru
+    pip_at = text.find('pip install -r "$NEW_APP/requirements.txt"')
+    swap_at = text.find('mv "$NEW_APP" "$APP_DIR"')
+    wipe_old = text.find('rm -rf "$APP_DIR"')
+    assert pip_at != -1 and swap_at != -1
+    assert pip_at < swap_at
+    assert wipe_old == -1 or wipe_old > swap_at
+
+
+def test_engine_fails_fast_on_dead_postgres():
+    text = (ROOT / "app" / "database.py").read_text(encoding="utf-8")
+    assert "connect_timeout" in text

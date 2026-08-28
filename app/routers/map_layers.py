@@ -18,7 +18,7 @@ from ..schemas import MapFeatureLink, MapFeatureOut, MapLayerOut
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 
-KML_DIR = ensure_dir(UPLOAD_DIR / "kml")
+KML_DIR = UPLOAD_DIR / "kml"
 MAX_KML_BYTES = 50 * 1024 * 1024
 
 
@@ -136,6 +136,7 @@ async def upload_kml(
 
     fy = (financial_year or "").strip() or australian_financial_year()
     stored = f"kml_{uuid.uuid4().hex}_{original}"
+    ensure_dir(KML_DIR)
     dest = KML_DIR / stored
     async with aiofiles.open(dest, "wb") as out:
         await out.write(content)
