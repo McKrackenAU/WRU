@@ -158,7 +158,9 @@ $STD apt-get install -y \
   locales \
   postgresql \
   postgresql-contrib \
-  libpq5
+  libpq5 \
+  libjpeg62-turbo \
+  zlib1g
 # Ensure UTF-8 locale so seed/app strings are not forced through ASCII
 if ! locale -a 2>/dev/null | grep -qiE '^(C\.UTF-8|en_US\.utf8|en_US\.UTF-8)$'; then
   sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen 2>/dev/null || true
@@ -306,7 +308,11 @@ if ! command -v pip >/dev/null 2>&1; then
   exit 1
 fi
 pip install --upgrade pip
-pip install -r "$APP_DIR/requirements.txt"
+if ! pip install -r "$APP_DIR/requirements.txt"; then
+  msg_warn "Full pip install failed — installing without Pillow so the app can still start"
+  grep -vE '^pillow' "$APP_DIR/requirements.txt" | pip install -r /dev/stdin || true
+  pip install pillow || true
+fi
 deactivate
 msg_ok "Installed Python packages"
 

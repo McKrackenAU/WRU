@@ -18,7 +18,7 @@ from starlette.background import BackgroundTask
 
 from ..auth import require_admin
 from ..backup import restore_backup_zip, write_backup_zip
-from ..database import DATA_DIR
+from ..database import DATA_DIR, ensure_dir
 from ..routers.import_tracker import (
     CHUNK_SIZE,
     TrackerChunkBody,
@@ -35,8 +35,7 @@ router = APIRouter(
 MAX_BACKUP_BYTES = 2 * 1024 * 1024 * 1024
 MAX_CHUNKS = (MAX_BACKUP_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
 STAGING_TTL_SEC = 60 * 60
-STAGING_DIR = DATA_DIR / "backup-staging"
-STAGING_DIR.mkdir(parents=True, exist_ok=True)
+STAGING_DIR = ensure_dir(DATA_DIR / "backup-staging")
 
 
 class BackupBegin(BaseModel):

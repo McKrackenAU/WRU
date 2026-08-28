@@ -8,8 +8,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get("WRU_DATA_DIR", BASE_DIR / "data"))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_dir(path: Path) -> Path:
+    """Create a directory if possible. Never crash the app for a missing HDD mount."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return path
+
+
+DATA_DIR = ensure_dir(Path(os.environ.get("WRU_DATA_DIR", BASE_DIR / "data")))
 
 
 def _env_dir(name: str, default: Path) -> Path:
@@ -17,8 +27,7 @@ def _env_dir(name: str, default: Path) -> Path:
     path = Path(raw).expanduser() if raw else default
     if not path.is_absolute():
         path = (BASE_DIR / path).resolve()
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return ensure_dir(path)
 
 
 # Documents on HDD: set WRU_UPLOAD_DIR (live) and WRU_ARCHIVE_DIR (archived sites).

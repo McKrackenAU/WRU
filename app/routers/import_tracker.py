@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
-from ..database import DATA_DIR, get_db
+from ..database import DATA_DIR, ensure_dir, get_db
 from ..live_hub import notify_from_request
 from ..tracker_import import import_tracker_rows, parse_tracker_workbook
 from ..upload_limits import configure_multipart_limits
@@ -41,8 +41,7 @@ CHUNK_SIZE = 48 * 1024
 MAX_CHUNKS = (MAX_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
 WRAP_KEY_BYTES = 32
 STAGING_TTL_SEC = 20 * 60
-STAGING_DIR = DATA_DIR / "import-staging"
-STAGING_DIR.mkdir(parents=True, exist_ok=True)
+STAGING_DIR = ensure_dir(DATA_DIR / "import-staging")
 
 
 class TrackerUploadBegin(BaseModel):

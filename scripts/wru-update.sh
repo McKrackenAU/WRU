@@ -141,6 +141,13 @@ if [[ -d "$APP_DIR" ]]; then
   systemctl stop wru 2>/dev/null || true
 fi
 
+# Always try to bring the app back, even if this update fails (avoids Cloudflare 502).
+restore_wru() {
+  systemctl start postgresql 2>/dev/null || true
+  systemctl start wru 2>/dev/null || true
+}
+trap restore_wru EXIT
+
 tmp="$(mktemp)"
 # Prefer install script from the target ref; fall back to main if ref is brand-new
 if ! curl -fsSL "${RAW_BASE}/install/wru-install.sh" -o "$tmp"; then

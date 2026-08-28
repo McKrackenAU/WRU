@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .database import ARCHIVE_DIR, DATA_DIR, UPLOAD_DIR
+from .database import ARCHIVE_DIR, DATA_DIR, UPLOAD_DIR, ensure_dir
 
 GZIP_MAGIC = b"\x1f\x8b"
 JPEG_MAGIC = b"\xff\xd8"
@@ -65,25 +65,21 @@ class StoredBlob:
 
 
 def upload_dir() -> Path:
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    return UPLOAD_DIR
+    return ensure_dir(UPLOAD_DIR)
 
 
 def archive_dir() -> Path:
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    return ARCHIVE_DIR
+    return ensure_dir(ARCHIVE_DIR)
 
 
 def data_dir() -> Path:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    return DATA_DIR
+    return ensure_dir(DATA_DIR)
 
 
 def estimate_dir(*, archived: bool = False) -> Path:
     root = archive_dir() if archived else upload_dir()
     path = root / "cost-estimates"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return ensure_dir(path)
 
 
 def _archive_is_inside_uploads() -> bool:

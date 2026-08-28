@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
-from ..database import UPLOAD_DIR, get_db
+from ..database import UPLOAD_DIR, ensure_dir, get_db
 from ..financial_year import australian_financial_year
 from ..kml_parse import parse_kml_features
 from ..map_config import get_nearmap_api_key, map_config_public, set_nearmap_api_key
@@ -18,8 +18,7 @@ from ..schemas import MapFeatureLink, MapFeatureOut, MapLayerOut
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 
-KML_DIR = UPLOAD_DIR / "kml"
-KML_DIR.mkdir(parents=True, exist_ok=True)
+KML_DIR = ensure_dir(UPLOAD_DIR / "kml")
 MAX_KML_BYTES = 50 * 1024 * 1024
 
 

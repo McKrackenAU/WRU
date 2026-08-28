@@ -43,7 +43,10 @@ def column_names(table: str) -> set[str]:
 
 
 def ensure_column(table: str, column: str, ddl: str) -> None:
-    if column in column_names(table):
+    names = column_names(table)
+    if not names:
+        return
+    if column in names:
         return
     with engine.begin() as conn:
         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))

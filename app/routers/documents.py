@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
 from ..backup import unique_zip_path
-from ..database import DATA_DIR, get_db
+from ..database import DATA_DIR, ensure_dir, get_db
 from ..doc_categories import FALLBACK_KEY, active_category_keys, category_label_map, ensure_doc_category_seed
 from ..models import Document, Site
 from ..storage import (
@@ -45,10 +45,8 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_CHUNKS = (MAX_UPLOAD_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
 WRAP_KEY_BYTES = 32
 STAGING_TTL_SEC = 20 * 60
-STAGING_DIR = DATA_DIR / "doc-staging"
-STAGING_DIR.mkdir(parents=True, exist_ok=True)
-DOWNLOAD_STAGING_DIR = DATA_DIR / "download-staging"
-DOWNLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+STAGING_DIR = ensure_dir(DATA_DIR / "doc-staging")
+DOWNLOAD_STAGING_DIR = ensure_dir(DATA_DIR / "download-staging")
 ZIP_MAX_BYTES = 500 * 1024 * 1024
 
 
