@@ -309,10 +309,13 @@ if ! command -v pip >/dev/null 2>&1; then
 fi
 pip install --upgrade pip
 if ! pip install -r "$APP_DIR/requirements.txt"; then
-  msg_warn "Full pip install failed — installing without Pillow so the app can still start"
-  grep -vE '^pillow' "$APP_DIR/requirements.txt" | pip install -r /dev/stdin || true
-  pip install pillow || true
+  msg_warn "Bulk pip install failed — retrying packages individually so WRU can still start"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    pip install "$line" || msg_warn "Could not install $line"
+  done < "$APP_DIR/requirements.txt"
 fi
+pip install "pillow==11.1.0" || msg_warn "Pillow not installed — uploads still work, photos will not recompress"
 deactivate
 msg_ok "Installed Python packages"
 
@@ -430,7 +433,7 @@ except Exception as exc:
 print("Database connection OK")
 PY
 
-python3 -c "from app.migrate import run_migrations; run_migrations()"
+python3 -c "from app.migrate import run_migrations; run_migrations()" || msg_warn "Migration reported an error — starting the app anyway"
 if ! python3 scripts/seed.py; then
   msg_warn "Sample seed failed (schema is migrated); continuing"
 fi

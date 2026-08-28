@@ -50,6 +50,14 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== WRU update $(date -Is) ==="
 echo "Repo: ${APP_GIT}  Ref: ${APP_BRANCH}"
 
+# Bring the app back even if this update fails (avoids Cloudflare 502).
+# Register BEFORE stopping the service.
+restore_wru() {
+  systemctl start postgresql 2>/dev/null || true
+  systemctl start wru 2>/dev/null || true
+}
+trap restore_wru EXIT
+
 # Prefer env from installed service
 if [[ -f /etc/default/wru ]]; then
   # shellcheck disable=SC1091
@@ -140,13 +148,6 @@ if [[ -d "$APP_DIR" ]]; then
   snapshot_current_version || true
   systemctl stop wru 2>/dev/null || true
 fi
-
-# Always try to bring the app back, even if this update fails (avoids Cloudflare 502).
-restore_wru() {
-  systemctl start postgresql 2>/dev/null || true
-  systemctl start wru 2>/dev/null || true
-}
-trap restore_wru EXIT
 
 tmp="$(mktemp)"
 # Prefer install script from the target ref; fall back to main if ref is brand-new

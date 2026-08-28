@@ -69,7 +69,14 @@ app = FastAPI(
 
 configure_multipart_limits()
 
-run_migrations()
+try:
+    run_migrations()
+except Exception as exc:  # noqa: BLE001 — boot even if one ALTER fails
+    import sys
+    import traceback
+
+    print(f"WRU migration warning: {exc}", file=sys.stderr)
+    traceback.print_exc()
 
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
