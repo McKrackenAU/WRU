@@ -17,7 +17,10 @@ import {
   onLiveSitesChanged,
   syncLiveRevision,
   uploadFileChunked,
+  applyDocCategories,
+  fillDocCategorySelect,
   docCategorySelectHtml,
+  downloadDocumentsZip,
 } from "./common.js";
 
 const state = {
@@ -1053,6 +1056,8 @@ async function loadAll() {
     api("/api/sites/generic-moas").catch(() => []),
   ]);
   state.meta = meta;
+  applyDocCategories(meta.doc_category_defs || meta.doc_categories);
+  fillDocCategorySelect($("docCategory"), $("docCategory")?.value);
   state.columns = columns;
   state.sites = Array.isArray(sites) ? sites : [];
   state.genericMoas = Array.isArray(generics) ? generics : [];
@@ -1687,16 +1692,22 @@ async function refreshDocuments() {
   if (!state.detailSiteId) return;
   const docs = await api(`/api/sites/${state.detailSiteId}/documents`);
   const canDelete = !state.readOnlyArchive;
+  const bar = $("docSelectBar");
+  if (bar) bar.hidden = !docs.length;
+  if ($("docSelectAll")) $("docSelectAll").checked = false;
   $("docList").innerHTML = docs.length
     ? docs
         .map(
           (d) => `
-      <li>
+      <li data-doc-id="${d.id}">
         <div class="top">
-          <span class="doc-meta">
+          <label class="doc-pick">
+            <input type="checkbox" data-doc-pick="${d.id}" />
+            <span class="doc-meta">
             ${docCategorySelectHtml(d.id, d.category, { disabled: !canDelete })}
             · ${(d.size_bytes / 1024).toFixed(1)} KB
-          </span>
+            </span>
+          </label>
           ${canDelete ? `<button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>` : ""}
         </div>
         <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></p>
@@ -1705,6 +1716,33 @@ async function refreshDocuments() {
         )
         .join("")
     : `<li><p class="meta">No documents yet.</p></li>`;
+}
+
+function selectedDocIds(root = document) {
+  return [...root.querySelectorAll("input[data-doc-pick]:checked")].map((el) => Number(el.dataset.docPick));
+}
+
+function syncDocSelectAll() {
+  const boxes = [...document.querySelectorAll("#docList input[data-doc-pick]")];
+  const all = $("docSelectAll");
+  if (!all) return;
+  all.checked = boxes.length > 0 && boxes.every((b) => b.checked);
+  all.indeterminate = boxes.some((b) => b.checked) && !all.checked;
+}
+
+async function downloadSelectedDocs() {
+  const ids = selectedDocIds($("docList") || document);
+  if (!ids.length) {
+    await alertDialog("Tick the documents you want, then Download selected.");
+    return;
+  }
+  const btn = $("btnDownloadDocs");
+  if (btn) btn.disabled = true;
+  try {
+    await downloadDocumentsZip(ids, "WRU-documents.zip");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function setDocUploadStatus(text) {
@@ -1863,6 +1901,13 @@ function bindEvents() {
   on("btnArchiveSite", "click", () => archiveSite().catch((e) => { alertDialog(e.message); }));
   on("btnAddTrack", "click", () => addTracking().catch((e) => { alertDialog(e.message); }));
   on("btnUploadDoc", "click", () => uploadDoc().catch((e) => { alertDialog(e.message); }));
+  on("btnDownloadDocs", "click", () => downloadSelectedDocs().catch((e) => { alertDialog(errorMessage(e, "Could not download")); }));
+  on("docSelectAll", "change", (ev) => {
+    const on = ev.target.checked;
+    document.querySelectorAll("#docList input[data-doc-pick]").forEach((box) => {
+      box.checked = on;
+    });
+  });
   wireDocDropzone();
   on("siteForm", "submit", (ev) =>
     saveSite(ev).catch((e) => {
@@ -2095,6 +2140,10 @@ function bindEvents() {
     await refreshDocuments();
   });
   on("docList", "change", async (ev) => {
+    if (ev.target.closest("[data-doc-pick]")) {
+      syncDocSelectAll();
+      return;
+    }
     const sel = ev.target.closest("[data-doc-cat]");
     if (!sel || sel.disabled) return;
     try {

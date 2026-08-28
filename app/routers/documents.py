@@ -5,17 +5,23 @@ import json
 import mimetypes
 import secrets
 import shutil
+import tempfile
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
+from ..backup import unique_zip_path
 from ..database import DATA_DIR, UPLOAD_DIR, get_db
-from ..models import DOC_CATEGORIES, Document, Site
+from ..doc_categories import FALLBACK_KEY, active_category_keys, category_label_map, ensure_doc_category_seed
+from ..models import Document, Site
 from ..routers.import_tracker import (
     CHUNK_SIZE,
     TrackerChunkBody,
@@ -43,12 +49,28 @@ class DocumentUploadBegin(BaseModel):
     moa_number: str | None = None
 
 
-def normalize_doc_category(category: str | None, filename: str = "") -> str:
-    category = (category or "other").strip().lower() or "other"
-    if category not in DOC_CATEGORIES:
-        raise HTTPException(status_code=400, detail=f"Invalid category. Use one of: {', '.join(DOC_CATEGORIES)}")
+def normalize_doc_category(
+    category: str | None,
+    filename: str = "",
+    *,
+    allowed: set[str] | None = None,
+    db: Session | None = None,
+) -> str:
+    if allowed is None and db is not None:
+        ensure_doc_category_seed(db)
+        allowed = set(active_category_keys(db))
+    if allowed is None:
+        from ..models import DOC_CATEGORIES
+
+        allowed = set(DOC_CATEGORIES)
+    category = (category or FALLBACK_KEY).strip().lower() or FALLBACK_KEY
+    if category not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category. Use one of: {', '.join(sorted(allowed))}",
+        )
     suffix = Path(filename or "").suffix.lower()
-    if category == "other" and suffix in {".eml", ".msg", ".oft"}:
+    if category == FALLBACK_KEY and suffix in {".eml", ".msg", ".oft"} and "email" in allowed:
         return "email"
     return category
 
@@ -107,7 +129,7 @@ def store_document_bytes(
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
     original = Path(filename or "upload.bin").name
-    category = normalize_doc_category(category, original)
+    category = normalize_doc_category(category, original, db=db)
     suffix = Path(original).suffix[:32]
     stored_name = f"{site.id}_{uuid.uuid4().hex}{suffix}"
     dest = UPLOAD_DIR / stored_name
@@ -239,7 +261,7 @@ def begin_document_session(site_id: int, payload: DocumentUploadBegin, db: Sessi
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
     _cleanup_stale_sessions()
-    category = normalize_doc_category(payload.category, payload.filename)
+    category = normalize_doc_category(payload.category, payload.filename, db=db)
     upload_id = str(uuid.uuid4())
     folder = STAGING_DIR / upload_id
     folder.mkdir(parents=True, exist_ok=True)
@@ -344,13 +366,84 @@ def commit_document_session(site_id: int, upload_id: str, db: Session = Depends(
         shutil.rmtree(folder, ignore_errors=True)
 
 
+class DocumentZipIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=250)
+
+
+def _zip_safe_part(value: str, fallback: str = "item") -> str:
+    cleaned = "".join("_" if ch in '\\/:*?"<>|' else ch for ch in (value or "").strip())
+    cleaned = " ".join(cleaned.split())
+    return (cleaned[:80] or fallback).rstrip(" .")
+
+
+@router.post("/api/documents/zip")
+def download_documents_zip(payload: DocumentZipIn, db: Session = Depends(get_db)):
+    docs = (
+        db.query(Document)
+        .join(Site)
+        .filter(Document.id.in_(payload.ids))
+        .order_by(Site.road_name.asc(), Site.site_number.asc(), Document.id.asc())
+        .all()
+    )
+    if not docs:
+        raise HTTPException(status_code=404, detail="No matching documents")
+    labels = category_label_map(db)
+    used: set[str] = set()
+    tmp = tempfile.NamedTemporaryFile(prefix="wru-docs-", suffix=".zip", delete=False)
+    tmp.close()
+    dest = Path(tmp.name)
+    missing = 0
+    total_bytes = 0
+    max_bytes = 500 * 1024 * 1024
+    try:
+        with ZipFile(dest, "w", compression=ZIP_DEFLATED, compresslevel=6) as zf:
+            for doc in docs:
+                path = UPLOAD_DIR / doc.stored_name
+                if not path.is_file():
+                    missing += 1
+                    continue
+                size = path.stat().st_size
+                if total_bytes + size > max_bytes:
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Selected files are larger than 500 MB — select fewer documents",
+                    )
+                total_bytes += size
+                site = doc.site
+                folder = _zip_safe_part(
+                    f"{site.road_name or 'Site'} {site.site_number or ''}".strip(),
+                    "site",
+                )
+                cat = _zip_safe_part(labels.get(doc.category) or doc.category or "Other", "other")
+                name = _zip_safe_part(doc.original_filename or path.name, path.name)
+                arc = unique_zip_path(used, f"{folder}/{cat}/{name}")
+                zf.write(path, arc)
+        if not used:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(status_code=404, detail="Those files are missing on disk")
+    except HTTPException:
+        raise
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"WRU-documents-{stamp}.zip"
+    return FileResponse(
+        dest,
+        media_type="application/zip",
+        filename=filename,
+        background=BackgroundTask(dest.unlink, missing_ok=True),
+    )
+
+
 @router.patch("/api/documents/{document_id}", response_model=DocumentOut)
 def update_document(document_id: int, payload: DocumentUpdate, db: Session = Depends(get_db)):
     doc = db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     if payload.category is not None:
-        doc.category = normalize_doc_category(payload.category, doc.original_filename)
+        doc.category = normalize_doc_category(payload.category, doc.original_filename, db=db)
     if payload.description is not None:
         doc.description = payload.description.strip() or None
     db.commit()

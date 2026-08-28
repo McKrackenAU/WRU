@@ -76,6 +76,16 @@ DOC_CATEGORIES = [
     "other",
 ]
 
+DOC_CATEGORY_LABELS = {
+    "email": "Email",
+    "tgs": "TGS",
+    "plan": "Plan",
+    "moa": "MoA",
+    "correspondence": "Correspondence",
+    "photo": "Photo",
+    "other": "Other",
+}
+
 
 class WorkflowStageDef(Base):
     """Admin-configurable workflow stages (order, labels, client-list roles)."""
@@ -125,6 +135,20 @@ class AppSettings(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class DocumentCategoryDef(Base):
+    """Admin-configurable document types (email, TGS, custom labels, …)."""
+
+    __tablename__ = "document_category_defs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Protected rows (the fallback "other") cannot be deleted or have their key changed.
+    protected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class LookupItem(Base):
@@ -270,7 +294,7 @@ class Document(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
     moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    category: Mapped[str] = mapped_column(String(32), nullable=False, default="other", index=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, default="other", index=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stored_name: Mapped[str] = mapped_column(String(255), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)

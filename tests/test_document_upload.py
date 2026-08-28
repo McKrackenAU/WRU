@@ -51,6 +51,9 @@ def test_chunked_document_upload_is_wired():
     assert "wireDocDropzone" in APP_JS
     assert 'addEventListener("drop"' in APP_JS
     assert "Drop files here" in INDEX
+    assert "downloadDocumentsZip" in APP_JS
+    assert 'id="docSelectAll"' in INDEX
+    assert 'id="btnDownloadDocs"' in INDEX
 
 
 def test_library_page_can_change_category():

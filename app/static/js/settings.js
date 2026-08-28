@@ -87,7 +87,92 @@ async function refreshLookups() {
   await Promise.all([
     loadLookups("road", "roadLookupList", "roadLookupStatus"),
     loadLookups("council", "councilLookupList", "councilLookupStatus"),
+    loadDocTypes(),
   ]);
+}
+
+async function loadDocTypes() {
+  const rows = await api("/api/admin/doc-categories?include_inactive=true");
+  const list = $("docTypeList");
+  const status = $("docTypeStatus");
+  const active = rows.filter((r) => r.active);
+  const used = active.reduce((n, r) => n + (r.usage_count || 0), 0);
+  if (status) {
+    status.textContent = rows.length
+      ? `${active.length} type${active.length === 1 ? "" : "s"} · ${used} document${used === 1 ? "" : "s"}`
+      : "No document types yet.";
+  }
+  if (!list) return;
+  list.innerHTML = rows.length
+    ? rows
+        .map((r) => {
+          const count = r.usage_count || 0;
+          const countLabel = `${count} file${count === 1 ? "" : "s"}`;
+          return `<li data-doc-type-id="${r.id}" data-original="${escapeHtml(r.label)}" data-key="${escapeHtml(r.key)}" data-usage="${count}" class="${r.active ? "" : "is-inactive"}">
+          <div class="lookup-row">
+            <input data-doc-type-label value="${escapeHtml(r.label)}" ${r.active ? "" : "disabled"} maxlength="128" aria-label="${escapeHtml(r.label)}" />
+            <span class="lookup-count">${escapeHtml(r.key)} · ${escapeHtml(countLabel)}</span>
+            ${
+              r.active
+                ? `<button type="button" class="btn btn-sm" data-save-doc-type="${r.id}">Save</button>
+                   ${
+                     r.protected
+                       ? ""
+                       : `<button type="button" class="btn btn-sm btn-danger" data-del-doc-type="${r.id}">Remove</button>`
+                   }`
+                : `<button type="button" class="btn btn-sm" data-restore-doc-type="${r.id}">Restore</button>`
+            }
+          </div>
+        </li>`;
+        })
+        .join("")
+    : `<li><p class="meta">No document types yet.</p></li>`;
+}
+
+async function addDocType() {
+  const input = $("docTypeLabel");
+  const label = input?.value.trim();
+  if (!label) return;
+  await api("/api/admin/doc-categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+  if (input) input.value = "";
+  await loadDocTypes();
+}
+
+async function saveDocTypeRow(li) {
+  const id = li?.dataset.docTypeId;
+  const original = li?.dataset.original || "";
+  const input = li?.querySelector("[data-doc-type-label]");
+  const label = input?.value.trim();
+  if (!id || !label) return;
+  const count = Number(li.dataset.usage || 0);
+  if (label !== original && count > 0) {
+    const ok = await confirmDialog(
+      `Rename “${original}” to “${label}” on ${count} document${count === 1 ? "" : "s"}?`
+    );
+    if (!ok) {
+      input.value = original;
+      return;
+    }
+  }
+  await api(`/api/admin/doc-categories/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label, key: li.dataset.key, active: true }),
+  });
+  await loadDocTypes();
+}
+
+async function restoreDocType(id, label, key) {
+  await api(`/api/admin/doc-categories/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label, key, active: true }),
+  });
+  await loadDocTypes();
 }
 
 async function saveLookupRow(li) {
@@ -256,6 +341,7 @@ async function init() {
   $("rulesForm").addEventListener("submit", (e) => saveRules(e).catch((err) => { alertDialog(err.message); }));
   $("btnAddRoad")?.addEventListener("click", () => addLookup("road", "roadLookupValue").catch((e) => { alertDialog(e.message); }));
   $("btnAddCouncil")?.addEventListener("click", () => addLookup("council", "councilLookupValue").catch((e) => { alertDialog(e.message); }));
+  $("btnAddDocType")?.addEventListener("click", () => addDocType().catch((e) => { alertDialog(e.message); }));
   $("roadLookupValue")?.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") {
       ev.preventDefault();
@@ -266,6 +352,12 @@ async function init() {
     if (ev.key === "Enter") {
       ev.preventDefault();
       addLookup("council", "councilLookupValue").catch((e) => { alertDialog(e.message); });
+    }
+  });
+  $("docTypeLabel")?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      addDocType().catch((e) => { alertDialog(e.message); });
     }
   });
   document.addEventListener("click", async (ev) => {
@@ -286,13 +378,44 @@ async function init() {
       await restoreLookup(restoreBtn.dataset.restoreLookup, li?.dataset.kind, li?.dataset.original).catch((e) => {
         alertDialog(e.message);
       });
+      return;
+    }
+    const saveType = ev.target.closest("[data-save-doc-type]");
+    if (saveType) {
+      await saveDocTypeRow(saveType.closest("li")).catch((e) => { alertDialog(e.message); });
+      return;
+    }
+    const delType = ev.target.closest("[data-del-doc-type]");
+    if (delType) {
+      const li = delType.closest("li");
+      const count = Number(li?.dataset.usage || 0);
+      const ok = await confirmDialog(
+        count
+          ? `Remove “${li?.dataset.original || "this type"}”? ${count} document${count === 1 ? "" : "s"} will move to Other.`
+          : `Remove “${li?.dataset.original || "this type"}”?`
+      );
+      if (!ok) return;
+      await api(`/api/admin/doc-categories/${delType.dataset.delDocType}`, { method: "DELETE" });
+      await loadDocTypes();
+      return;
+    }
+    const restoreType = ev.target.closest("[data-restore-doc-type]");
+    if (restoreType) {
+      const li = restoreType.closest("li");
+      await restoreDocType(restoreType.dataset.restoreDocType, li?.dataset.original, li?.dataset.key).catch((e) => {
+        alertDialog(e.message);
+      });
     }
   });
   document.addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter") return;
-    const input = ev.target.closest("[data-lookup-value]");
+    const input = ev.target.closest("[data-lookup-value], [data-doc-type-label]");
     if (!input) return;
     ev.preventDefault();
+    if (input.hasAttribute("data-doc-type-label")) {
+      saveDocTypeRow(input.closest("li")).catch((e) => { alertDialog(e.message); });
+      return;
+    }
     saveLookupRow(input.closest("li")).catch((e) => { alertDialog(e.message); });
   });
   $("btnDryRun").addEventListener("click", () => runImport(true).catch((e) => { alertDialog(e.message); }));

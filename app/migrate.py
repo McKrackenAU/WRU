@@ -16,6 +16,7 @@ from .models import (  # noqa: F401 — register metadata
     CostSettings,
     CustomColumn,
     Document,
+    DocumentCategoryDef,
     GanttBoard,
     GanttItem,
     LabourRate,
@@ -134,8 +135,10 @@ def run_migrations() -> None:
 
     # documents expansions
     ensure_column("documents", "moa_number", "moa_number VARCHAR(64)")
-    ensure_column("documents", "category", "category VARCHAR(32) NOT NULL DEFAULT 'other'")
+    ensure_column("documents", "category", "category VARCHAR(64) NOT NULL DEFAULT 'other'")
     ensure_column("documents", "description", "description VARCHAR(255)")
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(64)"))
 
     # cost estimate expansions (MoA history + attachments)
     ensure_column("cost_estimates", "site_id", "site_id INTEGER REFERENCES sites(id) ON DELETE CASCADE")
@@ -195,6 +198,7 @@ def run_migrations() -> None:
 
     # Seed configurable stages / program categories / settings / lookups
     from .database import SessionLocal
+    from .doc_categories import ensure_doc_category_seed
     from .settings_store import ensure_settings
     from .stage_registry import ensure_lookup_seed, ensure_program_seed, ensure_stage_seed
 
@@ -205,6 +209,7 @@ def run_migrations() -> None:
         ensure_stage_seed(db)
         ensure_program_seed(db)
         ensure_lookup_seed(db)
+        ensure_doc_category_seed(db)
         ensure_settings(db)
         ensure_admin_user(db)
         ensure_root_user(db)

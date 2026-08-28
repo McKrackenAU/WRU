@@ -317,12 +317,6 @@
               <div class="doc-dropzone" id="docDropzone">
                 <div class="upload-row" style="flex-wrap:wrap">
                   <select id="docCategory">
-                    <option value="email">Email</option>
-                    <option value="tgs">TGS</option>
-                    <option value="plan">Plan</option>
-                    <option value="moa">MoA</option>
-                    <option value="correspondence">Correspondence</option>
-                    <option value="photo">Photo</option>
                     <option value="other">Other</option>
                   </select>
                   <input type="text" id="docDesc" placeholder="Description (optional, applies to all)" />
@@ -331,6 +325,10 @@
                 </div>
                 <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads use JSON chunks so workplace filters do not block them.</p>
                 <p class="hint" id="docUploadStatus" hidden></p>
+                <div class="doc-select-bar" id="docSelectBar" hidden>
+                  <label class="doc-select-all"><input type="checkbox" id="docSelectAll" /> Select all</label>
+                  <button type="button" class="btn" id="btnDownloadDocs">Download selected</button>
+                </div>
                 <ul id="docList" class="event-list"></ul>
               </div>
             </div>

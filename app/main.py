@@ -25,11 +25,13 @@ from .database import get_db
 from .financial_year import fy_choices
 from .live_hub import live_identity
 from .migrate import run_migrations
-from .models import DOC_CATEGORIES, LookupItem, Site, SiteCouncil, User
+from .doc_categories import category_meta, ensure_doc_category_seed
+from .models import LookupItem, Site, SiteCouncil, User
 from .routers import (
     activity,
     asphalt,
     auth as auth_router,
+    backup,
     columns,
     costs,
     dashboard,
@@ -88,6 +90,7 @@ app.include_router(stages.router)
 app.include_router(settings_admin.router)
 app.include_router(import_tracker.router)
 app.include_router(system.router)
+app.include_router(backup.router)
 
 
 class NoCacheStaticMiddleware(BaseHTTPMiddleware):
@@ -172,6 +175,8 @@ def meta(db: Session = Depends(get_db)):
     # Auth is enforced by middleware; meta is available to any logged-in user.
     rules = get_rules(db)
     ensure_lookup_seed(db)
+    ensure_doc_category_seed(db)
+    doc_defs = category_meta(db)
     seeded_programs = active_programs(db)
     used_programs = [
         p
@@ -202,7 +207,8 @@ def meta(db: Session = Depends(get_db)):
     roads = list(dict.fromkeys(lookup_roads))
     return {
         "workflow_stages": stage_meta(db),
-        "doc_categories": DOC_CATEGORIES,
+        "doc_categories": [d["key"] for d in doc_defs],
+        "doc_category_defs": doc_defs,
         "priority_threshold_days": rules.priority_must_have_days,
         "priority_must_have_days": rules.priority_must_have_days,
         "must_have_offset_business_days": rules.must_have_offset_business_days,
@@ -401,6 +407,11 @@ def admin_asphalt_page(_: User = Depends(require_admin)):
 @app.get("/admin/system")
 def admin_system_page(_: User = Depends(require_admin)):
     return _page("system.html")
+
+
+@app.get("/admin/backup")
+def admin_backup_page(_: User = Depends(require_admin)):
+    return _page("backup.html")
 
 
 @app.get("/admin/users")

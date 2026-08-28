@@ -7,9 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 FieldType = Literal["text", "number", "date", "checkbox", "select"]
-DocCategory = Literal[
-    "email", "tgs", "plan", "moa", "correspondence", "photo", "other"
-]
+DocCategory = str
 
 
 class WorkflowStepOut(BaseModel):
@@ -253,6 +251,7 @@ class CustomColumnOut(BaseModel):
 class MetaOut(BaseModel):
     workflow_stages: list[dict[str, Any]]
     doc_categories: list[str]
+    doc_category_defs: list[dict[str, Any]] = Field(default_factory=list)
     priority_threshold_days: int = 14
     priority_must_have_days: int = 14
     must_have_offset_business_days: int = 20

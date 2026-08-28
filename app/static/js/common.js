@@ -234,11 +234,10 @@ export async function uploadFileChunked(file, { beginUrl, chunkUrl, commitUrl, b
   }
   const keyBytes = b64ToBytes(session.wrap_key);
   const chunkSize = Number(session.chunk_size) || 48 * 1024;
-  const buf = new Uint8Array(await file.arrayBuffer());
-  const total = Math.max(1, Math.ceil(buf.length / chunkSize));
+  const total = Math.max(1, Math.ceil(file.size / chunkSize));
   for (let i = 0; i < total; i += 1) {
     onProgress?.(`Uploading… ${i + 1}/${total}`);
-    const slice = buf.subarray(i * chunkSize, (i + 1) * chunkSize);
+    const slice = new Uint8Array(await file.slice(i * chunkSize, (i + 1) * chunkSize).arrayBuffer());
     const wrapped = xorBytes(slice, keyBytes);
     await api(chunkUrl(session.id, i), {
       method: "POST",
@@ -261,16 +260,83 @@ export const DOC_CATEGORY_LABELS = {
   other: "Other",
 };
 
-export function docCategorySelectHtml(docId, current, { disabled = false, extraClass = "" } = {}) {
-  const opts = Object.entries(DOC_CATEGORY_LABELS)
+export function applyDocCategories(defs) {
+  const next = {};
+  for (const item of defs || []) {
+    if (typeof item === "string") {
+      next[item] = DOC_CATEGORY_LABELS[item] || titleCaseCategory(item);
+    } else if (item && item.key) {
+      next[item.key] = item.label || titleCaseCategory(item.key);
+    }
+  }
+  if (!Object.keys(next).length) return DOC_CATEGORY_LABELS;
+  for (const key of Object.keys(DOC_CATEGORY_LABELS)) delete DOC_CATEGORY_LABELS[key];
+  Object.assign(DOC_CATEGORY_LABELS, next);
+  return DOC_CATEGORY_LABELS;
+}
+
+export function titleCaseCategory(key) {
+  const raw = String(key || "").replaceAll("_", " ").trim();
+  if (!raw) return "Other";
+  return raw.replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+export function docCategoryOptionsHtml(current) {
+  const labels = { ...DOC_CATEGORY_LABELS };
+  if (current && !labels[current]) labels[current] = titleCaseCategory(current);
+  return Object.entries(labels)
     .map(
       ([key, label]) =>
-        `<option value="${key}" ${key === current ? "selected" : ""}>${label}</option>`
+        `<option value="${escapeHtml(key)}" ${key === current ? "selected" : ""}>${escapeHtml(label)}</option>`
     )
     .join("");
+}
+
+export function fillDocCategorySelect(selectEl, current) {
+  if (!selectEl) return;
+  const keep = current ?? selectEl.value;
+  selectEl.innerHTML = docCategoryOptionsHtml(keep);
+  if (keep) selectEl.value = keep;
+}
+
+export function docCategorySelectHtml(docId, current, { disabled = false, extraClass = "" } = {}) {
+  const opts = docCategoryOptionsHtml(current);
   const cls = ["doc-cat-select", extraClass].filter(Boolean).join(" ");
   const dis = disabled ? "disabled" : "";
   return `<select class="${cls}" data-doc-cat="${docId}" ${dis} aria-label="Document category">${opts}</select>`;
+}
+
+export async function downloadDocumentsZip(ids, filename = "documents.zip") {
+  const list = [...new Set((ids || []).map((n) => Number(n)).filter((n) => n > 0))];
+  if (!list.length) throw new Error("Select one or more documents first");
+  const res = await fetch("/api/documents/zip", {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: list }),
+  });
+  if (!res.ok) {
+    const ct = res.headers.get("content-type") || "";
+    let detail = res.statusText || `HTTP ${res.status}`;
+    if (ct.includes("application/json")) {
+      const body = await res.json().catch(() => ({}));
+      detail = formatApiDetail(body?.detail ?? body, detail);
+    } else {
+      const text = await res.text().catch(() => "");
+      detail = humanizeHttpError(res.status, text, detail);
+    }
+    throw new Error(detail);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 export function escapeHtml(str) {
@@ -373,10 +439,11 @@ export const ADMIN_NAV = [
   { href: "/admin", label: "Overview", hint: "Admin home" },
   { href: "/admin/users", label: "Users", hint: "Logins & roles" },
   { href: "/admin/stages", label: "Stages & programs", hint: "Workflow" },
-  { href: "/admin/settings", label: "Rules & roads", hint: "SLAs · road names · import" },
+  { href: "/admin/settings", label: "Rules & roads", hint: "SLAs · roads · document types" },
   { href: "/admin/rates", label: "Traffic rates", hint: "Crew & allowances" },
   { href: "/admin/asphalt", label: "Asphalt rates", hint: "Subcontractors" },
   { href: "/admin/system", label: "System & updates", hint: "Version · GitHub" },
+  { href: "/admin/backup", label: "Backup & migrate", hint: "Export · import" },
 ];
 
 function isActivePath(href, path) {

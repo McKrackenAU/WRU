@@ -90,6 +90,17 @@
       </section>
 
       <section class="panel-card">
+        <h2>Document types</h2>
+        <p class="hint">These labels appear on the site Documents tab and the library. Add your own types, rename the ones you use, or remove unused ones. Documents on a removed type move to Other. Other cannot be removed — it is the fallback.</p>
+        <div class="filters" style="margin-bottom:0.75rem">
+          <input id="docTypeLabel" type="text" placeholder="Add a type, e.g. SWMS" maxlength="128" />
+          <button type="button" class="btn btn-primary" id="btnAddDocType">Add type</button>
+        </div>
+        <p class="hint" id="docTypeStatus"></p>
+        <ul class="event-list lookup-list" id="docTypeList"></ul>
+      </section>
+
+      <section class="panel-card">
         <h2>Import spreadsheet</h2>
         <p class="hint">Upload the WRU Traffic TGS-MOA Tracker as <code>.xlsx</code> or <code>.xlsm</code> (legacy <code>.xls</code> must be saved as .xlsx first). Off-site, Zscaler / Cloudflare often block a spreadsheet upload; Preview and Import send JSON pieces instead of the workbook file. Update first, then retry. Rows match on road + site number.</p>
         <div class="filters" style="flex-direction:column;align-items:stretch">

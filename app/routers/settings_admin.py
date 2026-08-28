@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
 from ..database import get_db
+from ..doc_categories import (
+    FALLBACK_KEY,
+    all_doc_categories,
+    ensure_doc_category_seed,
+    reassign_documents,
+    slug_category_key,
+    usage_count,
+)
 from ..live_hub import notify_from_request
 from ..lookups import apply_lookup_update, usage_counts
-from ..models import LookupItem
+from ..models import DocumentCategoryDef, LookupItem
 from ..schemas import AppSettingsOut, AppSettingsUpdate, LookupIn, LookupOut
 from ..settings_store import ensure_settings, get_rules, update_settings
 from ..stage_registry import ensure_lookup_seed
@@ -138,3 +148,127 @@ def delete_lookup(lookup_id: int, request: Request, db: Session = Depends(get_db
     row.active = False
     db.commit()
     notify_from_request(request, reason="lookup")
+
+
+class DocCategoryIn(BaseModel):
+    key: str | None = Field(default=None, max_length=64)
+    label: str = Field(min_length=1, max_length=128)
+    position: int | None = None
+    active: bool = True
+
+
+class DocCategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    key: str
+    label: str
+    position: int
+    active: bool
+    protected: bool
+    usage_count: int = 0
+
+
+def _doc_cat_out(row: DocumentCategoryDef, db: Session) -> DocCategoryOut:
+    return DocCategoryOut(
+        id=row.id,
+        key=row.key,
+        label=row.label,
+        position=row.position,
+        active=row.active,
+        protected=row.protected,
+        usage_count=usage_count(db, row.key),
+    )
+
+
+@router.get("/doc-categories", response_model=list[DocCategoryOut])
+def list_doc_categories(
+    include_inactive: bool = Query(default=True),
+    db: Session = Depends(get_db),
+):
+    ensure_doc_category_seed(db)
+    rows = all_doc_categories(db)
+    if not include_inactive:
+        rows = [r for r in rows if r.active]
+    return [_doc_cat_out(r, db) for r in rows]
+
+
+@router.post("/doc-categories", response_model=DocCategoryOut, status_code=201)
+def create_doc_category(payload: DocCategoryIn, request: Request, db: Session = Depends(get_db)):
+    ensure_doc_category_seed(db)
+    key = slug_category_key(payload.key or payload.label)
+    exists = db.query(DocumentCategoryDef).filter(DocumentCategoryDef.key == key).first()
+    if exists:
+        if not exists.active:
+            exists.active = True
+            exists.label = payload.label.strip()
+            db.commit()
+            db.refresh(exists)
+            notify_from_request(request, reason="doc-categories")
+            return _doc_cat_out(exists, db)
+        raise HTTPException(status_code=409, detail="That document type already exists")
+    max_pos = db.query(func.max(DocumentCategoryDef.position)).scalar() or 0
+    row = DocumentCategoryDef(
+        key=key,
+        label=payload.label.strip(),
+        position=payload.position if payload.position is not None else max_pos + 10,
+        active=payload.active,
+        protected=False,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    notify_from_request(request, reason="doc-categories")
+    return _doc_cat_out(row, db)
+
+
+@router.patch("/doc-categories/{category_id}", response_model=DocCategoryOut)
+def update_doc_category(
+    category_id: int,
+    payload: DocCategoryIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    ensure_doc_category_seed(db)
+    row = db.get(DocumentCategoryDef, category_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    new_label = payload.label.strip()
+    new_key = slug_category_key(payload.key or row.key)
+    if new_key != row.key:
+        if row.protected:
+            raise HTTPException(status_code=400, detail="The fallback type cannot be renamed")
+        clash = (
+            db.query(DocumentCategoryDef)
+            .filter(DocumentCategoryDef.key == new_key, DocumentCategoryDef.id != row.id)
+            .first()
+        )
+        if clash:
+            raise HTTPException(status_code=409, detail="That document type key already exists")
+        reassign_documents(db, row.key, new_key)
+        row.key = new_key
+    row.label = new_label
+    if payload.position is not None:
+        row.position = payload.position
+    row.active = payload.active
+    if row.protected:
+        row.active = True
+    db.commit()
+    db.refresh(row)
+    notify_from_request(request, reason="doc-categories")
+    return _doc_cat_out(row, db)
+
+
+@router.delete("/doc-categories/{category_id}", status_code=204)
+def delete_doc_category(category_id: int, request: Request, db: Session = Depends(get_db)):
+    ensure_doc_category_seed(db)
+    row = db.get(DocumentCategoryDef, category_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    if row.protected or row.key == FALLBACK_KEY:
+        raise HTTPException(status_code=400, detail="The fallback type cannot be removed")
+    reassign_documents(db, row.key, FALLBACK_KEY)
+    row.active = False
+    db.commit()
+    notify_from_request(request, reason="doc-categories")
+

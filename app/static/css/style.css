@@ -2345,8 +2345,56 @@ input[type="number"].num-stepper-input::-webkit-inner-spin-button {
   padding: 0;
 }
 
-.doc-dropzone .event-list {
-  margin-top: 0.35rem;
+.doc-select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.55rem 0 0.15rem;
+}
+
+.doc-select-all,
+.doc-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+}
+
+.doc-check-col {
+  width: 2rem;
+  text-align: center;
+}
+
+.doc-select-all input[type="checkbox"],
+.doc-pick input[type="checkbox"],
+.doc-check-col input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  min-width: 13px;
+  min-height: 13px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--ventia-ink) 38%, var(--ventia-border));
+  border-radius: 3px;
+  background-color: var(--panel);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 9px 9px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.doc-select-all input[type="checkbox"]:checked,
+.doc-pick input[type="checkbox"]:checked,
+.doc-check-col input[type="checkbox"]:checked {
+  background-color: var(--ventia-green);
+  border-color: var(--ventia-green);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M2.2 6.2 4.8 8.8 9.8 3.2'/%3E%3C/svg%3E");
 }
 
 .event-list {
