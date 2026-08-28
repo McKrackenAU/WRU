@@ -45,12 +45,13 @@ if [[ -z "${WRU_UPDATE_SELF:-}" ]]; then
   _self_tmp="/tmp/wru-update.github.sh"
   _self_ok=0
   _self_ref="${WRU_BRANCH:-main}"
-  if curl -fsSL --connect-timeout 15 --max-time 90 \
-      "https://raw.githubusercontent.com/McKrackenAU/WRU/${_self_ref}/scripts/wru-update.sh" \
+  _bust="$(date +%s)"
+  if curl -fsSL --connect-timeout 15 --max-time 90 -H "Cache-Control: no-cache" \
+      "https://raw.githubusercontent.com/McKrackenAU/WRU/${_self_ref}/scripts/wru-update.sh?${_bust}" \
       -o "$_self_tmp"; then
     _self_ok=1
-  elif curl -fsSL --connect-timeout 15 --max-time 90 \
-      "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh" \
+  elif curl -fsSL --connect-timeout 15 --max-time 90 -H "Cache-Control: no-cache" \
+      "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh?${_bust}" \
       -o "$_self_tmp"; then
     _self_ok=1
   fi
@@ -173,16 +174,32 @@ if [[ -d "$APP_DIR" ]]; then
 fi
 
 tmp="$(mktemp)"
+_bust="$(date +%s)"
 # Prefer install script from the target ref; fall back to main if ref is brand-new
-if ! curl -fsSL "${RAW_BASE}/install/wru-install.sh" -o "$tmp"; then
+if ! curl -fsSL --connect-timeout 15 --max-time 90 -H "Cache-Control: no-cache" \
+    "${RAW_BASE}/install/wru-install.sh?${_bust}" -o "$tmp"; then
   echo "Could not fetch install script from ref ${APP_BRANCH}; trying main…"
-  curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/install/wru-install.sh" -o "$tmp"
+  curl -fsSL --connect-timeout 15 --max-time 90 -H "Cache-Control: no-cache" \
+    "https://raw.githubusercontent.com/McKrackenAU/WRU/main/install/wru-install.sh?${_bust}" -o "$tmp"
 fi
 chmod +x "$tmp"
 
 export WRU_REPO="$APP_GIT" WRU_BRANCH="$APP_BRANCH" WRU_PORT="$APP_PORT"
 bash "$tmp"
 rm -f "$tmp"
+
+# Always rebuild a healthy venv in /opt/wru (fixes moved-venv sqlalchemy errors
+# even when an older install script ran).
+echo "Ensuring Python packages in ${APP_DIR}…"
+if [[ -f "${APP_DIR}/scripts/wru-repair-venv.sh" ]]; then
+  bash "${APP_DIR}/scripts/wru-repair-venv.sh" || true
+else
+  _rep="$(mktemp)"
+  curl -fsSL --connect-timeout 15 --max-time 90 -H "Cache-Control: no-cache" \
+    "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-repair-venv.sh?${_bust}" -o "$_rep" \
+    && bash "$_rep" || true
+  rm -f "$_rep"
+fi
 
 # Always (re)install the in-app / CLI updater helpers onto sudo's PATH
 ONLINE_BIN="/usr/local/sbin/wru-online-update"
@@ -200,6 +217,10 @@ else
     || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh" -o "$HELPER_BIN"
   chmod 755 "$HELPER_BIN"
   install_update_bins "$HELPER_BIN"
+fi
+if [[ -f "${APP_DIR}/scripts/wru-repair-venv.sh" ]]; then
+  install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/local/sbin/wru-repair-venv
+  install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/bin/wru-repair-venv
 fi
 if [[ -f "${APP_DIR}/scripts/wru-online-update.sh" ]]; then
   install -m 755 "${APP_DIR}/scripts/wru-online-update.sh" "$ONLINE_BIN"
@@ -227,6 +248,8 @@ wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
 wru ALL=(root) NOPASSWD: /usr/local/sbin/WRU-update
 wru ALL=(root) NOPASSWD: /usr/bin/wru-update
 wru ALL=(root) NOPASSWD: /usr/bin/WRU-update
+wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-repair-venv
+wru ALL=(root) NOPASSWD: /usr/bin/wru-repair-venv
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed wru-online-update*
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update*

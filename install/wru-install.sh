@@ -329,10 +329,15 @@ if ! python3 -m venv "$APP_DIR/.venv"; then
   fi
 fi
 VENV_PY="$APP_DIR/.venv/bin/python"
-if [[ ! -x "$VENV_PY" ]]; then
-  restore_previous_app
-  msg_error "venv python missing after create"
-  exit 1
+if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+  echo "Bootstrapping pip into the venv…"
+  "$VENV_PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
+fi
+if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+  tmp_pip="$(mktemp)"
+  curl -fsSL --connect-timeout 15 --max-time 90 https://bootstrap.pypa.io/get-pip.py -o "$tmp_pip"
+  "$VENV_PY" "$tmp_pip"
+  rm -f "$tmp_pip"
 fi
 "$VENV_PY" -m pip install --upgrade pip || true
 if ! "$VENV_PY" -m pip install -r "$APP_DIR/requirements.txt"; then
@@ -344,12 +349,9 @@ if ! "$VENV_PY" -m pip install -r "$APP_DIR/requirements.txt"; then
 fi
 "$VENV_PY" -m pip install "pillow==11.1.0" || msg_warn "Pillow not installed — uploads still work, photos will not recompress"
 if ! "$VENV_PY" -c "import sqlalchemy, fastapi, uvicorn"; then
-  if [[ -d "${APP_DIR}.prev" ]]; then
-    restore_previous_app
-    msg_warn "Required packages missing — restored the previous install"
-  else
-    msg_error "Required packages missing (sqlalchemy / fastapi / uvicorn)"
-    exit 1
+  msg_warn "sqlalchemy still missing — leaving new code in place (do not restore a broken venv)"
+  if [[ -f "$APP_DIR/scripts/wru-repair-venv.sh" ]]; then
+    WRU_REPAIR_FORCE=1 bash "$APP_DIR/scripts/wru-repair-venv.sh" || true
   fi
 fi
 msg_ok "Installed Python packages"
@@ -497,6 +499,10 @@ if [[ -f "$UPDATE_SRC" ]]; then
     install -m 755 "$ONLINE_SRC" /usr/local/sbin/wru-online-update
     install -m 755 "$ONLINE_SRC" /usr/bin/wru-online-update
   fi
+  if [[ -f "${APP_DIR}/scripts/wru-repair-venv.sh" ]]; then
+    install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/local/sbin/wru-repair-venv
+    install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/bin/wru-repair-venv
+  fi
   # Minimal LXCs may lack /etc/sudoers.d until sudo is installed
   $STD apt-get install -y sudo >/dev/null 2>&1 || true
   mkdir -p /etc/sudoers.d
@@ -511,6 +517,8 @@ wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
 wru ALL=(root) NOPASSWD: /usr/local/sbin/WRU-update
 wru ALL=(root) NOPASSWD: /usr/bin/wru-update
 wru ALL=(root) NOPASSWD: /usr/bin/WRU-update
+wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-repair-venv
+wru ALL=(root) NOPASSWD: /usr/bin/wru-repair-venv
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed wru-online-update*
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update*

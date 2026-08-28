@@ -93,6 +93,17 @@ def test_install_does_not_abort_on_hdd_or_optional_jpeg():
     assert swap_at < venv_at < pip_at
     assert 'import sqlalchemy, fastapi, uvicorn' in text
     assert '"$VENV_PY" scripts/seed.py' in text
+    assert "wru-repair-venv.sh" in text
+
+
+def test_update_repairs_venv_after_install():
+    text = (ROOT / "scripts" / "wru-update.sh").read_text(encoding="utf-8")
+    assert "wru-repair-venv.sh" in text
+    assert "Cache-Control: no-cache" in text
+    repair = (ROOT / "scripts" / "wru-repair-venv.sh").read_text(encoding="utf-8")
+    assert "rm -rf \"$VENV\"" in repair
+    assert "import sqlalchemy, fastapi, uvicorn" in repair
+    assert 'python3 -m venv "$VENV"' in repair
 
 
 def test_engine_fails_fast_on_dead_postgres():
