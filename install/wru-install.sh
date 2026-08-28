@@ -299,50 +299,60 @@ if [[ ! -f "$NEW_APP/app/main.py" ]]; then
   rm -rf "$TMP_APP"
   exit 1
 fi
+# Never build the venv under /tmp and then move it — that breaks pip/sqlalchemy
+# (shebangs and pyvenv.cfg still point at the temp path).
+rm -rf "${APP_DIR}.prev"
+if [[ -d "$APP_DIR" ]]; then
+  mv "$APP_DIR" "${APP_DIR}.prev"
+fi
+mv "$NEW_APP" "$APP_DIR"
+rm -rf "$TMP_APP"
+rm -rf "$APP_DIR/data"
+msg_ok "Deployed ${APP} (${APP_BRANCH})"
+
+restore_previous_app() {
+  if [[ -d "${APP_DIR}.prev" ]]; then
+    rm -rf "$APP_DIR"
+    mv "${APP_DIR}.prev" "$APP_DIR"
+    msg_warn "Restored previous ${APP_DIR}"
+  fi
+}
 
 msg_info "Creating Python virtualenv"
-if ! python3 -m venv "$NEW_APP/.venv"; then
+if ! python3 -m venv "$APP_DIR/.venv"; then
   msg_error "python3 -m venv failed — installing python3-venv and retrying"
   $STD apt-get install -y python3-venv python3-full || true
-  python3 -m venv "$NEW_APP/.venv"
+  if ! python3 -m venv "$APP_DIR/.venv"; then
+    restore_previous_app
+    msg_error "python3 -m venv failed"
+    exit 1
+  fi
 fi
-# shellcheck disable=SC1091
-source "$NEW_APP/.venv/bin/activate"
-if ! command -v pip >/dev/null 2>&1; then
-  msg_error "venv pip missing after create"
-  deactivate || true
-  rm -rf "$TMP_APP"
+VENV_PY="$APP_DIR/.venv/bin/python"
+if [[ ! -x "$VENV_PY" ]]; then
+  restore_previous_app
+  msg_error "venv python missing after create"
   exit 1
 fi
-pip install --upgrade pip
-if ! pip install -r "$NEW_APP/requirements.txt"; then
+"$VENV_PY" -m pip install --upgrade pip || true
+if ! "$VENV_PY" -m pip install -r "$APP_DIR/requirements.txt"; then
   msg_warn "Bulk pip install failed — retrying packages individually so WRU can still start"
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" || "$line" == \#* ]] && continue
-    pip install "$line" || msg_warn "Could not install $line"
-  done < "$NEW_APP/requirements.txt"
+    "$VENV_PY" -m pip install "$line" || msg_warn "Could not install $line"
+  done < "$APP_DIR/requirements.txt"
 fi
-pip install "pillow==11.1.0" || msg_warn "Pillow not installed — uploads still work, photos will not recompress"
-deactivate
-if [[ ! -x "$NEW_APP/.venv/bin/uvicorn" ]]; then
-  if [[ -x "$APP_DIR/.venv/bin/uvicorn" ]]; then
-    msg_warn "New venv is incomplete — keeping existing ${APP_DIR}"
-    rm -rf "$TMP_APP"
+"$VENV_PY" -m pip install "pillow==11.1.0" || msg_warn "Pillow not installed — uploads still work, photos will not recompress"
+if ! "$VENV_PY" -c "import sqlalchemy, fastapi, uvicorn"; then
+  if [[ -d "${APP_DIR}.prev" ]]; then
+    restore_previous_app
+    msg_warn "Required packages missing — restored the previous install"
   else
-    msg_error "uvicorn missing after pip install"
-    rm -rf "$TMP_APP"
+    msg_error "Required packages missing (sqlalchemy / fastapi / uvicorn)"
     exit 1
   fi
-else
-  rm -rf "${APP_DIR}.prev"
-  if [[ -d "$APP_DIR" ]]; then
-    mv "$APP_DIR" "${APP_DIR}.prev"
-  fi
-  mv "$NEW_APP" "$APP_DIR"
-  rm -rf "$TMP_APP"
-  rm -rf "$APP_DIR/data"
-  msg_ok "Deployed ${APP} (${APP_BRANCH})"
 fi
+msg_ok "Installed Python packages"
 
 msg_info "Writing environment"
 # Read a quoted KEY=value from /etc/default/wru without sourcing the whole file
@@ -411,21 +421,19 @@ chown -R "${APP_USER}:${APP_USER}" "$DATA_DIR" || true
 msg_ok "Permissions set"
 
 msg_info "Migrating and seeding database"
-# shellcheck disable=SC1091
-source "$APP_DIR/.venv/bin/activate"
 set -a
 # shellcheck disable=SC1091
 source /etc/default/wru
 set +a
-# Belt-and-suspenders: ensure DATABASE_URL is exported even if source was odd
 export DATABASE_URL="${DATABASE_URL:-}"
 if [[ -z "$DATABASE_URL" ]]; then
   msg_warn "DATABASE_URL missing after writing /etc/default/wru — starting the app anyway"
 fi
 cd "$APP_DIR"
+VENV_PY="${VENV_PY:-$APP_DIR/.venv/bin/python}"
 
 # Prove DB login works before migrations (shows real errors)
-python3 - <<'PY' || msg_warn "Database connection failed — starting the app anyway"
+"$VENV_PY" - <<'PY' || msg_warn "Database connection failed — starting the app anyway"
 import os, sys
 from sqlalchemy import create_engine, text
 url = os.environ.get("DATABASE_URL")
@@ -442,14 +450,13 @@ except Exception as exc:
 print("Database connection OK")
 PY
 
-python3 -c "from app.migrate import run_migrations; run_migrations()" || msg_warn "Migration reported an error — starting the app anyway"
-if ! python3 scripts/seed.py; then
-  msg_warn "Sample seed failed (schema is migrated); continuing"
+"$VENV_PY" -c "from app.migrate import run_migrations; run_migrations()" || msg_warn "Migration reported an error — starting the app anyway"
+if ! "$VENV_PY" scripts/seed.py; then
+  msg_warn "Sample seed skipped (existing data is left as-is)"
 fi
 if [[ -f "${DATA_DIR}/bootstrap_admin.txt" ]]; then
   msg_warn "First admin credentials: ${DATA_DIR}/bootstrap_admin.txt (change password after login)"
 fi
-deactivate
 msg_ok "Database ready"
 
 msg_info "Creating Service"

@@ -84,14 +84,15 @@ def test_install_does_not_abort_on_hdd_or_optional_jpeg():
     assert "WRU_ARCHIVE_DIR" not in text
     assert "libjpeg62-turbo ||" in text
     assert 'mv "$NEW_APP" "$APP_DIR"' in text
-    assert 'python3 -m venv "$NEW_APP/.venv"' in text
-    # Must pip into the new tree before replacing /opt/wru
-    pip_at = text.find('pip install -r "$NEW_APP/requirements.txt"')
+    assert 'python3 -m venv "$APP_DIR/.venv"' in text
+    assert 'python3 -m venv "$NEW_APP/.venv"' not in text
     swap_at = text.find('mv "$NEW_APP" "$APP_DIR"')
-    wipe_old = text.find('rm -rf "$APP_DIR"')
-    assert pip_at != -1 and swap_at != -1
-    assert pip_at < swap_at
-    assert wipe_old == -1 or wipe_old > swap_at
+    venv_at = text.find('python3 -m venv "$APP_DIR/.venv"')
+    pip_at = text.find('pip install -r "$APP_DIR/requirements.txt"')
+    assert swap_at != -1 and venv_at != -1 and pip_at != -1
+    assert swap_at < venv_at < pip_at
+    assert 'import sqlalchemy, fastapi, uvicorn' in text
+    assert '"$VENV_PY" scripts/seed.py' in text
 
 
 def test_engine_fails_fast_on_dead_postgres():
