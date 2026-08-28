@@ -6,8 +6,6 @@ aiofiles==24.1.0
 pydantic==2.10.4
 psycopg2-binary==2.9.10
 openpyxl==3.1.5
-# Pillow is installed best-effort by the install script (image recompress).
-# Do not hard-require it here — a failed wheel left WRU stopped after v1.80.
-
+reportlab==4.2.5
 bcrypt==4.2.1
 itsdangerous==2.2.0

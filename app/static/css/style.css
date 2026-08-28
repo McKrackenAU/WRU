@@ -118,8 +118,7 @@ html.dark body::before {
 }
 
 .boot-error,
-.page-error,
-.update-banner {
+.page-error {
   margin: 0.75rem 1rem;
   padding: 0.85rem 1rem;
   border-radius: 0.65rem;
@@ -128,23 +127,8 @@ html.dark body::before {
   color: var(--danger-fg);
 }
 
-.update-banner {
-  border-color: color-mix(in srgb, var(--ventia-green) 45%, var(--ventia-border));
-  background: color-mix(in srgb, var(--ventia-green-tint) 70%, var(--panel));
-  color: var(--ventia-ink);
-  position: sticky;
-  top: 0;
-  z-index: 90;
-}
-
-.update-banner kbd {
-  font-family: var(--mono);
-  font-size: 0.82em;
-}
-
 .page-error strong,
-.boot-error strong,
-.update-banner strong {
+.boot-error strong {
   display: block;
   margin-bottom: 0.35rem;
 }

@@ -8,32 +8,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-def ensure_dir(path: Path) -> Path:
-    """Create a directory if possible. Never crash the app for a missing HDD mount."""
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-    return path
-
-
-def env_path(name: str, default: Path) -> Path:
-    """Resolve an env path. Do not mkdir — a wedged HDD mount would hang import."""
-    raw = (os.environ.get(name) or "").strip()
-    path = Path(raw).expanduser() if raw else default
-    if not path.is_absolute():
-        path = BASE_DIR / path
-    return path
-
-
-# App data lives under WRU_DATA_DIR (Proxmox: /opt/wru-data). Documents and
-# archives stay in that tree — extra HDD env vars from v1.80 are ignored so a
-# missing mount cannot take the site down.
-DATA_DIR = env_path("WRU_DATA_DIR", BASE_DIR / "data")
+DATA_DIR = Path(os.environ.get("WRU_DATA_DIR", BASE_DIR / "data"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = DATA_DIR / "uploads"
-ARCHIVE_DIR = UPLOAD_DIR / "archived"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def build_database_url() -> str:
@@ -58,7 +36,6 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
-    connect_args={"connect_timeout": 5},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

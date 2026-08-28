@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import tempfile
 import uuid
 from datetime import date
 from pathlib import Path
 
+import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from starlette.background import BackgroundTask
 
 from ..activity import actor_name, log_cost_added
 from ..live_hub import notify_from_request
@@ -23,13 +22,14 @@ from ..cost_engine import (
     preview_schedule_window,
 )
 from ..cost_export import build_cost_pdf, build_cost_workbook
-from ..database import get_db
+from ..database import UPLOAD_DIR, get_db
 from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, ShiftExtraRate, Site, User
 from ..rate_import import build_traffic_template, import_traffic_rates
-from ..storage import compress_document, estimate_dir, stored_payload, unlink_stored_file, write_blob
 
 router = APIRouter(prefix="/api/costs", tags=["costs"])
 
+ESTIMATE_UPLOAD_DIR = UPLOAD_DIR / "cost-estimates"
+ESTIMATE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
@@ -788,7 +788,7 @@ def delete_estimate(estimate_id: int, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="Estimate not found")
     for att in list(row.attachments or []):
-        unlink_stored_file(att.stored_name, subdir="cost-estimates")
+        (ESTIMATE_UPLOAD_DIR / att.stored_name).unlink(missing_ok=True)
     db.delete(row)
     db.commit()
     return None
@@ -809,31 +809,27 @@ async def upload_estimate_attachment(
     original = Path(file.filename or "upload.bin").name
     suffix = Path(original).suffix[:32]
     stored_name = f"est{estimate_id}_{uuid.uuid4().hex}{suffix}"
+    dest = ESTIMATE_UPLOAD_DIR / stored_name
 
     size = 0
-    chunks: list[bytes] = []
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        size += len(chunk)
-        if size > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
-        chunks.append(chunk)
-    content = b"".join(chunks)
-    blob = compress_document(content, original, file.content_type)
-    archived = bool(getattr(row.site, "archived", False))
-    dest = estimate_dir(archived=archived) / stored_name
-    write_blob(dest, blob)
+    async with aiofiles.open(dest, "wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                await out.close()
+                dest.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
+            await out.write(chunk)
 
     att = CostEstimateAttachment(
         estimate_id=estimate_id,
         stored_name=stored_name,
         original_filename=original,
-        content_type=blob.content_type or file.content_type,
-        size_bytes=blob.logical_size,
-        stored_bytes=blob.stored_size,
-        stored_encoding=blob.encoding,
+        content_type=file.content_type,
+        size_bytes=size,
         description=(description or "").strip() or None,
         uploaded_by=uploaded_by,
     )
@@ -848,27 +844,13 @@ def download_estimate_attachment(attachment_id: int, db: Session = Depends(get_d
     att = db.get(CostEstimateAttachment, attachment_id)
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    try:
-        path, raw = stored_payload(att, subdir="cost-estimates")
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="File missing on disk") from exc
-    if path is not None:
-        return FileResponse(
-            path,
-            media_type=att.content_type or "application/octet-stream",
-            filename=att.original_filename,
-        )
-    tmp = tempfile.NamedTemporaryFile(
-        prefix="wru-att-", suffix=Path(att.original_filename or "").suffix, delete=False
-    )
-    tmp.write(raw or b"")
-    tmp.close()
-    dest = Path(tmp.name)
+    path = ESTIMATE_UPLOAD_DIR / att.stored_name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File missing on disk")
     return FileResponse(
-        dest,
+        path,
         media_type=att.content_type or "application/octet-stream",
         filename=att.original_filename,
-        background=BackgroundTask(dest.unlink, missing_ok=True),
     )
 
 
@@ -877,7 +859,7 @@ def delete_estimate_attachment(attachment_id: int, db: Session = Depends(get_db)
     att = db.get(CostEstimateAttachment, attachment_id)
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    unlink_stored_file(att.stored_name, subdir="cost-estimates")
+    (ESTIMATE_UPLOAD_DIR / att.stored_name).unlink(missing_ok=True)
     db.delete(att)
     db.commit()
     return None

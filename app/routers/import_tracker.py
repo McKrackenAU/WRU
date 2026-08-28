@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
-from ..database import DATA_DIR, ensure_dir, get_db
+from ..database import DATA_DIR, get_db
 from ..live_hub import notify_from_request
 from ..tracker_import import import_tracker_rows, parse_tracker_workbook
 from ..upload_limits import configure_multipart_limits
@@ -42,6 +42,7 @@ MAX_CHUNKS = (MAX_BYTES + CHUNK_SIZE - 1) // CHUNK_SIZE
 WRAP_KEY_BYTES = 32
 STAGING_TTL_SEC = 20 * 60
 STAGING_DIR = DATA_DIR / "import-staging"
+STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class TrackerUploadBegin(BaseModel):
@@ -84,8 +85,6 @@ def unwrap_chunk_payload(encoded_b64: str, wrap_key_b64: str) -> bytes:
 
 def _cleanup_stale_sessions() -> None:
     cutoff = time.time() - STAGING_TTL_SEC
-    if not STAGING_DIR.is_dir():
-        return
     for path in STAGING_DIR.glob("*"):
         if not path.is_dir():
             continue
@@ -247,7 +246,8 @@ def begin_tracker_session(payload: TrackerUploadBegin):
     if not _filename_ok(payload.filename) and not payload.filename.lower().endswith(".bin"):
         raise HTTPException(status_code=400, detail="Upload an Excel .xlsx / .xlsm tracker file")
     upload_id = str(uuid.uuid4())
-    folder = ensure_dir(STAGING_DIR / upload_id)
+    folder = STAGING_DIR / upload_id
+    folder.mkdir(parents=True, exist_ok=True)
     chunks = (payload.size + CHUNK_SIZE - 1) // CHUNK_SIZE
     wrap_key = base64.b64encode(secrets.token_bytes(WRAP_KEY_BYTES)).decode("ascii")
     _write_meta(

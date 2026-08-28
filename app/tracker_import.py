@@ -704,7 +704,6 @@ def import_tracker_rows(
 ) -> dict[str, Any]:
     programs = active_programs(db)
     created = updated = skipped = archived = 0
-    archived_ids: list[int] = []
     errors: list[str] = []
     order_by_program: dict[str, int] = {}
 
@@ -774,17 +773,11 @@ def import_tracker_rows(
                 site.archived_at = datetime.now(timezone.utc)
                 site.archived_fy = infer_financial_year(site)
                 archived += 1
-                archived_ids.append(site.id)
             sync_computed_fields(site, db)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{raw.get('road_name')} / {raw.get('site_number')}: {exc}")
 
     db.commit()
-    if archived_ids:
-        from .storage import relocate_site_files
-
-        for site_id in archived_ids:
-            relocate_site_files(db, site_id, archived=True)
     sync_usage_into_lookups(db, "road")
     return {
         "parsed": len(rows),

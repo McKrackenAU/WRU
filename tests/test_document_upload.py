@@ -41,9 +41,6 @@ def test_chunked_document_upload_is_wired():
     assert "docCategorySelectHtml" in APP_JS
     assert 'data-doc-cat' in APP_JS
     assert 'method: "PATCH"' in APP_JS
-    assert "compress_document" in DOCS_PY
-    assert "read_document_bytes" in DOCS_PY
-    assert "stored_encoding" in DOCS_PY
     assert "begin_document_session" in DOCS_PY
     assert "update_document" in DOCS_PY
     assert 'id="docUploadStatus"' in INDEX
@@ -55,7 +52,6 @@ def test_chunked_document_upload_is_wired():
     assert "wireDocDropzone" in APP_JS
     assert 'addEventListener("drop"' in APP_JS
     assert "Drop files here" in INDEX
-    assert "compresses files when that saves space" in INDEX
     assert "downloadDocumentsZip" in APP_JS
     assert 'id="docSelectAll"' in INDEX
     assert 'id="btnDownloadDocs"' in INDEX

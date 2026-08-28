@@ -16,7 +16,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import require_admin
-from ..database import DATA_DIR, build_database_url
 from ..version import version_string, version_tag
 
 router = APIRouter(
@@ -29,12 +28,6 @@ VERSION_FILE = Path("/opt/wru_version.txt")
 HISTORY_FILE = Path("/opt/wru_version_history.json")
 UPDATE_LOG = Path("/var/log/wru-update.log")
 UPDATE_BIN = Path("/usr/local/sbin/wru-update")
-UPDATE_BIN_PATHS = (
-    Path("/usr/local/sbin/wru-update"),
-    Path("/usr/bin/wru-update"),
-    Path("/usr/local/sbin/WRU-update"),
-    Path("/usr/bin/WRU-update"),
-)
 ONLINE_UPDATE = Path("/usr/local/sbin/wru-online-update")
 APP_MAIN = Path(__file__).resolve().parent.parent / "main.py"
 VERSION_TXT = Path(__file__).resolve().parent.parent.parent / "VERSION"
@@ -57,8 +50,6 @@ class SystemStatusOut(BaseModel):
     shell_ct: str | None = None
     shell_proxmox: str | None = None
     last_log_tail: str | None = None
-    data_dir: str | None = None
-    database_location: str | None = None
 
 
 class VersionEntry(BaseModel):
@@ -131,22 +122,6 @@ def _normalize_tag(value: str) -> str:
 
 def _normalize_version(value: str) -> str:
     return (value or "").strip().lstrip("vV")
-
-
-def _database_location() -> str:
-    """Host/db only — never include the password."""
-    url = (os.environ.get("DATABASE_URL") or build_database_url() or "").strip()
-    cleaned = url.replace("postgresql+psycopg2://", "postgresql://", 1).replace(
-        "postgresql+psycopg://", "postgresql://", 1
-    )
-    try:
-        parsed = urlparse(cleaned)
-    except ValueError:
-        return "not configured"
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 5432
-    dbname = (parsed.path or "/wru").lstrip("/").split("?")[0] or "wru"
-    return f"{host}:{port}/{dbname}"
 
 
 def _parse_version_file() -> dict[str, str]:
@@ -237,20 +212,13 @@ def _read_history() -> list[VersionEntry]:
         return []
 
 
-def _resolve_update_bin() -> Path | None:
-    for path in UPDATE_BIN_PATHS:
-        if path.is_file():
-            return path
-    return None
-
-
 def _probe_can_update() -> tuple[bool, str | None]:
     """Return (can_update, detail). Fast + never hangs the API.
 
     Prefer reading sudoers / file presence. Optional short sudo --check with a
     hard 2s timeout — on timeout we still allow the button (actual update reports errors).
     """
-    if not any(path.is_file() for path in UPDATE_BIN_PATHS):
+    if not UPDATE_BIN.is_file():
         return False, (
             "The updater isn't installed on this server yet. "
             "Ask whoever set up WRU to finish the install, then hit Refresh."
@@ -305,7 +273,7 @@ def _probe_can_update() -> tuple[bool, str | None]:
         if probe.returncode == 0 and "wru-update" in listing:
             return True, None
     except (subprocess.TimeoutExpired, OSError):
-        if _resolve_update_bin() is not None:
+        if UPDATE_BIN.is_file():
             return True, "Could not verify updater permission quickly; you can still try an update."
 
     return False, (
@@ -519,15 +487,13 @@ def build_status() -> SystemStatusOut:
         repo=meta.get("repo") or DEFAULT_REPO,
         commit=meta.get("commit") or _local_git_commit(),
         updated_at=meta.get("updated_at"),
-        update_available_via="sudo wru-update",
+        update_available_via="sudo /usr/local/sbin/wru-update" if can else "shell curl one-liner",
         can_update=can,
         can_rollback=can and bool(history),
         detail=detail,
         shell_ct=SHELL_CT,
         shell_proxmox=SHELL_PROXMOX,
         last_log_tail=_read_log_tail(15),
-        data_dir=str(DATA_DIR),
-        database_location=_database_location(),
     )
 
 
@@ -537,15 +503,13 @@ def _start_update_job(*, ref: str, repo: str) -> str:
     Critical: systemd-run must use --no-block. Without it, the API waits for the
     oneshot; the oneshot stops wru.service and kills the waiter mid-request.
     """
-    helper = _resolve_update_bin()
-    if helper is None:
-        raise HTTPException(status_code=503, detail="Update helper missing — install sudo wru-update")
+    if not UPDATE_BIN.is_file():
+        raise HTTPException(status_code=503, detail="Update helper missing at /usr/local/sbin/wru-update")
 
     unit = f"wru-online-update-{int(time.time())}"
-    online = Path("/usr/bin/wru-online-update") if Path("/usr/bin/wru-online-update").is_file() else ONLINE_UPDATE
-    runner = online if online.is_file() else helper
+    runner = ONLINE_UPDATE if ONLINE_UPDATE.is_file() else UPDATE_BIN
 
-    if "online-update" in runner.name:
+    if runner == ONLINE_UPDATE:
         cmd = [
             "sudo",
             "-n",
@@ -554,7 +518,7 @@ def _start_update_job(*, ref: str, repo: str) -> str:
             f"--unit={unit}",
             "--collect",
             "--property=Type=oneshot",
-            str(runner),
+            str(ONLINE_UPDATE),
             ref,
             repo,
         ]
@@ -569,7 +533,7 @@ def _start_update_job(*, ref: str, repo: str) -> str:
             "--property=Type=oneshot",
             f"--setenv=WRU_BRANCH={ref}",
             f"--setenv=WRU_REPO={repo}",
-            str(helper),
+            str(UPDATE_BIN),
         ]
 
     try:
@@ -651,7 +615,7 @@ def system_update(payload: SystemUpdateRequest | None = None):
         ok=True,
         message=(
             f"Update started from {repo} @ {ref} (unit {unit}). "
-            "The service will restart shortly — open tabs refresh on their own once it is back."
+            "The service will restart shortly — refresh this page in 1–2 minutes."
         ),
         log_tail=_read_log_tail(20)
         or f"Follow progress: journalctl -u {unit} -f  (or /var/log/wru-update.log)",
@@ -681,7 +645,7 @@ def system_rollback(payload: RollbackRequest):
 
     return SystemUpdateOut(
         ok=True,
-        message=f"Rollback to {ref} started (unit {unit}). Open tabs refresh once the service is back.",
+        message=f"Rollback to {ref} started (unit {unit}). Refresh in 1–2 minutes.",
         log_tail=_read_log_tail(20)
         or f"Follow progress: journalctl -u {unit} -f  (or /var/log/wru-update.log)",
         status=status,

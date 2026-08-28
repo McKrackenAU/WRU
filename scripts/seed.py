@@ -10,27 +10,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-try:
-    from app.database import SessionLocal  # noqa: E402
-    from app.financial_year import australian_financial_year  # noqa: E402
-    from app.migrate import run_migrations  # noqa: E402
-    from app.models import CustomColumn, Site, TrackingEvent  # noqa: E402
-    from app.services import apply_workflow, ensure_workflow_steps, set_councils  # noqa: E402
-except ModuleNotFoundError as exc:
-    print(f"Seed skipped ({exc}).")
-    raise SystemExit(0)
+from app.database import SessionLocal  # noqa: E402
+from app.financial_year import australian_financial_year  # noqa: E402
+from app.migrate import run_migrations  # noqa: E402
+from app.models import CustomColumn, Site, TrackingEvent  # noqa: E402
+from app.services import apply_workflow, ensure_workflow_steps, set_councils  # noqa: E402
 
 
 def main() -> None:
     run_migrations()
     db = SessionLocal()
     try:
-        try:
-            existing = db.query(Site).count()
-        except Exception as exc:  # noqa: BLE001 — never fail an update over sample data
-            print(f"Seed skipped: {exc}")
-            return
-        if existing:
+        if db.query(Site).count():
             print("Database already has sites; skipping seed.")
             return
 

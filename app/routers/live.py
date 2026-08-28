@@ -10,20 +10,11 @@ from typing import AsyncIterator
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..live_hub import asset_version, hub, live_identity
+from ..live_hub import hub, live_identity
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 
 HEARTBEAT_SECONDS = 15.0
-
-
-@router.get("/version")
-def live_version():
-    """Public: open tabs (including login) can see when the installed app changed."""
-    return JSONResponse(
-        {"asset_version": asset_version()},
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
 
 
 @router.get("/revision")

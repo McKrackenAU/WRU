@@ -1,4 +1,4 @@
-import { $, on, safeNextUrl, watchForAppUpdate } from "./common.js";
+import { $, on, safeNextUrl } from "./common.js";
 import { initPwaChrome, registerServiceWorker } from "./pwa.js";
 
 function qs(name) {
@@ -43,7 +43,6 @@ async function tryResumeSession() {
 async function init() {
   registerServiceWorker();
   initPwaChrome();
-  watchForAppUpdate();
   const existing = await tryResumeSession();
   if (existing) {
     afterLogin(existing);

@@ -716,34 +716,6 @@ const LIVE_POLL_MS = 2500;
 const LIVE_POLL_HIDDEN_MS = 12000;
 const LIVE_REFRESH_DEBOUNCE_MS = 250;
 const LIVE_IDENTITY_KEY = "wru-live-identity";
-const LIVE_LAST_ASSET_KEY = "wru-last-asset-version";
-const LIVE_RELOADED_FOR_KEY = "wru-reloaded-for";
-
-function normalizeAssetVersion(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw || raw === "unknown") return "";
-  return raw.replace(/^v/i, "");
-}
-
-/** Version baked into this HTML document (not the live server). */
-export function loadedAssetVersion() {
-  try {
-    if (typeof window !== "undefined" && window.__WRU_ASSET_V) {
-      return normalizeAssetVersion(window.__WRU_ASSET_V);
-    }
-  } catch {
-    /* ignore */
-  }
-  try {
-    const meta = document.querySelector?.('meta[name="wru-asset-version"]')?.content;
-    if (meta) return normalizeAssetVersion(meta);
-  } catch {
-    /* ignore */
-  }
-  return "";
-}
-
-pageAssetVersion = loadedAssetVersion() || null;
 
 export function liveClientId() {
   try {
@@ -776,28 +748,17 @@ function rememberServerIdentity(data) {
   } catch {
     stored = null;
   }
-  const incomingVersion = normalizeAssetVersion(data.asset_version);
+  const incomingVersion = data.asset_version != null ? String(data.asset_version) : null;
   const incomingBoot = data.boot_id != null ? String(data.boot_id) : null;
-  const baked = loadedAssetVersion() || normalizeAssetVersion(pageAssetVersion);
-  if (pageAssetVersion == null && baked) pageAssetVersion = baked;
+  if (pageAssetVersion == null && incomingVersion) pageAssetVersion = incomingVersion;
   if (pageBootId == null && incomingBoot) pageBootId = incomingBoot;
-  let lastSeen = "";
-  try {
-    lastSeen = normalizeAssetVersion(localStorage.getItem(LIVE_LAST_ASSET_KEY) || "");
-  } catch {
-    lastSeen = "";
-  }
-  const prevVersion =
-    baked ||
-    normalizeAssetVersion(stored?.asset_version) ||
-    lastSeen ||
-    normalizeAssetVersion(pageAssetVersion);
+  const prevVersion = stored?.asset_version ? String(stored.asset_version) : pageAssetVersion;
   try {
     sessionStorage.setItem(
       LIVE_IDENTITY_KEY,
       JSON.stringify({
         boot_id: incomingBoot || pageBootId,
-        asset_version: incomingVersion || prevVersion || pageAssetVersion,
+        asset_version: incomingVersion || pageAssetVersion,
         revision: data.revision,
       })
     );
@@ -813,105 +774,14 @@ function rememberServerIdentity(data) {
     knownRevision = 0;
     return "restart";
   }
-  if (incomingVersion) pageAssetVersion = incomingVersion;
   return "ok";
 }
 
-function showUpdateBanner(version, { stuck = false } = {}) {
-  let el = document.getElementById("wru-update-banner");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "wru-update-banner";
-    el.className = "update-banner";
-    el.setAttribute("role", "status");
-    document.body.prepend(el);
-  }
-  const tag = version ? `v${normalizeAssetVersion(version)}` : "a new version";
-  if (stuck) {
-    el.innerHTML = `<strong>WRU ${escapeHtml(tag)} is installed, but this tab is still on an old copy.</strong> Hard-refresh with <kbd>Ctrl+Shift+R</kbd> (or Cmd+Shift+R) so you are not left behind.`;
-    return;
-  }
-  el.innerHTML = `<strong>WRU updated to ${escapeHtml(tag)}.</strong> Refreshing so everyone gets the latest features…`;
-}
-
-function hardReloadForUpdate(version) {
-  softReloadForUpdate(version);
-}
-
-let reloadArmed = false;
-
-export function softReloadForUpdate(version) {
-  if (reloadArmed || window.__WRU_RELOADING) return;
-  const target = normalizeAssetVersion(version || pageAssetVersion || Date.now());
-  const baked = loadedAssetVersion();
-  if (baked && target && baked === target) return;
-  try {
-    const already = sessionStorage.getItem(LIVE_RELOADED_FOR_KEY) || "";
-    if (already && already === target && baked && baked !== target) {
-      showUpdateBanner(target, { stuck: true });
-      return;
-    }
-    sessionStorage.setItem(LIVE_RELOADED_FOR_KEY, target);
-  } catch {
-    /* ignore */
-  }
-  reloadArmed = true;
-  window.__WRU_RELOADING = true;
-  showUpdateBanner(target);
-  try {
-    if (target) localStorage.setItem(LIVE_LAST_ASSET_KEY, target);
-  } catch {
-    /* ignore */
-  }
-  const go = () => {
-    try {
-      const url = new URL(location.href);
-      url.searchParams.delete("_av");
-      if (url.href !== location.href) {
-        location.replace(url.toString());
-        return;
-      }
-    } catch {
-      /* ignore */
-    }
-    location.reload();
-  };
-  const waitThenGo = () => window.setTimeout(go, 800);
-  if (navigator.serviceWorker?.getRegistration) {
-    navigator.serviceWorker
-      .getRegistration()
-      .then((reg) => {
-        try {
-          reg?.waiting?.postMessage({ type: "skip-waiting" });
-        } catch {
-          /* ignore */
-        }
-        return reg?.update?.();
-      })
-      .catch(() => {})
-      .finally(waitThenGo);
-  } else {
-    waitThenGo();
-  }
-}
-
-let versionWatchTimer = null;
-
-export function watchForAppUpdate() {
-  if (versionWatchTimer) return;
-  const tick = async () => {
-    try {
-      const res = await fetch("/api/live/version", { cache: "no-store", credentials: "same-origin" });
-      if (!res.ok) return;
-      const data = await res.json();
-      const ident = rememberServerIdentity(data);
-      if (ident === "reload") softReloadForUpdate(data.asset_version);
-    } catch {
-      /* server restarting */
-    }
-  };
-  tick();
-  versionWatchTimer = window.setInterval(tick, 4000);
+function hardReloadForUpdate() {
+  const url = new URL(location.href);
+  if (pageAssetVersion) url.searchParams.set("_av", pageAssetVersion);
+  else url.searchParams.set("_av", String(Date.now()));
+  location.replace(url.toString());
 }
 
 function ingestLiveHeaders(res, method) {
@@ -928,7 +798,7 @@ function ingestLiveHeaders(res, method) {
   };
   const ident = rememberServerIdentity(data);
   if (ident === "reload") {
-    softReloadForUpdate(pageAssetVersion || version);
+    hardReloadForUpdate();
     return;
   }
   if (ident === "restart") {
@@ -948,7 +818,7 @@ export async function syncLiveRevision() {
     const data = await api("/api/live/revision");
     const ident = rememberServerIdentity(data);
     if (ident === "reload") {
-      softReloadForUpdate(pageAssetVersion || data?.asset_version);
+      hardReloadForUpdate();
       return data?.revision ?? knownRevision;
     }
     if (typeof data?.revision === "number") {
@@ -1014,7 +884,7 @@ async function checkLiveRevision() {
   const data = await api("/api/live/revision");
   const ident = rememberServerIdentity(data);
   if (ident === "reload") {
-    softReloadForUpdate(pageAssetVersion || data?.asset_version);
+    hardReloadForUpdate();
     return;
   }
   const rev = data?.revision;
@@ -1067,7 +937,7 @@ function ingestLivePayload(data) {
   if (!data || typeof data !== "object") return;
   const ident = rememberServerIdentity(data);
   if (ident === "reload") {
-    softReloadForUpdate(pageAssetVersion || data?.asset_version);
+    hardReloadForUpdate();
     return;
   }
   if (data.type === "hello") {
@@ -1275,7 +1145,6 @@ export async function injectChrome({ active, mode } = {}) {
   watchNumberInputs();
   registerServiceWorker();
   initPwaChrome();
-  watchForAppUpdate();
   if (location.pathname !== "/login") bootstrapLiveSync();
   if (!document.documentElement.dataset.wruDocDl) {
     document.documentElement.dataset.wruDocDl = "1";

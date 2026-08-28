@@ -251,8 +251,6 @@ def is_public_path(path: str) -> bool:
         "/favicon.ico",
         "/api/auth/login",
         "/api/auth/logout",
-        "/api/live/version",
-        "/health",
         "/manifest.webmanifest",
         "/sw.js",
     }:

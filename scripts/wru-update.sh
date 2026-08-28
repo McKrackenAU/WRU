@@ -38,9 +38,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-# Stale copies of this helper on the box used to stop WRU and then die.
-# Fetch the GitHub script first (before the lock) so `sudo wru-update` always
-# runs the current installer.
+# Always run the GitHub copy so a stale helper still installs this version.
 if [[ -z "${WRU_UPDATE_SELF:-}" ]]; then
   _self_tmp="/tmp/wru-update.github.sh"
   _self_ok=0
@@ -74,8 +72,7 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== WRU update $(date -Is) ==="
 echo "Repo: ${APP_GIT}  Ref: ${APP_BRANCH}"
 
-# Bring the app back even if this update fails (avoids Cloudflare 502).
-# Register BEFORE stopping the service.
+# Bring the app back even if this update fails.
 restore_wru() {
   systemctl start postgresql 2>/dev/null || true
   systemctl start wru 2>/dev/null || true
@@ -188,51 +185,25 @@ export WRU_REPO="$APP_GIT" WRU_BRANCH="$APP_BRANCH" WRU_PORT="$APP_PORT"
 bash "$tmp"
 rm -f "$tmp"
 
-# Always rebuild a healthy venv in /opt/wru (fixes moved-venv sqlalchemy errors
-# even when an older install script ran).
-echo "Ensuring Python packages in ${APP_DIR}…"
-if [[ -f "${APP_DIR}/scripts/wru-repair-venv.sh" ]]; then
-  bash "${APP_DIR}/scripts/wru-repair-venv.sh" || true
-else
-  _rep="$(mktemp)"
-  curl -fsSL --connect-timeout 15 --max-time 90 -H "Cache-Control: no-cache" \
-    "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-repair-venv.sh?${_bust}" -o "$_rep" \
-    && bash "$_rep" || true
-  rm -f "$_rep"
-fi
-
-# Always (re)install the in-app / CLI updater helpers onto sudo's PATH
+# Always (re)install the in-app / CLI updater helpers
 ONLINE_BIN="/usr/local/sbin/wru-online-update"
-install_update_bins() {
-  local src="$1"
-  install -m 755 "$src" /usr/local/sbin/wru-update
-  install -m 755 "$src" /usr/bin/wru-update
+if [[ -f "${APP_DIR}/scripts/wru-update.sh" ]]; then
+  install -m 755 "${APP_DIR}/scripts/wru-update.sh" "$HELPER_BIN"
+  install -m 755 "${APP_DIR}/scripts/wru-update.sh" /usr/bin/wru-update
   ln -sfn /usr/local/sbin/wru-update /usr/local/sbin/WRU-update
   ln -sfn /usr/bin/wru-update /usr/bin/WRU-update
-}
-if [[ -f "${APP_DIR}/scripts/wru-update.sh" ]]; then
-  install_update_bins "${APP_DIR}/scripts/wru-update.sh"
 else
   curl -fsSL "${RAW_BASE}/scripts/wru-update.sh" -o "$HELPER_BIN" \
     || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-update.sh" -o "$HELPER_BIN"
   chmod 755 "$HELPER_BIN"
-  install_update_bins "$HELPER_BIN"
-fi
-if [[ -f "${APP_DIR}/scripts/wru-repair-venv.sh" ]]; then
-  install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/local/sbin/wru-repair-venv
-  install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/bin/wru-repair-venv
 fi
 if [[ -f "${APP_DIR}/scripts/wru-online-update.sh" ]]; then
   install -m 755 "${APP_DIR}/scripts/wru-online-update.sh" "$ONLINE_BIN"
-  install -m 755 "${APP_DIR}/scripts/wru-online-update.sh" /usr/bin/wru-online-update
 else
   curl -fsSL "${RAW_BASE}/scripts/wru-online-update.sh" -o "$ONLINE_BIN" \
     || curl -fsSL "https://raw.githubusercontent.com/McKrackenAU/WRU/main/scripts/wru-online-update.sh" -o "$ONLINE_BIN" \
     || true
-  if [[ -f "$ONLINE_BIN" ]]; then
-    chmod 755 "$ONLINE_BIN"
-    install -m 755 "$ONLINE_BIN" /usr/bin/wru-online-update || true
-  fi
+  [[ -f "$ONLINE_BIN" ]] && chmod 755 "$ONLINE_BIN"
 fi
 # Minimal LXCs may lack sudo /etc/sudoers.d
 apt-get install -y sudo >/dev/null 2>&1 || true
@@ -243,13 +214,8 @@ fi
 cat >/etc/sudoers.d/wru-update <<'EOF'
 # Allow WRU service user to pull/install updates from GitHub without a password
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-online-update
-wru ALL=(root) NOPASSWD: /usr/bin/wru-online-update
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
-wru ALL=(root) NOPASSWD: /usr/local/sbin/WRU-update
 wru ALL=(root) NOPASSWD: /usr/bin/wru-update
-wru ALL=(root) NOPASSWD: /usr/bin/WRU-update
-wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-repair-venv
-wru ALL=(root) NOPASSWD: /usr/bin/wru-repair-venv
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed wru-online-update*
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update*

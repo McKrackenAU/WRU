@@ -150,6 +150,7 @@ $STD apt-get install -y \
   python3 \
   python3-venv \
   python3-pip \
+  python3-full \
   git \
   curl \
   ca-certificates \
@@ -158,9 +159,6 @@ $STD apt-get install -y \
   postgresql \
   postgresql-contrib \
   libpq5
-$STD apt-get install -y python3-full || true
-$STD apt-get install -y libjpeg62-turbo || $STD apt-get install -y libjpeg-turbo8 || true
-$STD apt-get install -y zlib1g || true
 # Ensure UTF-8 locale so seed/app strings are not forced through ASCII
 if ! locale -a 2>/dev/null | grep -qiE '^(C\.UTF-8|en_US\.utf8|en_US\.UTF-8)$'; then
   sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen 2>/dev/null || true
@@ -283,77 +281,33 @@ fi
 msg_ok "Application user ready"
 
 msg_info "Deploying ${APP}"
-mkdir -p "$DATA_DIR/uploads" || true
+mkdir -p "$DATA_DIR/uploads"
 TMP_APP="$(mktemp -d)"
-NEW_APP="$TMP_APP/wru"
-if ! git clone --depth 1 --branch "$APP_BRANCH" "$APP_GIT" "$NEW_APP" >/dev/null 2>&1; then
-  rm -rf "$NEW_APP"
-  msg_warn "Clone by ref name failed — retrying (commit SHA / tag)"
-  if git clone --depth 50 "$APP_GIT" "$NEW_APP" >/dev/null 2>&1; then
-    git -C "$NEW_APP" fetch --depth 50 origin "$APP_BRANCH" >/dev/null 2>&1 || true
-    git -C "$NEW_APP" checkout "$APP_BRANCH" >/dev/null 2>&1 || true
-  fi
-fi
-if [[ ! -f "$NEW_APP/app/main.py" ]]; then
+if ! git clone --depth 1 --branch "$APP_BRANCH" "$APP_GIT" "$TMP_APP/wru" >/dev/null 2>&1; then
   msg_error "Failed to clone ${APP_GIT} (${APP_BRANCH})"
-  rm -rf "$TMP_APP"
   exit 1
 fi
-# Never build the venv under /tmp and then move it — that breaks pip/sqlalchemy
-# (shebangs and pyvenv.cfg still point at the temp path).
-rm -rf "${APP_DIR}.prev"
-if [[ -d "$APP_DIR" ]]; then
-  mv "$APP_DIR" "${APP_DIR}.prev"
-fi
-mv "$NEW_APP" "$APP_DIR"
+rm -rf "$APP_DIR"
+mv "$TMP_APP/wru" "$APP_DIR"
 rm -rf "$TMP_APP"
 rm -rf "$APP_DIR/data"
 msg_ok "Deployed ${APP} (${APP_BRANCH})"
 
-restore_previous_app() {
-  if [[ -d "${APP_DIR}.prev" ]]; then
-    rm -rf "$APP_DIR"
-    mv "${APP_DIR}.prev" "$APP_DIR"
-    msg_warn "Restored previous ${APP_DIR}"
-  fi
-}
-
 msg_info "Creating Python virtualenv"
 if ! python3 -m venv "$APP_DIR/.venv"; then
   msg_error "python3 -m venv failed — installing python3-venv and retrying"
-  $STD apt-get install -y python3-venv python3-full || true
-  if ! python3 -m venv "$APP_DIR/.venv"; then
-    restore_previous_app
-    msg_error "python3 -m venv failed"
-    exit 1
-  fi
+  $STD apt-get install -y python3-venv python3-full
+  python3 -m venv "$APP_DIR/.venv"
 fi
-VENV_PY="$APP_DIR/.venv/bin/python"
-if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
-  echo "Bootstrapping pip into the venv…"
-  "$VENV_PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
+# shellcheck disable=SC1091
+source "$APP_DIR/.venv/bin/activate"
+if ! command -v pip >/dev/null 2>&1; then
+  msg_error "venv pip missing after create"
+  exit 1
 fi
-if ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
-  tmp_pip="$(mktemp)"
-  curl -fsSL --connect-timeout 15 --max-time 90 https://bootstrap.pypa.io/get-pip.py -o "$tmp_pip"
-  "$VENV_PY" "$tmp_pip"
-  rm -f "$tmp_pip"
-fi
-"$VENV_PY" -m pip install --upgrade pip || true
-if ! "$VENV_PY" -m pip install -r "$APP_DIR/requirements.txt"; then
-  msg_warn "Bulk pip install failed — retrying packages individually so WRU can still start"
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
-    "$VENV_PY" -m pip install "$line" || msg_warn "Could not install $line"
-  done < "$APP_DIR/requirements.txt"
-fi
-"$VENV_PY" -m pip install "pillow==11.1.0" || msg_warn "Pillow not installed — uploads still work, photos will not recompress"
-if ! "$VENV_PY" -c "import sqlalchemy, fastapi, uvicorn"; then
-  msg_warn "sqlalchemy still missing — leaving new code in place (do not restore a broken venv)"
-  if [[ -f "$APP_DIR/scripts/wru-repair-venv.sh" ]]; then
-    WRU_REPAIR_FORCE=1 bash "$APP_DIR/scripts/wru-repair-venv.sh" || true
-  fi
-fi
+pip install --upgrade pip
+pip install -r "$APP_DIR/requirements.txt"
+deactivate
 msg_ok "Installed Python packages"
 
 msg_info "Writing environment"
@@ -372,6 +326,10 @@ EXISTING_ADMIN_USER="$(read_default_var WRU_ADMIN_USER || true)"
 EXISTING_ADMIN_PASSWORD="$(read_default_var WRU_ADMIN_PASSWORD || true)"
 EXISTING_ADMIN_NAME="$(read_default_var WRU_ADMIN_NAME || true)"
 EXISTING_COOKIE_HTTPS="$(read_default_var WRU_COOKIE_HTTPS || true)"
+EXISTING_PORT="$(read_default_var WRU_PORT || true)"
+if [[ -n "$EXISTING_PORT" ]]; then
+  APP_PORT="$EXISTING_PORT"
+fi
 if [[ -z "${WRU_SECRET_KEY:-}" ]]; then
   if [[ -n "$EXISTING_SECRET" ]]; then
     WRU_SECRET_KEY="$EXISTING_SECRET"
@@ -411,31 +369,31 @@ if [[ -z "${WRU_COOKIE_HTTPS:-}" ]]; then WRU_COOKIE_HTTPS="${EXISTING_COOKIE_HT
   fi
 } >/etc/default/wru
 chmod 640 /etc/default/wru
-chown root:"${APP_USER}" /etc/default/wru || true
+chown root:"${APP_USER}" /etc/default/wru
 msg_ok "Wrote /etc/default/wru"
 
 msg_info "Setting permissions"
-chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" || true
-chown -R "${APP_USER}:${APP_USER}" "$DATA_DIR" || true
-chmod 755 "$APP_DIR" "$DATA_DIR" || true
-mkdir -p "$DATA_DIR/uploads" "$DATA_DIR/uploads/archived" || true
-chown -R "${APP_USER}:${APP_USER}" "$DATA_DIR" || true
+chown -R "${APP_USER}:${APP_USER}" "$APP_DIR" "$DATA_DIR"
+chmod 755 "$APP_DIR" "$DATA_DIR"
 msg_ok "Permissions set"
 
 msg_info "Migrating and seeding database"
+# shellcheck disable=SC1091
+source "$APP_DIR/.venv/bin/activate"
 set -a
 # shellcheck disable=SC1091
 source /etc/default/wru
 set +a
+# Belt-and-suspenders: ensure DATABASE_URL is exported even if source was odd
 export DATABASE_URL="${DATABASE_URL:-}"
 if [[ -z "$DATABASE_URL" ]]; then
-  msg_warn "DATABASE_URL missing after writing /etc/default/wru — starting the app anyway"
+  msg_error "DATABASE_URL missing after writing /etc/default/wru"
+  exit 1
 fi
 cd "$APP_DIR"
-VENV_PY="${VENV_PY:-$APP_DIR/.venv/bin/python}"
 
 # Prove DB login works before migrations (shows real errors)
-"$VENV_PY" - <<'PY' || msg_warn "Database connection failed — starting the app anyway"
+python3 - <<'PY'
 import os, sys
 from sqlalchemy import create_engine, text
 url = os.environ.get("DATABASE_URL")
@@ -443,7 +401,7 @@ if not url:
     print("DATABASE_URL is not set in the environment", file=sys.stderr)
     sys.exit(1)
 try:
-    eng = create_engine(url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
+    eng = create_engine(url, pool_pre_ping=True)
     with eng.connect() as conn:
         conn.execute(text("SELECT 1"))
 except Exception as exc:
@@ -452,13 +410,14 @@ except Exception as exc:
 print("Database connection OK")
 PY
 
-"$VENV_PY" -c "from app.migrate import run_migrations; run_migrations()" || msg_warn "Migration reported an error — starting the app anyway"
-if ! "$VENV_PY" scripts/seed.py; then
-  msg_warn "Sample seed skipped (existing data is left as-is)"
+python3 -c "from app.migrate import run_migrations; run_migrations()"
+if ! python3 scripts/seed.py; then
+  msg_warn "Sample seed failed (schema is migrated); continuing"
 fi
 if [[ -f "${DATA_DIR}/bootstrap_admin.txt" ]]; then
   msg_warn "First admin credentials: ${DATA_DIR}/bootstrap_admin.txt (change password after login)"
 fi
+deactivate
 msg_ok "Database ready"
 
 msg_info "Creating Service"
@@ -477,7 +436,6 @@ EnvironmentFile=/etc/default/wru
 ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port \${WRU_PORT}
 Restart=on-failure
 RestartSec=5
-TimeoutStartSec=25
 LimitNOFILE=65535
 
 [Install]
@@ -497,11 +455,6 @@ if [[ -f "$UPDATE_SRC" ]]; then
   ln -sfn /usr/bin/wru-update /usr/bin/WRU-update
   if [[ -f "$ONLINE_SRC" ]]; then
     install -m 755 "$ONLINE_SRC" /usr/local/sbin/wru-online-update
-    install -m 755 "$ONLINE_SRC" /usr/bin/wru-online-update
-  fi
-  if [[ -f "${APP_DIR}/scripts/wru-repair-venv.sh" ]]; then
-    install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/local/sbin/wru-repair-venv
-    install -m 755 "${APP_DIR}/scripts/wru-repair-venv.sh" /usr/bin/wru-repair-venv
   fi
   # Minimal LXCs may lack /etc/sudoers.d until sudo is installed
   $STD apt-get install -y sudo >/dev/null 2>&1 || true
@@ -512,13 +465,8 @@ if [[ -f "$UPDATE_SRC" ]]; then
   cat >/etc/sudoers.d/wru-update <<'EOF'
 # Allow WRU service user to pull/install updates from GitHub without a password
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-online-update
-wru ALL=(root) NOPASSWD: /usr/bin/wru-online-update
 wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-update
-wru ALL=(root) NOPASSWD: /usr/local/sbin/WRU-update
 wru ALL=(root) NOPASSWD: /usr/bin/wru-update
-wru ALL=(root) NOPASSWD: /usr/bin/WRU-update
-wru ALL=(root) NOPASSWD: /usr/local/sbin/wru-repair-venv
-wru ALL=(root) NOPASSWD: /usr/bin/wru-repair-venv
 wru ALL=(root) NOPASSWD: /usr/bin/systemd-run
 wru ALL=(root) NOPASSWD: /usr/bin/systemctl reset-failed wru-online-update*
 wru ALL=(root) NOPASSWD: /bin/systemctl reset-failed wru-online-update*
@@ -528,7 +476,7 @@ EOF
     msg_warn "sudoers file invalid — removed; in-app updates may need a manual fix"
     rm -f /etc/sudoers.d/wru-update
   else
-    msg_ok "Installed sudo wru-update (also WRU-update) for user wru"
+    msg_ok "Installed /usr/local/sbin/wru-update (+ online entrypoint, sudo for user wru)"
   fi
 else
   msg_warn "scripts/wru-update.sh missing — skipped update helper"

@@ -69,14 +69,7 @@ app = FastAPI(
 
 configure_multipart_limits()
 
-try:
-    run_migrations()
-except Exception as exc:  # noqa: BLE001 — boot even if one ALTER fails
-    import sys
-    import traceback
-
-    print(f"WRU migration warning: {exc}", file=sys.stderr)
-    traceback.print_exc()
+run_migrations()
 
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
@@ -175,12 +168,6 @@ app.add_middleware(
     https_only=os.environ.get("WRU_COOKIE_HTTPS", "").strip().lower() in {"1", "true", "yes"},
     max_age=60 * 60 * 12,
 )
-
-
-@app.get("/health")
-def health():
-    """Liveness for proxies — no disk, no database."""
-    return {"ok": True, "version": version_string()}
 
 
 @app.get("/api/meta", response_model=MetaOut)

@@ -49,7 +49,6 @@ def test_client_registers_service_worker():
     assert "initPwaChrome()" in COMMON
     assert "notifyLiveIfBackground" in COMMON
     assert "registerServiceWorker()" in LOGIN_JS
-    assert "watchForAppUpdate" in LOGIN_JS
     assert 'id="btnInstallApp"' in LOGIN_HTML
     assert 'id="btnInstallApp"' in COMMON
     assert 'id="btnLiveAlerts"' in COMMON

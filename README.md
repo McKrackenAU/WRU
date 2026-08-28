@@ -105,16 +105,14 @@ mode=update CTID=230 \
 
 **In the web UI:** open **System** → **Pull & install update** (available after the helper is installed).
 
-App code updates; PostgreSQL data and document folders under `/opt/wru-data` are kept.
+App code updates; PostgreSQL data and `/opt/wru-data/uploads` are kept. DB password in `/etc/default/wru` is reused.
 
 | Path | Purpose |
 |------|---------|
 | `/opt/wru` | Application |
-| `/opt/wru-data` | App data (can stay on NVMe with the app) |
-| `/opt/wru-data/uploads` | Live documents |
-| `/opt/wru-data/uploads/archived` | Archived site files |
+| `/opt/wru-data/uploads` | Uploaded documents |
 | `/etc/default/wru` | Env (`DATABASE_URL`, Postgres creds, port) |
-| PostgreSQL | Database `wru` / role `wru` — keep the data directory on NVMe |
+| PostgreSQL | Database `wru` / role `wru` |
 | `systemctl status wru` | App service |
 | `systemctl status postgresql` | Database service |
 
@@ -158,7 +156,7 @@ Starts Postgres + the app. Uploads persist in the `wru_uploads` volume; DB in `w
 | `POSTGRES_HOST` | `127.0.0.1` | DB host |
 | `POSTGRES_PORT` | `5432` | DB port |
 | `POSTGRES_DB` | `wru` | Database name |
-| `WRU_DATA_DIR` | `./data` (Proxmox: `/opt/wru-data`) | App data, live documents, and archived files. |
+| `WRU_DATA_DIR` | `./data` (Proxmox: `/opt/wru-data`) | Upload storage |
 | `WRU_PORT` | `8000` | HTTP listen port |
 | `WRU_BRANCH` | `main` | Git branch used by helper scripts |
 | `WRU_REPO` | `https://github.com/McKrackenAU/WRU.git` | Git remote used by helper scripts |

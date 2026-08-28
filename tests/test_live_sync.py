@@ -17,9 +17,7 @@ def test_live_router_mounted():
 
 def test_live_revision_endpoint_exists():
     assert '"/revision"' in LIVE or "('/revision'" in LIVE
-    assert '"/version"' in LIVE
     assert "live_identity" in LIVE
-    assert "asset_version" in LIVE
 
 
 def test_sites_notify_after_mutations():
@@ -36,11 +34,6 @@ def test_common_has_revision_poll_and_coalesced_refresh():
     assert "boot_id" in COMMON
     assert "asset_version" in COMMON
     assert "hardReloadForUpdate" in COMMON
-    assert "softReloadForUpdate" in COMMON
-    assert "loadedAssetVersion" in COMMON
-    assert "watchForAppUpdate" in COMMON
-    assert "wru-update-banner" in COMMON
-    assert "__WRU_ASSET_V" in COMMON
     assert "ingestLiveHeaders" in COMMON
     assert "X-WRU-Revision" in COMMON
     assert "X-WRU-Boot-Id" in COMMON
