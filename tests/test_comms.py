@@ -77,7 +77,13 @@ def test_comms_page_has_two_seeded_planner_tabs():
     assert 'id="commsDocVis"' in COMMS_HTML
     assert 'value="users"' in COMMS_HTML
     assert 'value="comms"' in COMMS_HTML
-    assert "Link / files" in COMMS_JS
+    assert "comms-job-link-btn" in COMMS_JS
+    assert "Link / files" not in COMMS_JS
+    assert "workpackTone" in COMMS_JS
+    assert "filterableColumns" in COMMS_JS
+    assert 'id="commsFilters"' in COMMS_HTML
+    assert "filter-drop" in COMMS_JS
+    assert "comms-wp-0" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "/api/comms/sheets" in COMMS_JS
     assert "/api/comms/sites" in COMMS_JS
     assert "visibility" in COMMS_JS

@@ -4460,6 +4460,9 @@ html.dark .gantt-bar {
 
 .comms-toolbar-card {
   margin-bottom: 0.75rem;
+  position: relative;
+  z-index: 4;
+  overflow: visible;
 }
 
 .comms-toolbar {
@@ -4470,8 +4473,15 @@ html.dark .gantt-bar {
 }
 
 .comms-toolbar input[type="search"] {
-  min-width: min(22rem, 100%);
-  flex: 1;
+  min-width: min(16rem, 100%);
+  flex: 1 1 14rem;
+}
+
+.comms-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 2 1 18rem;
 }
 
 .comms-table-card {
@@ -4497,12 +4507,107 @@ html.dark .gantt-bar {
   left: 0;
   z-index: 1;
   background: var(--panel);
-  min-width: 10rem;
+  min-width: 11rem;
   box-shadow: 1px 0 0 var(--ventia-border);
 }
 
 .comms-table thead .comms-sticky {
   z-index: 2;
+}
+
+.comms-job {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.comms-job-name {
+  min-width: 0;
+  font-weight: 650;
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comms-job-name:hover {
+  color: var(--ventia-green);
+  text-decoration: underline;
+}
+
+.comms-job-link-btn {
+  border: 0;
+  background: none;
+  color: var(--ventia-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.comms-job-link-btn:hover {
+  color: var(--ventia-green);
+}
+
+.comms-job-files {
+  flex: none;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 999px;
+  background: var(--field-bg);
+  color: var(--ventia-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.comms-job-files:hover {
+  border-color: var(--ventia-green);
+  color: var(--ventia-green);
+}
+
+.comms-group td {
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  padding: 0.5rem 0.7rem;
+}
+
+.comms-group-label {
+  margin-right: 0.45rem;
+}
+
+.comms-table tbody tr.comms-wp-0 { --comms-wp: #2fbf78; }
+.comms-table tbody tr.comms-wp-1 { --comms-wp: #5aa0d6; }
+.comms-table tbody tr.comms-wp-2 { --comms-wp: #a78bfa; }
+.comms-table tbody tr.comms-wp-3 { --comms-wp: #fb7185; }
+.comms-table tbody tr.comms-wp-4 { --comms-wp: #fbbf24; }
+.comms-table tbody tr.comms-wp-5 { --comms-wp: #2dd4bf; }
+.comms-table tbody tr.comms-wp-6 { --comms-wp: #fb923c; }
+.comms-table tbody tr.comms-wp-7 { --comms-wp: #94a3b8; }
+
+.comms-table tbody tr[class*="comms-wp-"] > td {
+  background: color-mix(in srgb, var(--comms-wp) 16%, var(--panel));
+}
+
+.comms-table tbody tr[class*="comms-wp-"] > .comms-sticky {
+  background: color-mix(in srgb, var(--comms-wp) 20%, var(--panel));
+  box-shadow: inset 3px 0 0 var(--comms-wp), 1px 0 0 var(--ventia-border);
+}
+
+.comms-table tbody tr.comms-group > td {
+  background: color-mix(in srgb, var(--comms-wp) 26%, var(--panel));
+  box-shadow: inset 3px 0 0 var(--comms-wp);
+}
+
+.comms-workpack-cell {
+  font-weight: 650;
 }
 
 .comms-cell input,
