@@ -114,8 +114,8 @@ function statusColumn() {
 function groupColumn() {
   return (
     workpackColumn() ||
-    findColumn(/^suburb$/i) ||
     findColumn(/^crew$/i) ||
+    findColumn(/^suburb$/i) ||
     findColumn(/council|lga|local_government/i) ||
     siteNumberColumn() ||
     findColumn(/location/i, /road/i)
@@ -123,10 +123,11 @@ function groupColumn() {
 }
 
 function listTitle(row) {
-  if (row.site) return jobLabel(row.site);
   const loc = findColumn(/^location$/i, /road_street_name/i, /road \/ street/i, /^road$/i, /street/i);
   const fromValues = loc ? fmtCell((row.values || {})[loc.field_key]) : "";
-  return fromValues || row.section || "Unlinked";
+  if (fromValues) return fromValues;
+  if (row.site) return jobLabel(row.site);
+  return row.section || "Unlinked";
 }
 
 function secondaryColumn() {
@@ -407,7 +408,11 @@ function renderTable({ refreshFilters = false } = {}) {
           <span class="comms-row-swatch" style="--swatch:${color}"></span>
           <div>
             <span class="comms-job-title">${escapeHtml(listTitle(row))}</span>
-            ${row.site ? "" : `<span class="comms-list-sub">Not linked</span>`}
+            ${
+              row.site
+                ? `<span class="comms-list-sub">${escapeHtml(jobLabel(row.site))}</span>`
+                : `<span class="comms-list-sub">Not linked</span>`
+            }
           </div>
         </td>
         <td>${escapeHtml(extra || "—")}</td>
