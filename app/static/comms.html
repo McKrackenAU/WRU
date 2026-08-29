@@ -26,7 +26,7 @@
       <div class="page-head">
         <div>
           <h1>Stakeholder communications</h1>
-          <p id="commsStatus">FMRP and Maintenance planners — edit columns, link jobs, and publish notices to the site register.</p>
+          <p id="commsStatus">Job plus workpack or site number stay on the list. Open a row for the full planner, or click a colour dot to code a group.</p>
         </div>
         <div class="toolbar">
           <button type="button" class="btn" id="btnRenameSheet">Rename tab</button>
@@ -56,6 +56,26 @@
     <footer class="app-footer" data-app-footer></footer>
   </div>
 
+  <aside class="drawer" id="commsDrawer" hidden aria-hidden="true">
+    <div class="drawer-backdrop" data-close-comms-drawer></div>
+    <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="commsDrawerTitle">
+      <header class="drawer-head">
+        <div>
+          <p class="drawer-kicker" id="commsDrawerKicker">Planner row</p>
+          <h2 id="commsDrawerTitle">Activity</h2>
+        </div>
+        <button type="button" class="icon-btn" data-close-comms-drawer aria-label="Close">×</button>
+      </header>
+      <div class="drawer-tabs" role="tablist" id="commsDrawerTabs"></div>
+      <div class="drawer-body" id="commsDrawerBody"></div>
+      <footer class="drawer-foot">
+        <button type="button" class="btn btn-danger" id="btnDrawerDelete">Delete row</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-comms-drawer>Close</button>
+      </footer>
+    </div>
+  </aside>
+
   <dialog id="columnsDialog" class="panel">
     <form id="columnsForm" onsubmit="return false;">
       <header class="panel-head">
@@ -63,7 +83,7 @@
         <button type="button" class="icon-btn" data-close-dialog="columnsDialog" aria-label="Close">×</button>
       </header>
       <div class="panel-body">
-        <p class="hint">Add, rename, or remove columns on this tab only. Job link and documents stay as system columns.</p>
+        <p class="hint">Add, rename, or remove columns on this tab only. Job link and documents stay in the side panel.</p>
         <ul id="columnList" class="column-list"></ul>
         <div class="add-column form-grid">
           <label>Name<input id="colName" maxlength="128" /></label>
@@ -85,47 +105,6 @@
         <button type="button" class="btn btn-primary" id="btnAddColumn">Add column</button>
         <div class="spacer"></div>
         <button type="button" class="btn" data-close-dialog="columnsDialog">Close</button>
-      </footer>
-    </form>
-  </dialog>
-
-  <dialog id="docsDialog" class="panel comms-docs-dialog">
-    <form onsubmit="return false;">
-      <header class="panel-head">
-        <h2 id="docsDialogTitle">Documents</h2>
-        <button type="button" class="icon-btn" data-close-dialog="docsDialog" aria-label="Close">×</button>
-      </header>
-      <div class="panel-body">
-        <p class="hint">Link a job so notices set to <strong>Visible to users</strong> appear on that job’s Documents tab. Comms-only files stay in this planner.</p>
-        <div class="form-grid">
-          <label class="full">Linked job
-            <input id="jobSearch" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
-          </label>
-        </div>
-        <ul class="comms-job-results" id="jobResults" hidden></ul>
-        <p class="hint" id="jobLinked"></p>
-        <div class="form-grid" style="margin-top:1rem">
-          <label class="full">File
-            <input id="commsDocFile" type="file" multiple />
-          </label>
-          <label>Visibility
-            <select id="commsDocVis">
-              <option value="comms">Comms only</option>
-              <option value="users">Visible to users (job docs)</option>
-            </select>
-          </label>
-          <label>Description
-            <input id="commsDocDesc" maxlength="255" placeholder="Works notification, letter drop…" />
-          </label>
-        </div>
-        <div class="toolbar" style="margin-top:0.75rem">
-          <button type="button" class="btn btn-primary" id="btnUploadCommsDoc">Upload</button>
-          <span class="hint" id="commsDocStatus"></span>
-        </div>
-        <ul class="event-list" id="commsDocList"></ul>
-      </div>
-      <footer class="panel-foot">
-        <button type="button" class="btn" data-close-dialog="docsDialog">Close</button>
       </footer>
     </form>
   </dialog>

@@ -203,6 +203,7 @@ def run_migrations() -> None:
     )
     ensure_column("site_councils", "submitted_to_council_date", "submitted_to_council_date DATE")
     ensure_column("site_councils", "no_objection_date", "no_objection_date DATE")
+    ensure_column("comms_sheets", "settings", "settings JSONB NOT NULL DEFAULT '{}'::jsonb")
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))

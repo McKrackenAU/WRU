@@ -74,19 +74,24 @@ def test_comms_page_has_two_seeded_planner_tabs():
     assert 'id="sheetTabs"' in COMMS_HTML
     assert 'id="btnColumns"' in COMMS_HTML
     assert 'id="btnAddRow"' in COMMS_HTML
-    assert 'id="commsDocVis"' in COMMS_HTML
-    assert 'value="users"' in COMMS_HTML
-    assert 'value="comms"' in COMMS_HTML
-    assert "comms-job-link-btn" in COMMS_JS
+    assert 'id="commsDrawer"' in COMMS_HTML
+    assert 'id="commsDrawerTabs"' in COMMS_HTML
+    assert "commsDocVis" in COMMS_JS
+    assert 'value="users"' in COMMS_JS
+    assert 'value="comms"' in COMMS_JS
+    assert "data-open-row" in COMMS_JS
+    assert "saveGroupColor" in COMMS_JS
+    assert "secondaryColumn" in COMMS_JS
+    assert "DRAWER_TAB_RULES" in COMMS_JS
     assert "Link / files" not in COMMS_JS
-    assert "workpackTone" in COMMS_JS
     assert "filterableColumns" in COMMS_JS
     assert 'id="commsFilters"' in COMMS_HTML
     assert "filter-drop" in COMMS_JS
-    assert "comms-wp-0" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
+    assert "comms-swatch" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "/api/comms/sheets" in COMMS_JS
     assert "/api/comms/sites" in COMMS_JS
     assert "visibility" in COMMS_JS
+    assert "settings" in COMMS_PY
     assert SEED.is_file()
     text = SEED.read_text(encoding="utf-8")
     assert '"key": "fmrp_26_27"' in text

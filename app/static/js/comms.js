@@ -16,13 +16,21 @@ import {
 
 const JOB_FILTER_KEY = "job";
 const BLANK = "(Blank)";
-const WP_TONES = 8;
+const COLOR_PALETTE = ["#2fbf78", "#5aa0d6", "#a78bfa", "#fb7185", "#fbbf24", "#2dd4bf", "#fb923c", "#94a3b8", "#f472b6", "#38bdf8"];
+
+const DRAWER_TAB_RULES = [
+  { id: "notes", label: "Notes", test: /(^|_)(notes|other_details|scoping|comment)|dtp.comment/i },
+  { id: "comms", label: "Comms", test: /comms|stakeholder|notification|distribution|dtp|cecp|website|phonecall|mail|artwork|pcr|invoice|proof|sensitive|noise|tgs.received|letter|published|detour.map|maps.generated/i },
+  { id: "works", label: "Works", test: /moa|works_start|work_end|start_date|finish_date|day.?night|shift|disruption|delay|interface|duration|^crew$|crew /i },
+  { id: "overview", label: "Overview", test: /workpack|structure|location|road|street|suburb|council|lga|government|site.number|asset.vision/i },
+];
 
 const state = {
   sheets: [],
   sheet: null,
   search: "",
-  docsRowId: null,
+  openRowId: null,
+  drawerTab: "overview",
   jobTimer: null,
   filters: {},
   knownFilterValues: {},
@@ -35,11 +43,23 @@ function sheetIdFromUrl() {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function setSheetUrl(id) {
+function rowIdFromUrl() {
+  const raw = new URLSearchParams(location.search).get("row");
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function setSheetUrl(id, rowId) {
   const url = new URL(location.href);
   if (id) url.searchParams.set("sheet", String(id));
   else url.searchParams.delete("sheet");
+  if (rowId) url.searchParams.set("row", String(rowId));
+  else url.searchParams.delete("row");
   history.replaceState(null, "", url);
+}
+
+function cssKey(key) {
+  return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(key) : String(key).replace(/"/g, '\\"');
 }
 
 function fmtCell(value) {
@@ -57,27 +77,60 @@ function cellInput(col, value) {
   if (col.field_type === "select") {
     const opts = ["", ...(col.options || [])];
     return `<select data-field="${escapeHtml(col.field_key)}">${opts
-      .map(
-        (o) =>
-          `<option value="${escapeHtml(o)}" ${o === v ? "selected" : ""}>${escapeHtml(o || "—")}</option>`
-      )
+      .map((o) => `<option value="${escapeHtml(o)}" ${o === v ? "selected" : ""}>${escapeHtml(o || "—")}</option>`)
       .join("")}</select>`;
   }
   const type = col.field_type === "number" ? "number" : col.field_type === "date" ? "date" : "text";
+  const area = col.field_type === "text" && (v.length > 80 || /detail|note|comment/i.test(col.field_key + col.name));
+  if (area) {
+    return `<textarea data-field="${escapeHtml(col.field_key)}" rows="3">${escapeHtml(v)}</textarea>`;
+  }
   return `<input type="${type}" data-field="${escapeHtml(col.field_key)}" value="${escapeHtml(v)}" />`;
 }
 
 function jobLabel(site) {
-  if (!site) return "Link";
+  if (!site) return "";
   const road = (site.road_name || "Site").trim();
   const no = (site.site_number || "").trim();
   return no ? `${road} · ${no}` : road;
 }
 
+function findColumn(...tests) {
+  return (state.sheet?.columns || []).find((c) => tests.some((t) => t.test(c.field_key) || t.test(c.name || "")));
+}
+
 function workpackColumn() {
-  return (state.sheet?.columns || []).find(
-    (c) => c.field_key === "workpack" || /work\s*pack/i.test(c.name || "")
+  return findColumn(/work\s*pack/i);
+}
+
+function siteNumberColumn() {
+  return findColumn(/^site_number$/i, /site number/i);
+}
+
+function statusColumn() {
+  return findColumn(/comms_required/i, /comms required/i, /comms_status/i, /level_of_disruption/i);
+}
+
+function groupColumn() {
+  return (
+    workpackColumn() ||
+    findColumn(/^suburb$/i) ||
+    findColumn(/^crew$/i) ||
+    findColumn(/council|lga|local_government/i) ||
+    siteNumberColumn() ||
+    findColumn(/location/i, /road/i)
   );
+}
+
+function listTitle(row) {
+  if (row.site) return jobLabel(row.site);
+  const loc = findColumn(/^location$/i, /road_street_name/i, /road \/ street/i, /^road$/i, /street/i);
+  const fromValues = loc ? fmtCell((row.values || {})[loc.field_key]) : "";
+  return fromValues || row.section || "Unlinked";
+}
+
+function secondaryColumn() {
+  return workpackColumn() || siteNumberColumn();
 }
 
 function rowValue(row, key) {
@@ -99,9 +152,9 @@ function filterableColumns() {
   for (const col of cols) {
     if (col.field_type === "date" || col.field_type === "number") continue;
     const values = uniqueValues(col.field_key);
-    const isWorkpack = col.field_key === "workpack" || /work\s*pack/i.test(col.name || "");
+    const isWorkpack = /work\s*pack/i.test(`${col.field_key} ${col.name}`);
     const isSelect = col.field_type === "select";
-    const isPlace = /government|council|lga|suburb|crew/i.test(`${col.field_key} ${col.name}`);
+    const isPlace = /government|council|lga|suburb|crew|site.number/i.test(`${col.field_key} ${col.name}`);
     if (!isWorkpack && !isSelect && !isPlace && (values.length < 2 || values.length > 24)) continue;
     ranked.push({
       key: col.field_key,
@@ -122,9 +175,8 @@ function syncFilters() {
   for (const col of filterableColumns()) {
     const values = uniqueValues(col.key);
     const known = state.knownFilterValues[col.key] || new Set();
-    if (!state.filters[col.key]) {
-      state.filters[col.key] = new Set(values);
-    } else {
+    if (!state.filters[col.key]) state.filters[col.key] = new Set(values);
+    else {
       for (const value of values) {
         if (!known.has(value)) state.filters[col.key].add(value);
       }
@@ -134,26 +186,6 @@ function syncFilters() {
     }
     state.knownFilterValues[col.key] = new Set(values);
   }
-}
-
-function workpackTone(value) {
-  const s = String(value || "");
-  let hash = 0;
-  for (let i = 0; i < s.length; i += 1) hash = (hash * 33 + s.charCodeAt(i)) >>> 0;
-  return hash % WP_TONES;
-}
-
-function renderTabs() {
-  const wrap = $("sheetTabs");
-  if (!wrap) return;
-  wrap.innerHTML = state.sheets
-    .map(
-      (s) =>
-        `<button type="button" data-sheet="${s.id}" class="${
-          state.sheet?.id === s.id ? "active" : ""
-        }" role="tab" aria-selected="${state.sheet?.id === s.id}">${escapeHtml(s.title)}</button>`
-    )
-    .join("");
 }
 
 function filteredRows() {
@@ -166,13 +198,7 @@ function filteredRows() {
       if (allowed && !allowed.has(rowValue(row, col.key))) return false;
     }
     if (!q) return true;
-    const hay = [
-      row.section,
-      row.site?.road_name,
-      row.site?.site_number,
-      row.site?.moa_number,
-      ...Object.values(row.values || {}),
-    ]
+    const hay = [row.section, row.site?.road_name, row.site?.site_number, row.site?.moa_number, ...Object.values(row.values || {})]
       .filter((v) => v != null && v !== "")
       .join(" ")
       .toLowerCase();
@@ -180,35 +206,68 @@ function filteredRows() {
   });
 }
 
+function groupKey(row) {
+  const col = groupColumn();
+  return col ? rowValue(row, col.field_key) : BLANK;
+}
+
+function autoColor(value) {
+  const s = String(value || "");
+  let hash = 0;
+  for (let i = 0; i < s.length; i += 1) hash = (hash * 33 + s.charCodeAt(i)) >>> 0;
+  return COLOR_PALETTE[hash % COLOR_PALETTE.length];
+}
+
+function groupColor(value) {
+  const colors = state.sheet?.settings?.colors || {};
+  return colors[value] || autoColor(value);
+}
+
+function drawerTabs() {
+  const cols = state.sheet?.columns || [];
+  const buckets = { overview: [], works: [], comms: [], notes: [], more: [] };
+  for (const col of cols) {
+    const hay = `${col.field_key} ${col.name}`;
+    const hit = DRAWER_TAB_RULES.find((rule) => rule.test.test(hay));
+    buckets[hit?.id || "more"].push(col);
+  }
+  const tabs = [
+    { id: "overview", label: "Overview", columns: [...buckets.overview, ...buckets.more] },
+    { id: "works", label: "Works", columns: buckets.works },
+    { id: "comms", label: "Comms", columns: buckets.comms },
+    { id: "notes", label: "Notes", columns: buckets.notes },
+    { id: "job", label: "Job & files", columns: [] },
+  ];
+  return tabs.filter((tab) => tab.id === "overview" || tab.id === "job" || tab.columns.length);
+}
+
+function currentRow() {
+  return (state.sheet?.rows || []).find((r) => r.id === state.openRowId) || null;
+}
+
+function renderSheetTabs() {
+  const wrap = $("sheetTabs");
+  if (!wrap) return;
+  wrap.innerHTML = state.sheets
+    .map(
+      (s) =>
+        `<button type="button" data-sheet="${s.id}" class="${state.sheet?.id === s.id ? "active" : ""}" role="tab" aria-selected="${
+          state.sheet?.id === s.id
+        }">${escapeHtml(s.title)}</button>`
+    )
+    .join("");
+}
+
 function setFilterDropOpen(drop, open) {
   if (!drop) return;
   drop.classList.toggle("is-open", open);
-  const btn = drop.querySelector(".filter-drop-btn");
-  if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
-  const panel = drop.querySelector(".filter-drop-panel");
-  if (panel) {
-    panel.style.left = "0";
-    panel.style.right = "auto";
-    if (open) {
-      requestAnimationFrame(() => {
-        const rect = panel.getBoundingClientRect();
-        if (rect.right > window.innerWidth - 8) {
-          panel.style.left = "auto";
-          panel.style.right = "0";
-        }
-      });
-    }
-  }
+  drop.querySelector(".filter-drop-btn")?.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function closeFilterDrops(except) {
   document.querySelectorAll("#commsFilters .filter-drop.is-open").forEach((drop) => {
     if (drop !== except) setFilterDropOpen(drop, false);
   });
-}
-
-function cssKey(key) {
-  return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(key) : String(key).replace(/"/g, '\\"');
 }
 
 function syncFilterDropLabels() {
@@ -220,27 +279,24 @@ function syncFilterDropLabels() {
     const meta = root.querySelector(`[data-drop-meta="${cssKey(col.key)}"]`);
     const btn = root.querySelector(`[data-drop="${cssKey(col.key)}"] .filter-drop-btn`);
     const n = selected.size;
-    const total = values.length;
     if (meta) {
-      if (!total) meta.textContent = "";
+      if (!values.length) meta.textContent = "";
       else if (n === 0) meta.textContent = "none";
-      else if (n === total) meta.textContent = "all";
-      else meta.textContent = `${n}/${total}`;
+      else if (n === values.length) meta.textContent = "all";
+      else meta.textContent = `${n}/${values.length}`;
     }
-    if (btn) btn.classList.toggle("is-filtered", Boolean(total) && n !== total);
+    if (btn) btn.classList.toggle("is-filtered", Boolean(values.length) && n !== values.length);
   }
 }
 
 function renderFilters() {
   const host = $("commsFilters");
-  if (!host) return;
-  if (!state.sheet) {
-    host.innerHTML = "";
+  if (!host || !state.sheet) {
+    if (host) host.innerHTML = "";
     return;
   }
   syncFilters();
-  const cols = filterableColumns();
-  host.innerHTML = cols
+  host.innerHTML = filterableColumns()
     .map((col) => {
       const values = uniqueValues(col.key);
       const selected = state.filters[col.key] || new Set();
@@ -273,28 +329,26 @@ function renderFilters() {
   syncFilterDropLabels();
 }
 
-function jobCell(row) {
-  const files = Number(row.document_count || 0);
-  if (row.site) {
-    return `<a class="comms-job-name" href="/?highlight=${row.site.id}">${escapeHtml(jobLabel(row.site))}</a>
-      <button type="button" class="comms-job-files" data-docs="${row.id}" title="Files and job link">${files}</button>`;
-  }
-  return `<button type="button" class="comms-job-link-btn" data-docs="${row.id}">Link</button>`;
-}
-
-function sortedRows(rows) {
-  const wp = workpackColumn();
-  if (!wp) return rows;
-  return [...rows]
-    .map((row, index) => ({ row, index }))
-    .sort((a, b) => {
-      const cmp = rowValue(a.row, wp.field_key).localeCompare(rowValue(b.row, wp.field_key), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-      return cmp || a.index - b.index;
-    })
-    .map((item) => item.row);
+function colorPicker(value) {
+  const current = groupColor(value);
+  const custom = /^#[0-9a-fA-F]{6}$/.test(current) ? current : "#2fbf78";
+  return `<div class="comms-color-pop" hidden>
+    <p class="comms-color-pop-label">Group colour</p>
+    <div class="comms-color-grid">
+      ${COLOR_PALETTE.map(
+        (hex) =>
+          `<button type="button" class="comms-color-choice ${hex === current ? "is-on" : ""}" data-color="${hex}" data-group="${escapeHtml(
+            value
+          )}" style="--swatch:${hex}" aria-label="Use ${hex}"></button>`
+      ).join("")}
+    </div>
+    <div class="comms-color-pop-foot">
+      <label class="comms-color-custom">Custom
+        <input type="color" data-color-custom data-group="${escapeHtml(value)}" value="${escapeHtml(custom)}" />
+      </label>
+      <button type="button" class="comms-color-reset" data-color="" data-group="${escapeHtml(value)}">Auto</button>
+    </div>
+  </div>`;
 }
 
 function renderTable({ refreshFilters = false } = {}) {
@@ -304,63 +358,73 @@ function renderTable({ refreshFilters = false } = {}) {
     if (refreshFilters) renderFilters();
     return;
   }
-  const cols = state.sheet.columns || [];
-  const wp = workpackColumn();
-  const rows = sortedRows(filteredRows());
+  const secondary = secondaryColumn();
+  const status = statusColumn();
+  const rows = filteredRows()
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const cmp = groupKey(a.row).localeCompare(groupKey(b.row), undefined, { numeric: true, sensitivity: "base" });
+      return cmp || a.index - b.index;
+    })
+    .map((item) => item.row);
   const total = (state.sheet.rows || []).length;
-  $("commsCount").textContent =
-    rows.length === total ? `${rows.length} row${rows.length === 1 ? "" : "s"}` : `${rows.length} of ${total}`;
+  $("commsCount").textContent = rows.length === total ? `${rows.length} row${rows.length === 1 ? "" : "s"}` : `${rows.length} of ${total}`;
   if (refreshFilters) renderFilters();
   else syncFilterDropLabels();
-  if (!cols.length && !total) {
-    wrap.innerHTML = `<p class="hint">No columns yet. Use Columns to add fields, then Add row.</p>`;
+
+  if (!total) {
+    wrap.innerHTML = `<p class="hint">No rows yet. Use Add row, then open a row to fill it in.</p>`;
     return;
   }
-  const colSpan = cols.length + 3;
-  let lastGroup = null;
+
+  const secondaryLabel = secondary ? secondary.name : "Group";
+  let last = null;
   const body = [];
   if (!rows.length) {
-    body.push(`<tr><td class="empty" colspan="${colSpan}">No rows match these filters.</td></tr>`);
+    body.push(`<tr><td class="empty" colspan="5">No rows match these filters.</td></tr>`);
   } else {
     for (const row of rows) {
-      const pack = wp ? rowValue(row, wp.field_key) : "";
-      const tone = wp ? workpackTone(pack) : "";
-      if (wp && pack !== lastGroup) {
-        lastGroup = pack;
-        const count = rows.filter((r) => rowValue(r, wp.field_key) === pack).length;
-        body.push(`<tr class="comms-group comms-wp-${tone}">
-          <td colspan="${colSpan}">
-            <span class="comms-group-label">${escapeHtml(pack)}</span>
-            <span class="hint">${count}</span>
+      const group = groupKey(row);
+      const color = groupColor(group);
+      if (group !== last) {
+        last = group;
+        const count = rows.filter((r) => groupKey(r) === group).length;
+        body.push(`<tr class="comms-group" style="--comms-wp:${color}">
+          <td colspan="5">
+            <div class="comms-group-title">
+              <button type="button" class="comms-swatch" data-color-group="${escapeHtml(group)}" style="--swatch:${color}" title="Set group colour" aria-label="Set colour for ${escapeHtml(group)}"></button>
+              <strong>${escapeHtml(group)}</strong>
+              <span class="hint">${count}</span>
+            </div>
+            ${colorPicker(group)}
           </td>
         </tr>`);
       }
-      body.push(`<tr data-row="${row.id}" class="${wp ? `comms-wp-${tone}` : ""}">
-        <td class="comms-sticky comms-job">${jobCell(row)}</td>
-        ${cols
-          .map((c) => {
-            const isWp = wp && c.field_key === wp.field_key;
-            return `<td class="comms-cell${isWp ? " comms-workpack-cell" : ""}">${cellInput(
-              c,
-              (row.values || {})[c.field_key]
-            )}</td>`;
-          })
-          .join("")}
-        <td>
-          <button type="button" class="btn btn-sm" data-docs="${row.id}">${
-            row.document_count || 0
-          }</button>
+      const extra = secondary ? fmtCell((row.values || {})[secondary.field_key]) : "";
+      const statusVal = status ? fmtCell((row.values || {})[status.field_key]) : "";
+      body.push(`<tr class="comms-list-row ${state.openRowId === row.id ? "is-open" : ""}" data-open-row="${row.id}" style="--comms-wp:${color}">
+        <td class="comms-job-col">
+          <span class="comms-row-swatch" style="--swatch:${color}"></span>
+          <div>
+            <span class="comms-job-title">${escapeHtml(listTitle(row))}</span>
+            ${row.site ? "" : `<span class="comms-list-sub">Not linked</span>`}
+          </div>
         </td>
-        <td><button type="button" class="btn btn-danger btn-sm" data-del-row="${row.id}">Delete</button></td>
+        <td>${escapeHtml(extra || "—")}</td>
+        <td>${escapeHtml(statusVal || "—")}</td>
+        <td class="mono">${row.document_count || 0}</td>
+        <td><button type="button" class="btn btn-sm" data-open-row="${row.id}">Open</button></td>
       </tr>`);
     }
   }
+
   wrap.innerHTML = `
-    <table class="data-table comms-table">
+    <table class="data-table comms-table comms-list-table">
       <thead>
         <tr>
-          <th class="comms-sticky">Job</th>
-          ${cols.map((c) => `<th title="${escapeHtml(c.field_key)}">${escapeHtml(c.name)}</th>`).join("")}
+          <th>Job</th>
+          <th>${escapeHtml(secondaryLabel)}</th>
+          <th>${escapeHtml(status ? status.name : "Status")}</th>
           <th>Files</th>
           <th></th>
         </tr>
@@ -370,60 +434,106 @@ function renderTable({ refreshFilters = false } = {}) {
   `;
 }
 
-async function loadSheets(preferredId) {
-  state.sheets = await api("/api/comms/sheets");
-  const want = preferredId || sheetIdFromUrl() || state.sheet?.id;
-  const pick = state.sheets.find((s) => s.id === want) || state.sheets[0] || null;
-  if (pick) await loadSheet(pick.id);
-  else {
-    state.sheet = null;
-    renderTabs();
-    renderTable({ refreshFilters: true });
+function openDrawer() {
+  const d = $("commsDrawer");
+  if (!d) return;
+  d.hidden = false;
+  d.setAttribute("aria-hidden", "false");
+  document.body.classList.add("drawer-open");
+}
+
+function closeDrawer() {
+  const d = $("commsDrawer");
+  if (!d) return;
+  d.hidden = true;
+  d.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("drawer-open");
+  state.openRowId = null;
+  if (state.sheet) setSheetUrl(state.sheet.id);
+  renderTable();
+}
+
+function renderDrawer() {
+  const row = currentRow();
+  if (!row || !state.sheet) {
+    closeDrawer();
+    return;
   }
-}
+  const tabs = drawerTabs();
+  if (!tabs.some((t) => t.id === state.drawerTab)) state.drawerTab = tabs[0].id;
+  const group = groupKey(row);
+  $("commsDrawerTitle").textContent = listTitle(row);
+  $("commsDrawerKicker").textContent = `${state.sheet.title}${group && group !== BLANK ? ` · ${group}` : ""}`;
+  $("commsDrawerTabs").innerHTML = tabs
+    .map(
+      (tab) =>
+        `<button type="button" class="drawer-tab ${state.drawerTab === tab.id ? "active" : ""}" data-drawer-tab="${tab.id}">${escapeHtml(
+          tab.label
+        )}</button>`
+    )
+    .join("");
 
-async function loadSheet(id) {
-  state.sheet = await api(`/api/comms/sheets/${id}`);
-  setSheetUrl(id);
-  renderTabs();
-  renderTable({ refreshFilters: true });
-}
-
-async function saveCell(rowId, field, value) {
-  await api(`/api/comms/rows/${rowId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ values: { [field]: value } }),
-  });
-}
-
-function renderColumnList() {
-  const cols = state.sheet?.columns || [];
-  $("columnList").innerHTML = cols.length
-    ? cols
-        .map(
-          (c) => `<li>
-            <div>
-              <strong>${escapeHtml(c.name)}</strong>
-              <div class="meta">${escapeHtml(c.field_type)} · ${escapeHtml(c.field_key)}</div>
-            </div>
-            <button type="button" class="btn btn-danger" data-del-col="${c.id}">Remove</button>
-          </li>`
-        )
-        .join("")
-    : `<li><div class="meta">No columns yet.</div></li>`;
-}
-
-function currentDocsRow() {
-  return (state.sheet?.rows || []).find((r) => r.id === state.docsRowId) || null;
+  const active = tabs.find((t) => t.id === state.drawerTab) || tabs[0];
+  if (active.id === "job") {
+    $("commsDrawerBody").innerHTML = `
+      <section class="tab-panel active">
+        <div class="form-section">
+          <h3>Linked job</h3>
+          <p class="hint">User-visible files appear on the job’s Documents tab once a site is linked.</p>
+          <p id="jobLinked"></p>
+          <div class="form-grid">
+            <label class="full">Find a job
+              <input id="jobSearch" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
+            </label>
+          </div>
+          <ul class="comms-job-results" id="jobResults" hidden></ul>
+        </div>
+        <div class="form-section">
+          <h3>Files</h3>
+          <div class="form-grid">
+            <label class="full">File<input id="commsDocFile" type="file" multiple /></label>
+            <label>Visibility
+              <select id="commsDocVis">
+                <option value="comms">Comms only</option>
+                <option value="users">Visible to users (job docs)</option>
+              </select>
+            </label>
+            <label>Description<input id="commsDocDesc" maxlength="255" placeholder="Works notification, letter drop…" /></label>
+          </div>
+          <div class="toolbar" style="margin-top:0.75rem">
+            <button type="button" class="btn btn-primary" id="btnUploadCommsDoc">Upload</button>
+            <span class="hint" id="commsDocStatus"></span>
+          </div>
+          <ul class="event-list" id="commsDocList"></ul>
+        </div>
+      </section>
+    `;
+    renderJobLinked();
+    refreshDocsList().catch(() => {});
+    bindDrawerJobHandlers();
+  } else {
+    $("commsDrawerBody").innerHTML = `
+      <section class="tab-panel active">
+        <div class="form-section">
+          <h3>${escapeHtml(active.label)}</h3>
+          <div class="form-grid" id="commsFieldGrid">
+            ${active.columns
+              .map((col) => `<label class="full">${escapeHtml(col.name)}${cellInput(col, (row.values || {})[col.field_key])}</label>`)
+              .join("")}
+          </div>
+        </div>
+      </section>
+    `;
+  }
+  openDrawer();
 }
 
 function renderJobLinked() {
-  const row = currentDocsRow();
+  const row = currentRow();
   const el = $("jobLinked");
-  if (!el) return;
-  if (!row?.site) {
-    el.textContent = "No job linked — user-visible files will appear on a job once you link one.";
+  if (!el || !row) return;
+  if (!row.site) {
+    el.textContent = "No job linked yet.";
     return;
   }
   el.innerHTML = `Linked to <a href="/?highlight=${row.site.id}">${escapeHtml(jobLabel(row.site))}</a>
@@ -434,17 +544,14 @@ function renderJobLinked() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clear_site: true }),
     });
-    await loadSheet(state.sheet.id);
-    await refreshDocsDialog();
+    await loadSheet(state.sheet.id, { keepRow: row.id });
   });
 }
 
-async function refreshDocsDialog() {
-  const row = currentDocsRow();
-  if (!row) return;
+async function refreshDocsList() {
+  const row = currentRow();
+  if (!row || !$("commsDocList")) return;
   const docs = await api(`/api/comms/rows/${row.id}/documents`);
-  $("docsDialogTitle").textContent = `Files · ${row.section || "Activity"}`;
-  renderJobLinked();
   $("commsDocList").innerHTML = docs.length
     ? docs
         .map(
@@ -464,21 +571,20 @@ async function refreshDocsDialog() {
     : `<li><p class="meta">No files on this row yet.</p></li>`;
 }
 
-async function openDocs(rowId) {
-  state.docsRowId = rowId;
-  $("jobSearch").value = "";
-  $("jobResults").hidden = true;
-  $("commsDocFile").value = "";
-  $("commsDocDesc").value = "";
-  $("commsDocVis").value = "comms";
-  $("commsDocStatus").textContent = "";
-  await refreshDocsDialog();
-  $("docsDialog").showModal();
+function bindDrawerJobHandlers() {
+  on("jobSearch", "input", () => {
+    clearTimeout(state.jobTimer);
+    const q = $("jobSearch").value.trim();
+    state.jobTimer = setTimeout(() => {
+      searchJobs(q).catch((e) => alertDialog(errorMessage(e, "Could not search jobs")));
+    }, 220);
+  });
 }
 
 async function searchJobs(q) {
   const rows = await api(`/api/comms/sites${q ? `?q=${encodeURIComponent(q)}` : ""}`);
   const box = $("jobResults");
+  if (!box) return;
   if (!rows.length) {
     box.hidden = false;
     box.innerHTML = `<li class="hint">No matching jobs.</li>`;
@@ -497,6 +603,76 @@ async function searchJobs(q) {
     .join("");
 }
 
+async function openRow(rowId) {
+  state.openRowId = rowId;
+  if (state.sheet) setSheetUrl(state.sheet.id, rowId);
+  renderTable();
+  renderDrawer();
+}
+
+async function loadSheets(preferredId) {
+  state.sheets = await api("/api/comms/sheets");
+  const want = preferredId || sheetIdFromUrl() || state.sheet?.id;
+  const pick = state.sheets.find((s) => s.id === want) || state.sheets[0] || null;
+  if (pick) await loadSheet(pick.id, { keepRow: rowIdFromUrl() });
+  else {
+    state.sheet = null;
+    renderSheetTabs();
+    renderTable({ refreshFilters: true });
+  }
+}
+
+async function loadSheet(id, { keepRow } = {}) {
+  state.sheet = await api(`/api/comms/sheets/${id}`);
+  const keep = keepRow || state.openRowId;
+  if (keep && !(state.sheet.rows || []).some((r) => r.id === keep)) state.openRowId = null;
+  else if (keep) state.openRowId = keep;
+  setSheetUrl(id, state.openRowId);
+  renderSheetTabs();
+  renderTable({ refreshFilters: true });
+  if (state.openRowId) renderDrawer();
+}
+
+async function saveCell(rowId, field, value) {
+  await api(`/api/comms/rows/${rowId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values: { [field]: value } }),
+  });
+  const row = (state.sheet?.rows || []).find((r) => r.id === rowId);
+  if (row) row.values = { ...(row.values || {}), [field]: value };
+}
+
+async function saveGroupColor(group, color) {
+  const colors = { ...(state.sheet?.settings?.colors || {}) };
+  if (!color) delete colors[group];
+  else colors[group] = color;
+  const next = await api(`/api/comms/sheets/${state.sheet.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settings: { colors } }),
+  });
+  state.sheet.settings = next.settings || { colors };
+  renderTable();
+}
+
+function renderColumnList() {
+  const cols = state.sheet?.columns || [];
+  $("columnList").innerHTML = cols.length
+    ? cols
+        .map(
+          (c) => `<li>
+            <div>
+              <strong>${escapeHtml(c.name)}</strong>
+              <div class="meta">${escapeHtml(c.field_type)} · ${escapeHtml(c.field_key)}</div>
+            </div>
+            <button type="button" class="btn btn-danger" data-del-col="${c.id}">Remove</button>
+          </li>`
+        )
+        .join("")
+    : `<li><div class="meta">No columns yet.</div></li>`;
+}
+
 async function init() {
   await injectChrome({ active: "/comms" });
   await loadSheets();
@@ -504,6 +680,7 @@ async function init() {
   $("sheetTabs")?.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-sheet]");
     if (!btn) return;
+    closeDrawer();
     await loadSheet(Number(btn.dataset.sheet));
   });
 
@@ -514,27 +691,69 @@ async function init() {
 
   document.addEventListener("click", (ev) => {
     const host = $("commsFilters");
-    if (!host) return;
-    const selectBtn = ev.target.closest("[data-drop-select]");
-    if (selectBtn && host.contains(selectBtn)) {
-      const key = selectBtn.dataset.dropKey;
-      const values = uniqueValues(key);
-      state.filters[key] = selectBtn.dataset.dropSelect === "all" ? new Set(values) : new Set();
-      host.querySelectorAll(`input[data-filter-key="${cssKey(key)}"]`).forEach((box) => {
-        box.checked = selectBtn.dataset.dropSelect === "all";
+    if (host) {
+      const selectBtn = ev.target.closest("[data-drop-select]");
+      if (selectBtn && host.contains(selectBtn)) {
+        const key = selectBtn.dataset.dropKey;
+        const values = uniqueValues(key);
+        state.filters[key] = selectBtn.dataset.dropSelect === "all" ? new Set(values) : new Set();
+        host.querySelectorAll(`input[data-filter-key="${cssKey(key)}"]`).forEach((box) => {
+          box.checked = selectBtn.dataset.dropSelect === "all";
+        });
+        renderTable();
+        return;
+      }
+      const btn = ev.target.closest("#commsFilters .filter-drop-btn");
+      if (btn) {
+        const drop = btn.closest(".filter-drop");
+        const open = !drop.classList.contains("is-open");
+        closeFilterDrops(drop);
+        setFilterDropOpen(drop, open);
+        return;
+      }
+      if (!ev.target.closest("#commsFilters .filter-drop")) closeFilterDrops();
+    }
+
+    const swatch = ev.target.closest("[data-color-group]");
+    if (swatch && $("commsTableWrap")?.contains(swatch)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const pop = swatch.parentElement.querySelector(".comms-color-pop");
+      document.querySelectorAll(".comms-color-pop").forEach((el) => {
+        if (el !== pop) el.hidden = true;
       });
-      renderTable();
+      if (pop) pop.hidden = !pop.hidden;
       return;
     }
-    const btn = ev.target.closest("#commsFilters .filter-drop-btn");
-    if (btn) {
-      const drop = btn.closest(".filter-drop");
-      const open = !drop.classList.contains("is-open");
-      closeFilterDrops(drop);
-      setFilterDropOpen(drop, open);
+    const choice = ev.target.closest("[data-color][data-group]");
+    if (choice && $("commsTableWrap")?.contains(choice)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      saveGroupColor(choice.dataset.group, choice.dataset.color).catch((e) => alertDialog(e.message));
       return;
     }
-    if (!ev.target.closest("#commsFilters .filter-drop")) closeFilterDrops();
+    if (!ev.target.closest(".comms-color-pop")) {
+      document.querySelectorAll(".comms-color-pop").forEach((el) => {
+        el.hidden = true;
+      });
+    }
+  });
+
+  document.addEventListener("change", (ev) => {
+    const custom = ev.target.closest("[data-color-custom]");
+    if (!custom || !$("commsTableWrap")?.contains(custom)) return;
+    saveGroupColor(custom.dataset.group, custom.value).catch((e) => alertDialog(e.message));
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape") return;
+    if (document.querySelector("dialog[open]")) return;
+    const openPop = document.querySelector(".comms-color-pop:not([hidden])");
+    if (openPop) {
+      openPop.hidden = true;
+      return;
+    }
+    if (state.openRowId) closeDrawer();
   });
 
   $("commsFilters")?.addEventListener("change", (ev) => {
@@ -575,17 +794,19 @@ async function init() {
     if (!await confirmDialog(`Remove the “${state.sheet.title}” tab and all of its rows?`)) return;
     await api(`/api/comms/sheets/${state.sheet.id}`, { method: "DELETE" });
     state.sheet = null;
+    closeDrawer();
     await loadSheets();
   });
 
   on("btnAddRow", "click", async () => {
     if (!state.sheet) return;
-    await api(`/api/comms/sheets/${state.sheet.id}/rows`, {
+    const created = await api(`/api/comms/sheets/${state.sheet.id}/rows`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ values: {}, created_by: userName() }),
     });
-    await loadSheet(state.sheet.id);
+    await loadSheet(state.sheet.id, { keepRow: created.id });
+    await openRow(created.id);
   });
 
   on("btnColumns", "click", () => {
@@ -608,16 +829,13 @@ async function init() {
       return;
     }
     const field_type = $("colType").value;
-    const options =
-      field_type === "select"
-        ? $("colOptions").value.split(",").map((s) => s.trim()).filter(Boolean)
-        : null;
+    const options = field_type === "select" ? $("colOptions").value.split(",").map((s) => s.trim()).filter(Boolean) : null;
     await api(`/api/comms/sheets/${state.sheet.id}/columns`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, field_type, options, created_by: userName() }),
     });
-    await loadSheet(state.sheet.id);
+    await loadSheet(state.sheet.id, { keepRow: state.openRowId });
     renderColumnList();
     $("colName").value = "";
   });
@@ -627,68 +845,84 @@ async function init() {
     if (!btn) return;
     if (!await confirmDialog("Remove this column from every row on this tab?")) return;
     await api(`/api/comms/columns/${btn.dataset.delCol}`, { method: "DELETE" });
-    await loadSheet(state.sheet.id);
+    await loadSheet(state.sheet.id, { keepRow: state.openRowId });
     renderColumnList();
   });
 
-  $("commsTableWrap")?.addEventListener("change", async (ev) => {
+  $("commsTableWrap")?.addEventListener("click", async (ev) => {
+    if (ev.target.closest("[data-color-group], .comms-color-pop")) return;
+    const open = ev.target.closest("[data-open-row]");
+    if (open) {
+      await openRow(Number(open.dataset.openRow));
+    }
+  });
+
+  $("commsDrawer")?.addEventListener("click", async (ev) => {
+    if (ev.target.closest("[data-close-comms-drawer]")) {
+      closeDrawer();
+      return;
+    }
+    const tab = ev.target.closest("[data-drawer-tab]");
+    if (tab) {
+      state.drawerTab = tab.dataset.drawerTab;
+      renderDrawer();
+      return;
+    }
+    const link = ev.target.closest("[data-link-site]");
+    if (link && state.openRowId) {
+      await api(`/api/comms/rows/${state.openRowId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ site_id: Number(link.dataset.linkSite) }),
+      });
+      await loadSheet(state.sheet.id, { keepRow: state.openRowId });
+      return;
+    }
+    const vis = ev.target.closest("[data-vis]");
+    if (vis) {
+      await api(`/api/documents/${vis.dataset.vis}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visibility: vis.dataset.next }),
+      });
+      await refreshDocsList();
+      return;
+    }
+    const del = ev.target.closest("[data-del-doc]");
+    if (del) {
+      if (!await confirmDialog("Delete this file?")) return;
+      await api(`/api/documents/${del.dataset.delDoc}`, { method: "DELETE" });
+      await loadSheet(state.sheet.id, { keepRow: state.openRowId });
+    }
+  });
+
+  $("commsDrawer")?.addEventListener("change", async (ev) => {
     const field = ev.target.dataset.field;
-    const tr = ev.target.closest("tr[data-row]");
-    if (!field || !tr) return;
+    if (!field || !state.openRowId) return;
     const value = ev.target.type === "checkbox" ? (ev.target.checked ? "Yes" : "No") : ev.target.value;
     try {
-      await saveCell(Number(tr.dataset.row), field, value);
-      const row = (state.sheet?.rows || []).find((r) => r.id === Number(tr.dataset.row));
-      if (row) row.values = { ...(row.values || {}), [field]: value };
-      const wp = workpackColumn();
-      if (wp && field === wp.field_key) renderTable({ refreshFilters: true });
+      await saveCell(state.openRowId, field, value);
+      renderTable();
     } catch (err) {
       await alertDialog(errorMessage(err, "Could not save cell"));
     }
   });
 
-  $("commsTableWrap")?.addEventListener("click", async (ev) => {
-    const docs = ev.target.closest("[data-docs]");
-    if (docs) {
-      await openDocs(Number(docs.dataset.docs));
-      return;
-    }
-    const del = ev.target.closest("[data-del-row]");
-    if (del) {
-      if (!await confirmDialog("Delete this planner row?")) return;
-      await api(`/api/comms/rows/${del.dataset.delRow}`, { method: "DELETE" });
-      await loadSheet(state.sheet.id);
-    }
+  on("btnDrawerDelete", "click", async () => {
+    if (!state.openRowId) return;
+    if (!await confirmDialog("Delete this planner row?")) return;
+    await api(`/api/comms/rows/${state.openRowId}`, { method: "DELETE" });
+    closeDrawer();
+    await loadSheet(state.sheet.id);
   });
 
   document.querySelectorAll("[data-close-dialog]").forEach((btn) => {
     btn.addEventListener("click", () => $(btn.dataset.closeDialog)?.close());
   });
 
-  on("jobSearch", "input", () => {
-    clearTimeout(state.jobTimer);
-    const q = $("jobSearch").value.trim();
-    state.jobTimer = setTimeout(() => {
-      searchJobs(q).catch((e) => alertDialog(errorMessage(e, "Could not search jobs")));
-    }, 220);
-  });
-
-  $("jobResults")?.addEventListener("click", async (ev) => {
-    const btn = ev.target.closest("[data-link-site]");
-    if (!btn || !state.docsRowId) return;
-    await api(`/api/comms/rows/${state.docsRowId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ site_id: Number(btn.dataset.linkSite) }),
-    });
-    $("jobResults").hidden = true;
-    $("jobSearch").value = "";
-    await loadSheet(state.sheet.id);
-    await refreshDocsDialog();
-  });
-
-  on("btnUploadCommsDoc", "click", async () => {
-    const row = currentDocsRow();
+  document.body.addEventListener("click", async (ev) => {
+    if (ev.target.id !== "btnUploadCommsDoc") return;
+    const row = currentRow();
     const files = [...($("commsDocFile")?.files || [])].filter((f) => f && f.size);
     if (!row) return;
     if (!files.length) {
@@ -707,8 +941,7 @@ async function init() {
           beginUrl: `/api/comms/rows/${row.id}/documents/session`,
           chunkUrl: (id, idx) =>
             `/api/comms/rows/${row.id}/documents/session/${encodeURIComponent(id)}/chunk/${idx}`,
-          commitUrl: (id) =>
-            `/api/comms/rows/${row.id}/documents/session/${encodeURIComponent(id)}/commit`,
+          commitUrl: (id) => `/api/comms/rows/${row.id}/documents/session/${encodeURIComponent(id)}/commit`,
           beginBody: { category: "correspondence", description, uploaded_by: userName(), visibility },
         });
       } catch (err) {
@@ -716,8 +949,7 @@ async function init() {
       }
     }
     $("commsDocFile").value = "";
-    await loadSheet(state.sheet.id);
-    await refreshDocsDialog();
+    await loadSheet(state.sheet.id, { keepRow: row.id });
     if (errors.length) {
       status.textContent = `${files.length - errors.length} uploaded · ${errors.length} failed`;
       await alertDialog(errors.join("\n"));
@@ -726,28 +958,8 @@ async function init() {
     status.textContent = files.length === 1 ? "Uploaded." : `Uploaded ${files.length} files.`;
   });
 
-  $("commsDocList")?.addEventListener("click", async (ev) => {
-    const vis = ev.target.closest("[data-vis]");
-    if (vis) {
-      await api(`/api/documents/${vis.dataset.vis}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibility: vis.dataset.next }),
-      });
-      await refreshDocsDialog();
-      return;
-    }
-    const del = ev.target.closest("[data-del-doc]");
-    if (del) {
-      if (!await confirmDialog("Delete this file?")) return;
-      await api(`/api/documents/${del.dataset.delDoc}`, { method: "DELETE" });
-      await loadSheet(state.sheet.id);
-      await refreshDocsDialog();
-    }
-  });
-
   onLiveSitesChanged(() => {
-    if (state.sheet) loadSheet(state.sheet.id).catch(() => {});
+    if (state.sheet) loadSheet(state.sheet.id, { keepRow: state.openRowId }).catch(() => {});
   });
 }
 

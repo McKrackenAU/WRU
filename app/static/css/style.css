@@ -4497,6 +4497,11 @@ html.dark .gantt-bar {
   min-width: 70rem;
 }
 
+.comms-table.comms-list-table {
+  min-width: 36rem;
+  width: 100%;
+}
+
 .comms-table th,
 .comms-table td {
   vertical-align: top;
@@ -4574,9 +4579,156 @@ html.dark .gantt-bar {
 }
 
 .comms-group td {
+  position: relative;
   font-weight: 750;
   letter-spacing: -0.01em;
   padding: 0.5rem 0.7rem;
+}
+
+.comms-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.comms-swatch,
+.comms-row-swatch {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  flex: none;
+  padding: 0;
+  border: 2px solid color-mix(in srgb, #fff 50%, transparent);
+  background: var(--swatch, var(--comms-wp, #2fbf78));
+  box-shadow: 0 0 0 1px color-mix(in srgb, #000 25%, transparent);
+}
+
+.comms-swatch {
+  cursor: pointer;
+}
+
+.comms-swatch:hover {
+  transform: scale(1.12);
+}
+
+.comms-row-swatch {
+  display: inline-block;
+}
+
+.comms-color-pop {
+  position: absolute;
+  left: 0.7rem;
+  top: calc(100% + 0.35rem);
+  z-index: 30;
+  width: 13.5rem;
+  padding: 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.comms-color-pop-label {
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ventia-muted);
+}
+
+.comms-color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem;
+}
+
+.comms-color-choice {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: var(--swatch);
+  cursor: pointer;
+  padding: 0;
+}
+
+.comms-color-choice.is-on,
+.comms-color-choice:hover {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--ventia-green);
+}
+
+.comms-color-pop-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.comms-color-custom {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--ventia-muted);
+}
+
+.comms-color-custom input {
+  width: 2rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--ventia-border);
+  background: transparent;
+  cursor: pointer;
+}
+
+.comms-color-reset {
+  border: 0;
+  background: transparent;
+  color: var(--ventia-green);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.comms-list-row {
+  cursor: pointer;
+}
+
+.comms-list-row:hover td {
+  filter: brightness(1.06);
+}
+
+.comms-list-row.is-open td {
+  box-shadow: inset 0 0 0 2px var(--ventia-green);
+}
+
+.comms-job-col {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 12rem;
+}
+
+.comms-job-title {
+  display: block;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28rem;
+}
+
+.comms-list-sub {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--ventia-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .comms-group-label {
@@ -4592,7 +4744,8 @@ html.dark .gantt-bar {
 .comms-table tbody tr.comms-wp-6 { --comms-wp: #fb923c; }
 .comms-table tbody tr.comms-wp-7 { --comms-wp: #94a3b8; }
 
-.comms-table tbody tr[class*="comms-wp-"] > td {
+.comms-table tbody tr[class*="comms-wp-"] > td,
+.comms-table tbody tr.comms-list-row > td {
   background: color-mix(in srgb, var(--comms-wp) 16%, var(--panel));
 }
 

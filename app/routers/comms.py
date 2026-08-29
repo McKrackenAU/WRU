@@ -43,6 +43,7 @@ class SheetUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=128)
     description: str | None = Field(default=None, max_length=255)
     position: int | None = None
+    settings: dict | None = None
 
 
 class ColumnCreate(BaseModel):
@@ -179,6 +180,7 @@ def _sheet_out(sheet: CommsSheet, *, with_rows: bool = False) -> dict:
         "description": sheet.description,
         "position": sheet.position,
         "seeded": bool(sheet.seeded),
+        "settings": sheet.settings or {},
         "column_count": len(columns),
         "row_count": len(sheet.rows or []),
         "columns": [_column_out(c) for c in columns],
@@ -241,6 +243,18 @@ def update_sheet(sheet_id: int, payload: SheetUpdate, request: Request, db: Sess
         sheet.description = payload.description.strip() or None
     if payload.position is not None:
         sheet.position = payload.position
+    if payload.settings is not None:
+        current = dict(sheet.settings or {})
+        incoming = payload.settings
+        if "colors" in incoming and isinstance(incoming.get("colors"), dict):
+            colors = {}
+            for key, value in incoming["colors"].items():
+                name = str(key).strip()[:255]
+                if not name or value in (None, ""):
+                    continue
+                colors[name] = str(value).strip()[:32]
+            current["colors"] = colors
+        sheet.settings = current
     db.commit()
     db.refresh(sheet)
     notify_from_request(request, reason="comms_sheet")

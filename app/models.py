@@ -644,6 +644,7 @@ class CommsSheet(Base):
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     seeded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
