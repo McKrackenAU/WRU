@@ -26,9 +26,19 @@
       <div class="page-head">
         <div>
           <h1>File storage</h1>
-          <p>Set where uploaded files live on disk. Leave a path blank to use the default under the app data directory. Changing a path does not move existing files — copy them first when you cut over to a larger disk.</p>
+          <p>Pick a disk or mount the server can see (for example <code>/mnt</code>). WRU creates the rest of the path on save. Changing a location does not move existing files — copy them first when you cut over to a larger disk.</p>
         </div>
       </div>
+      <section class="panel-card">
+        <h2>Use one disk for everything</h2>
+        <p class="hint">Choose a mount, then apply it to documents, cost estimates, KML, and backups. Example: <code>/mnt</code> becomes <code>/mnt/uploads</code>, <code>/mnt/uploads/kml</code>, and <code>/mnt/backups</code>.</p>
+        <div class="toolbar storage-all">
+          <label>Disk / mount
+            <select id="storageMounts"><option value="">Checking disks…</option></select>
+          </label>
+          <button type="button" class="btn btn-primary" id="btnApplyAll">Apply to all locations</button>
+        </div>
+      </section>
       <div id="storageList">
         <p class="hint">Loading…</p>
       </div>

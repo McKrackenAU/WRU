@@ -3127,6 +3127,22 @@ html.dark .leaflet-control-scale-line {
   color: var(--ok);
 }
 
+.storage-all {
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.storage-all label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: min(22rem, 100%);
+}
+
+.storage-card {
+  margin-bottom: 1rem;
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
