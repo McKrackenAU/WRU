@@ -20,8 +20,9 @@ from starlette.background import BackgroundTask
 
 from ..auth import can_see_comms_documents, get_current_user
 from ..backup import unique_zip_path
-from ..database import DATA_DIR, UPLOAD_DIR, get_db
+from ..database import DATA_DIR, get_db
 from ..file_store import materialize_original, read_stored_bytes, write_stored_bytes
+from ..storage_paths import documents_dir
 from ..doc_categories import FALLBACK_KEY, active_category_keys, category_label_map, ensure_doc_category_seed
 from ..models import Document, Site, User
 from ..routers.import_tracker import (
@@ -152,7 +153,7 @@ def store_document_bytes(
     suffix = Path(original).suffix[:32]
     prefix = site.id if site is not None else f"comms{comms_row_id or 0}"
     stored_name = f"{prefix}_{uuid.uuid4().hex}{suffix}"
-    dest = UPLOAD_DIR / stored_name
+    dest = documents_dir() / stored_name
     write_stored_bytes(dest, content)
     guessed, _ = mimetypes.guess_type(original)
     doc = Document(
@@ -443,7 +444,7 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
     try:
         with ZipFile(dest, "w", compression=ZIP_DEFLATED, compresslevel=6) as zf:
             for doc in docs:
-                path = UPLOAD_DIR / doc.stored_name
+                path = documents_dir() / doc.stored_name
                 if not path.is_file():
                     continue
                 try:
@@ -563,7 +564,7 @@ def begin_document_download_session(
     doc = db.get(Document, document_id)
     if not doc or not document_is_visible(doc, user):
         raise HTTPException(status_code=404, detail="Document not found")
-    path = UPLOAD_DIR / doc.stored_name
+    path = documents_dir() / doc.stored_name
     if not path.is_file():
         raise HTTPException(status_code=404, detail="File missing on disk")
     unpacked, ephemeral = materialize_original(path)
@@ -642,7 +643,7 @@ def download_document(
     if not doc or not document_is_visible(doc, user):
         raise HTTPException(status_code=404, detail="Document not found")
 
-    path = UPLOAD_DIR / doc.stored_name
+    path = documents_dir() / doc.stored_name
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
 
@@ -665,7 +666,7 @@ def delete_document(
     if not doc or not document_is_visible(doc, user):
         raise HTTPException(status_code=404, detail="Document not found")
 
-    path = UPLOAD_DIR / doc.stored_name
+    path = documents_dir() / doc.stored_name
     path.unlink(missing_ok=True)
     db.delete(doc)
     db.commit()

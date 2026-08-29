@@ -30,6 +30,7 @@ from .models import (  # noqa: F401 — register metadata
     ShiftExtraRate,
     Site,
     SiteCouncil,
+    StorageLocation,
     TrackingEvent,
     TrafficContractor,
     User,

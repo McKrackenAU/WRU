@@ -8,7 +8,8 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from ..database import UPLOAD_DIR, get_db
+from ..database import get_db
+from ..storage_paths import cost_estimates_dir, documents_dir
 from ..financial_year import australian_financial_year
 from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
@@ -101,12 +102,12 @@ def _site_file_paths(site: Site) -> list[Path]:
     for doc in site.documents or []:
         name = (getattr(doc, "stored_name", None) or "").strip()
         if name:
-            paths.append(UPLOAD_DIR / name)
+            paths.append(documents_dir() / name)
     for est in site.cost_estimates or []:
         for att in getattr(est, "attachments", None) or []:
             name = (getattr(att, "stored_name", None) or "").strip()
             if name:
-                paths.append(UPLOAD_DIR / "cost-estimates" / name)
+                paths.append(cost_estimates_dir() / name)
     return paths
 
 

@@ -12,7 +12,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from .database import DATA_DIR, UPLOAD_DIR, build_database_url, engine
+from .database import DATA_DIR, build_database_url, engine
+from .storage_paths import documents_dir
 from .version import version_string
 
 BACKUP_FORMAT = "wru-backup-v1"
@@ -116,7 +117,7 @@ def unique_zip_path(used: set[str], relative: str) -> str:
 
 
 def iter_upload_files(root: Path | None = None) -> list[Path]:
-    base = root or UPLOAD_DIR
+    base = root or documents_dir()
     if not base.is_dir():
         return []
     out: list[Path] = []
@@ -156,7 +157,7 @@ def write_backup_zip(dest: Path) -> dict:
             zf.write(dump_path, DUMP_NAME)
             zf.writestr(f"{UPLOADS_PREFIX}.keep", b"")
             for path in iter_upload_files():
-                arc = f"{UPLOADS_PREFIX}{path.relative_to(UPLOAD_DIR).as_posix()}"
+                arc = f"{UPLOADS_PREFIX}{path.relative_to(documents_dir()).as_posix()}"
                 zf.write(path, arc)
             for name in CONFIG_FILES:
                 src = DATA_DIR / name
@@ -191,12 +192,13 @@ def _extract_member(zf: ZipFile, name: str, dest_dir: Path) -> Path:
 
 
 def restore_uploads(extracted_uploads: Path) -> None:
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    target = documents_dir()
+    target.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    bak = UPLOAD_DIR.parent / f"uploads.bak-{stamp}"
-    if any(UPLOAD_DIR.iterdir()):
-        shutil.move(str(UPLOAD_DIR), str(bak))
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    bak = target.parent / f"uploads.bak-{stamp}"
+    if any(target.iterdir()):
+        shutil.move(str(target), str(bak))
+        target.mkdir(parents=True, exist_ok=True)
     else:
         bak = None
     try:
@@ -207,15 +209,15 @@ def restore_uploads(extracted_uploads: Path) -> None:
                 if src.name == ".keep":
                     continue
                 rel = src.relative_to(extracted_uploads)
-                dest = UPLOAD_DIR / rel
+                dest = target / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
         if bak and bak.exists():
             shutil.rmtree(bak, ignore_errors=True)
     except Exception:
         if bak and bak.exists():
-            shutil.rmtree(UPLOAD_DIR, ignore_errors=True)
-            shutil.move(str(bak), str(UPLOAD_DIR))
+            shutil.rmtree(target, ignore_errors=True)
+            shutil.move(str(bak), str(target))
         raise
 
 

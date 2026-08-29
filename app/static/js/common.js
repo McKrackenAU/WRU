@@ -476,6 +476,7 @@ export const ADMIN_NAV = [
   { href: "/admin/asphalt", label: "Asphalt rates", hint: "Subcontractors" },
   { href: "/admin/system", label: "System & updates", hint: "Version · GitHub" },
   { href: "/admin/backup", label: "Backup & migrate", hint: "Export · import" },
+  { href: "/admin/storage", label: "File storage", hint: "Disk paths" },
 ];
 
 function isActivePath(href, path) {

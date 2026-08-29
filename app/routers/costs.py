@@ -22,16 +22,19 @@ from ..cost_engine import (
     preview_schedule_window,
 )
 from ..cost_export import build_cost_pdf, build_cost_workbook
-from ..database import UPLOAD_DIR, get_db
+from ..database import get_db
 from ..file_store import materialize_original, write_stored_bytes
+from ..storage_paths import cost_estimates_dir
 from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, ShiftExtraRate, Site, User
 from ..rate_import import build_traffic_template, import_traffic_rates
 
 router = APIRouter(prefix="/api/costs", tags=["costs"])
 
-ESTIMATE_UPLOAD_DIR = UPLOAD_DIR / "cost-estimates"
-ESTIMATE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+def _estimate_dir() -> Path:
+    return cost_estimates_dir()
 
 
 class CostSettingsOut(BaseModel):
@@ -789,7 +792,7 @@ def delete_estimate(estimate_id: int, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="Estimate not found")
     for att in list(row.attachments or []):
-        (ESTIMATE_UPLOAD_DIR / att.stored_name).unlink(missing_ok=True)
+        (_estimate_dir() / att.stored_name).unlink(missing_ok=True)
     db.delete(row)
     db.commit()
     return None
@@ -810,7 +813,7 @@ async def upload_estimate_attachment(
     original = Path(file.filename or "upload.bin").name
     suffix = Path(original).suffix[:32]
     stored_name = f"est{estimate_id}_{uuid.uuid4().hex}{suffix}"
-    dest = ESTIMATE_UPLOAD_DIR / stored_name
+    dest = _estimate_dir() / stored_name
 
     size = 0
     chunks: list[bytes] = []
@@ -844,7 +847,7 @@ def download_estimate_attachment(attachment_id: int, db: Session = Depends(get_d
     att = db.get(CostEstimateAttachment, attachment_id)
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    path = ESTIMATE_UPLOAD_DIR / att.stored_name
+    path = _estimate_dir() / att.stored_name
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
     unpacked, ephemeral = materialize_original(path)
@@ -861,7 +864,7 @@ def delete_estimate_attachment(attachment_id: int, db: Session = Depends(get_db)
     att = db.get(CostEstimateAttachment, attachment_id)
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    (ESTIMATE_UPLOAD_DIR / att.stored_name).unlink(missing_ok=True)
+    (_estimate_dir() / att.stored_name).unlink(missing_ok=True)
     db.delete(att)
     db.commit()
     return None

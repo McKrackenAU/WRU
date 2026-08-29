@@ -42,7 +42,7 @@ def test_write_backup_zip_roundtrip(tmp_path, monkeypatch):
     def fake_dump(dest: Path) -> None:
         dest.write_bytes(b"PGDUMPFAKE" + b"\x00" * 64)
 
-    monkeypatch.setattr("app.backup.UPLOAD_DIR", uploads)
+    monkeypatch.setattr("app.backup.documents_dir", lambda: uploads)
     monkeypatch.setattr("app.backup.DATA_DIR", data_dir)
     monkeypatch.setattr("app.backup.dump_database", fake_dump)
 
@@ -71,7 +71,7 @@ def test_restore_uploads_replaces(tmp_path, monkeypatch):
     nested.mkdir()
     (nested / "new.bin").write_bytes(b"new")
     (extracted / ".keep").write_bytes(b"")
-    monkeypatch.setattr("app.backup.UPLOAD_DIR", live)
+    monkeypatch.setattr("app.backup.documents_dir", lambda: live)
     restore_uploads(extracted)
     assert not (live / "old.bin").exists()
     assert (live / "cost-estimates" / "new.bin").read_bytes() == b"new"

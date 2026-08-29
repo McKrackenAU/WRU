@@ -113,6 +113,22 @@ class ProgramCategory(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class StorageLocation(Base):
+    """Admin-configurable roots for uploaded files (documents, KML, backups)."""
+
+    __tablename__ = "storage_locations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class AppSettings(Base):
     """Singleton (id=1) tracker SLA / rule settings — admin configurable."""
 

@@ -23,6 +23,7 @@ from ..models import DocumentCategoryDef, LookupItem
 from ..schemas import AppSettingsOut, AppSettingsUpdate, LookupIn, LookupOut
 from ..settings_store import ensure_settings, get_rules, update_settings
 from ..stage_registry import ensure_lookup_seed
+from ..storage_paths import describe_locations, upsert_location
 
 router = APIRouter(
     prefix="/api/admin",
@@ -257,6 +258,25 @@ def update_doc_category(
     db.refresh(row)
     notify_from_request(request, reason="doc-categories")
     return _doc_cat_out(row, db)
+
+
+class StorageLocationIn(BaseModel):
+    path: str = ""
+
+
+@router.get("/storage")
+def get_storage_locations(db: Session = Depends(get_db)):
+    return describe_locations(db)
+
+
+@router.put("/storage/{kind}")
+def put_storage_location(kind: str, payload: StorageLocationIn, db: Session = Depends(get_db)):
+    try:
+        return upsert_location(db, kind, payload.path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/doc-categories/{category_id}", status_code=204)

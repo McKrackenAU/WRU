@@ -435,6 +435,11 @@ def admin_users_page(_: User = Depends(require_admin)):
     return _page("users.html")
 
 
+@app.get("/admin/storage")
+def admin_storage_page(_: User = Depends(require_admin)):
+    return _page("storage.html")
+
+
 # Legacy bookmarks → admin
 @app.get("/stages")
 def stages_redirect():

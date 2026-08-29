@@ -8,12 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.database import UPLOAD_DIR
 from app.routers.sites import (
     _site_file_paths,
     purge_archived_sites,
     require_archived_for_purge,
 )
+from app.storage_paths import cost_estimates_dir, documents_dir
 
 
 def test_purge_rejects_missing_site():
@@ -45,8 +45,8 @@ def test_site_file_paths_collects_documents_and_estimate_attachments():
         ],
     )
     paths = _site_file_paths(site)
-    assert paths[0] == UPLOAD_DIR / "12_abc.pdf"
-    assert paths[1] == UPLOAD_DIR / "cost-estimates" / "quote.pdf"
+    assert paths[0] == documents_dir() / "12_abc.pdf"
+    assert paths[1] == cost_estimates_dir() / "quote.pdf"
 
 
 def test_purge_archived_sites_deletes_and_unlinks(tmp_path, monkeypatch):
@@ -60,7 +60,8 @@ def test_purge_archived_sites_deletes_and_unlinks(tmp_path, monkeypatch):
     leftover = upload / "keep.pdf"
     leftover.write_text("keep")
 
-    monkeypatch.setattr("app.routers.sites.UPLOAD_DIR", upload)
+    monkeypatch.setattr("app.routers.sites.documents_dir", lambda: upload)
+    monkeypatch.setattr("app.routers.sites.cost_estimates_dir", lambda: estimates)
 
     site = SimpleNamespace(
         id=9,
@@ -81,7 +82,8 @@ def test_purge_archived_sites_deletes_and_unlinks(tmp_path, monkeypatch):
 
 
 def test_purge_archived_sites_rolls_back_on_active(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.routers.sites.UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr("app.routers.sites.documents_dir", lambda: tmp_path)
+    monkeypatch.setattr("app.routers.sites.cost_estimates_dir", lambda: tmp_path / "cost-estimates")
     active = SimpleNamespace(id=1, archived=False, documents=[], cost_estimates=[])
     db = MagicMock()
     with pytest.raises(HTTPException) as exc:

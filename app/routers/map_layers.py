@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import require_admin
-from ..database import UPLOAD_DIR, get_db
+from ..database import get_db
+from ..storage_paths import kml_dir
 from ..financial_year import australian_financial_year
 from ..kml_parse import parse_kml_features
 from ..map_config import get_nearmap_api_key, map_config_public, set_nearmap_api_key
@@ -18,9 +19,11 @@ from ..schemas import MapFeatureLink, MapFeatureOut, MapLayerOut
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 
-KML_DIR = UPLOAD_DIR / "kml"
-KML_DIR.mkdir(parents=True, exist_ok=True)
 MAX_KML_BYTES = 50 * 1024 * 1024
+
+
+def _kml_dir() -> Path:
+    return kml_dir()
 
 
 class NearmapKeyIn(BaseModel):
@@ -137,7 +140,7 @@ async def upload_kml(
 
     fy = (financial_year or "").strip() or australian_financial_year()
     stored = f"kml_{uuid.uuid4().hex}_{original}"
-    dest = KML_DIR / stored
+    dest = _kml_dir() / stored
     async with aiofiles.open(dest, "wb") as out:
         await out.write(content)
 
@@ -272,7 +275,7 @@ def delete_layer(layer_id: int, db: Session = Depends(get_db)):
     layer = db.get(MapLayer, layer_id)
     if not layer:
         raise HTTPException(status_code=404, detail="Layer not found")
-    path = KML_DIR / layer.stored_name
+    path = _kml_dir() / layer.stored_name
     path.unlink(missing_ok=True)
     db.delete(layer)
     db.commit()
