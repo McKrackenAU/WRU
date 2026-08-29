@@ -30,13 +30,13 @@ class UserCreateIn(BaseModel):
     username: str = Field(min_length=2, max_length=64)
     display_name: str = Field(default="", max_length=128)
     password: str | None = Field(default=None, min_length=8, max_length=256)
-    role: str = Field(default=USER_ROLE, pattern="^(admin|user)$")
+    role: str = Field(default=USER_ROLE, pattern="^(admin|user|comms)$")
     active: bool = True
 
 
 class UserUpdateIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=128)
-    role: str | None = Field(default=None, pattern="^(admin|user)$")
+    role: str | None = Field(default=None, pattern="^(admin|user|comms)$")
     active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=256)
 

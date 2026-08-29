@@ -15,10 +15,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import (
+    ADMIN_ROLE,
+    COMMS_ROLE,
     is_admin_path,
+    is_comms_path,
     is_password_change_allowed_path,
     is_public_path,
     require_admin,
+    require_comms,
     secret_key,
 )
 from .database import get_db
@@ -33,6 +37,7 @@ from .routers import (
     auth as auth_router,
     backup,
     columns,
+    comms,
     costs,
     dashboard,
     documents,
@@ -79,6 +84,7 @@ app.include_router(sites.router)
 app.include_router(columns.router)
 app.include_router(tracking.router)
 app.include_router(documents.router)
+app.include_router(comms.router)
 app.include_router(dashboard.router)
 app.include_router(export.router)
 app.include_router(map_layers.router)
@@ -145,6 +151,11 @@ class AuthGateMiddleware(BaseHTTPMiddleware):
         if is_admin_path(path, method) and request.session.get("role") != "admin":
             if path.startswith("/api/"):
                 return JSONResponse({"detail": "Admin access required"}, status_code=403)
+            return RedirectResponse("/", status_code=302)
+
+        if is_comms_path(path) and request.session.get("role") not in {ADMIN_ROLE, COMMS_ROLE}:
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Comms access required"}, status_code=403)
             return RedirectResponse("/", status_code=302)
 
         if request.session.get("must_change_password") and not is_password_change_allowed_path(path):
@@ -356,6 +367,11 @@ def map_page():
 @app.get("/documents")
 def documents_page():
     return _page("documents.html")
+
+
+@app.get("/comms")
+def comms_page(_: User = Depends(require_comms)):
+    return _page("comms.html")
 
 
 @app.get("/costs")

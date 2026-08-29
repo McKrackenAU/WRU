@@ -4375,3 +4375,105 @@ html.dark .gantt-bar {
   opacity: 0.92;
   cursor: default;
 }
+
+.comms-toolbar-card {
+  margin-bottom: 0.75rem;
+}
+
+.comms-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.comms-toolbar input[type="search"] {
+  min-width: min(22rem, 100%);
+  flex: 1;
+}
+
+.comms-table-card {
+  max-height: calc(100vh - 16rem);
+}
+
+.comms-scroll {
+  overflow: auto;
+  max-height: calc(100vh - 16rem);
+}
+
+.comms-table {
+  min-width: 70rem;
+}
+
+.comms-table th,
+.comms-table td {
+  vertical-align: top;
+}
+
+.comms-table .comms-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel);
+  min-width: 10rem;
+  box-shadow: 1px 0 0 var(--ventia-border);
+}
+
+.comms-table thead .comms-sticky {
+  z-index: 2;
+}
+
+.comms-cell input,
+.comms-cell select {
+  width: 100%;
+  min-width: 7rem;
+  font: inherit;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  padding: 0.25rem 0.35rem;
+  border-radius: 0.35rem;
+}
+
+.comms-cell input:focus,
+.comms-cell select:focus {
+  border-color: var(--ventia-green);
+  background: var(--field-bg);
+  outline: none;
+}
+
+.comms-job-link {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 650;
+}
+
+.comms-job-results {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.5rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.comms-job-results li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+}
+
+.comms-job-results li button:hover {
+  background: color-mix(in srgb, var(--ventia-green) 12%, transparent);
+}
+
+.comms-docs-dialog {
+  width: min(44rem, 96vw);
+}

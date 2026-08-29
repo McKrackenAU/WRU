@@ -23,7 +23,7 @@ class DocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    site_id: int
+    site_id: int | None = None
     moa_number: str | None = None
     category: str
     description: str | None = None
@@ -34,11 +34,15 @@ class DocumentOut(BaseModel):
     uploaded_at: datetime
     road_name: str | None = None
     site_number: str | None = None
+    visibility: str = "users"
+    source: str = "site"
+    comms_row_id: int | None = None
 
 
 class DocumentUpdate(BaseModel):
     category: str | None = None
     description: str | None = None
+    visibility: str | None = None
 
 
 class TrackingEventOut(BaseModel):

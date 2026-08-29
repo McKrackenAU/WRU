@@ -5,6 +5,7 @@ from app.auth import (
     ROOT_USERNAME,
     hash_password,
     is_admin_path,
+    is_comms_path,
     is_hidden_username,
     is_password_change_allowed_path,
     is_public_path,
@@ -65,6 +66,11 @@ def test_admin_paths():
     assert is_admin_path("/api/costs/rates", "POST")
     assert not is_admin_path("/api/costs/rates", "GET")
     assert not is_admin_path("/api/sites")
+    assert not is_admin_path("/comms")
+    assert not is_admin_path("/api/comms/sheets")
+    assert is_comms_path("/comms")
+    assert is_comms_path("/api/comms/rows/1")
+    assert not is_comms_path("/documents")
 
 
 def test_hidden_root_username():

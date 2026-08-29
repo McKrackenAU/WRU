@@ -48,6 +48,17 @@ export function isAdminUser() {
   }
 }
 
+export function isCommsUser() {
+  const role = _sessionUser?.role || (function () {
+    try {
+      return localStorage.getItem("wru_role") || "";
+    } catch {
+      return "";
+    }
+  })();
+  return role === "comms" || role === "admin";
+}
+
 /** True when a response body is a proxy/login HTML page rather than an API payload. */
 export function looksLikeHtmlOrProxyPage(text) {
   return /<!DOCTYPE|<html[\s>]|<head[\s>]|<!--#|\bzscaler\b/i.test(String(text || ""));
@@ -450,6 +461,7 @@ export const OPS_NAV = [
   { href: "/spend", label: "Actual spend", hint: "Traffic & pavements" },
   { href: "/gantt", label: "Gantt", hint: "Works sequence" },
   { href: "/documents", label: "Documents", hint: "Files" },
+  { href: "/comms", label: "Comms", hint: "Stakeholder planner", commsOnly: true },
   { href: "/map", label: "Map", hint: "Site markups" },
   { href: "/archive", label: "Archive", hint: "Completed jobs" },
 ];
@@ -1030,7 +1042,10 @@ export async function injectChrome({ active, mode } = {}) {
   document.body.classList.toggle("must-change-password", Boolean(currentUser()?.must_change_password));
   ensureShellStructure();
 
-  const links = isAdmin ? ADMIN_NAV : OPS_NAV;
+  const canComms = isCommsUser();
+  const links = isAdmin
+    ? ADMIN_NAV
+    : OPS_NAV.filter((l) => !l.commsOnly || canComms);
   const sidebar = document.querySelector("[data-app-sidebar]");
   if (sidebar) {
     sidebar.innerHTML = `

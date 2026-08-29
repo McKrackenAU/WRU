@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Comms · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main comms-main">
+      <div class="page-head">
+        <div>
+          <h1>Stakeholder communications</h1>
+          <p id="commsStatus">FMRP and Maintenance planners — edit columns, link jobs, and publish notices to the site register.</p>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="btn" id="btnRenameSheet">Rename tab</button>
+          <button type="button" class="btn" id="btnAddSheet">Add tab</button>
+          <button type="button" class="btn btn-danger" id="btnDeleteSheet">Remove tab</button>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist" id="sheetTabs"></div>
+
+      <section class="panel-card comms-toolbar-card">
+        <div class="comms-toolbar">
+          <input id="commsSearch" type="search" placeholder="Search this planner…" />
+          <button type="button" class="btn" id="btnColumns">Columns</button>
+          <button type="button" class="btn btn-primary" id="btnAddRow">Add row</button>
+          <span class="hint" id="commsCount"></span>
+        </div>
+      </section>
+
+      <div class="table-card comms-table-card">
+        <div class="table-scroll comms-scroll" id="commsTableWrap">
+          <p class="hint">Loading…</p>
+        </div>
+      </div>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+
+  <dialog id="columnsDialog" class="panel">
+    <form id="columnsForm" onsubmit="return false;">
+      <header class="panel-head">
+        <h2>Planner columns</h2>
+        <button type="button" class="icon-btn" data-close-dialog="columnsDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">Add, rename, or remove columns on this tab only. Job link and documents stay as system columns.</p>
+        <ul id="columnList" class="column-list"></ul>
+        <div class="add-column form-grid">
+          <label>Name<input id="colName" maxlength="128" /></label>
+          <label>Type
+            <select id="colType">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="date">Date</option>
+              <option value="checkbox">Checkbox</option>
+              <option value="select">Select</option>
+            </select>
+          </label>
+          <label class="full" id="colOptionsWrap" hidden>Options (comma-separated)
+            <input id="colOptions" placeholder="Yes, No, Reassess" />
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-primary" id="btnAddColumn">Add column</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-dialog="columnsDialog">Close</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="docsDialog" class="panel comms-docs-dialog">
+    <form onsubmit="return false;">
+      <header class="panel-head">
+        <h2 id="docsDialogTitle">Documents</h2>
+        <button type="button" class="icon-btn" data-close-dialog="docsDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">Link a job so notices set to <strong>Visible to users</strong> appear on that job’s Documents tab. Comms-only files stay in this planner.</p>
+        <div class="form-grid">
+          <label class="full">Linked job
+            <input id="jobSearch" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
+          </label>
+        </div>
+        <ul class="comms-job-results" id="jobResults" hidden></ul>
+        <p class="hint" id="jobLinked"></p>
+        <div class="form-grid" style="margin-top:1rem">
+          <label class="full">File
+            <input id="commsDocFile" type="file" multiple />
+          </label>
+          <label>Visibility
+            <select id="commsDocVis">
+              <option value="comms">Comms only</option>
+              <option value="users">Visible to users (job docs)</option>
+            </select>
+          </label>
+          <label>Description
+            <input id="commsDocDesc" maxlength="255" placeholder="Works notification, letter drop…" />
+          </label>
+        </div>
+        <div class="toolbar" style="margin-top:0.75rem">
+          <button type="button" class="btn btn-primary" id="btnUploadCommsDoc">Upload</button>
+          <span class="hint" id="commsDocStatus"></span>
+        </div>
+        <ul class="event-list" id="commsDocList"></ul>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn" data-close-dialog="docsDialog">Close</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script type="module" src="/static/js/comms.js"></script>
+</body>
+</html>

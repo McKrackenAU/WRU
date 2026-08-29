@@ -1,0 +1,110 @@
+"""Comms role, planner UI, and document visibility."""
+
+from pathlib import Path
+
+from app.auth import (
+    ADMIN_ROLE,
+    COMMS_ROLE,
+    USER_ROLE,
+    VALID_ROLES,
+    can_manage_comms,
+    is_comms_path,
+)
+from app.routers.documents import document_is_visible
+
+ROOT = Path(__file__).resolve().parent.parent
+COMMON = (ROOT / "app/static/js/common.js").read_text(encoding="utf-8")
+USERS_JS = (ROOT / "app/static/js/users.js").read_text(encoding="utf-8")
+USERS_HTML = (ROOT / "app/static/users.html").read_text(encoding="utf-8")
+COMMS_HTML = (ROOT / "app/static/comms.html").read_text(encoding="utf-8")
+COMMS_JS = (ROOT / "app/static/js/comms.js").read_text(encoding="utf-8")
+COMMS_PY = (ROOT / "app/routers/comms.py").read_text(encoding="utf-8")
+AUTH_PY = (ROOT / "app/auth.py").read_text(encoding="utf-8")
+MAIN = (ROOT / "app/main.py").read_text(encoding="utf-8")
+SEED = ROOT / "app/comms_seed_data.json"
+
+
+class _User:
+    def __init__(self, role):
+        self.role = role
+
+
+class _Doc:
+    def __init__(self, visibility):
+        self.visibility = visibility
+
+
+def test_comms_is_a_valid_role():
+    assert COMMS_ROLE == "comms"
+    assert COMMS_ROLE in VALID_ROLES
+    assert USER_ROLE in VALID_ROLES
+    assert ADMIN_ROLE in VALID_ROLES
+
+
+def test_comms_access_matches_user_plus_planner():
+    assert can_manage_comms(_User(COMMS_ROLE))
+    assert can_manage_comms(_User(ADMIN_ROLE))
+    assert not can_manage_comms(_User(USER_ROLE))
+    assert not can_manage_comms(None)
+
+
+def test_comms_paths():
+    assert is_comms_path("/comms")
+    assert is_comms_path("/api/comms/sheets")
+    assert not is_comms_path("/")
+    assert not is_comms_path("/api/sites")
+    assert not is_comms_path("/admin/users")
+
+
+def test_comms_nav_is_ops_only_for_comms_and_admin():
+    assert 'href: "/comms"' in COMMON
+    assert "commsOnly: true" in COMMON
+    assert "isCommsUser" in COMMON
+    assert "!l.commsOnly || canComms" in COMMON
+    assert "role === \"comms\"" in COMMON
+
+
+def test_admin_users_can_assign_comms_role():
+    assert 'value="comms"' in USERS_HTML
+    assert 'value="comms"' in USERS_JS
+    assert "admin|user|comms" in (ROOT / "app/routers/users.py").read_text(encoding="utf-8")
+
+
+def test_comms_page_has_two_seeded_planner_tabs():
+    assert 'id="sheetTabs"' in COMMS_HTML
+    assert 'id="btnColumns"' in COMMS_HTML
+    assert 'id="btnAddRow"' in COMMS_HTML
+    assert 'id="commsDocVis"' in COMMS_HTML
+    assert 'value="users"' in COMMS_HTML
+    assert 'value="comms"' in COMMS_HTML
+    assert "Link / files" in COMMS_JS
+    assert "/api/comms/sheets" in COMMS_JS
+    assert "/api/comms/sites" in COMMS_JS
+    assert "visibility" in COMMS_JS
+    assert SEED.is_file()
+    text = SEED.read_text(encoding="utf-8")
+    assert '"key": "fmrp_26_27"' in text
+    assert '"key": "maintenance_26_27"' in text
+    assert '"title": "FMRP 26-27"' in text
+    assert '"title": "Maintenance"' in text
+
+
+def test_comms_router_and_page_wired():
+    assert 'prefix="/api/comms"' in COMMS_PY
+    assert "require_comms" in COMMS_PY
+    assert "def create_column" in COMMS_PY
+    assert "def delete_column" in COMMS_PY
+    assert 'visibility=vis' in COMMS_PY
+    assert 'source="comms"' in COMMS_PY
+    assert 'def comms_page' in MAIN
+    assert "is_comms_path" in MAIN
+    assert "COMMS_ROLE" in AUTH_PY
+
+
+def test_comms_only_docs_hidden_from_normal_users():
+    hidden = _Doc("comms")
+    shown = _Doc("users")
+    assert document_is_visible(shown, _User(USER_ROLE))
+    assert not document_is_visible(hidden, _User(USER_ROLE))
+    assert document_is_visible(hidden, _User(COMMS_ROLE))
+    assert document_is_visible(hidden, _User(ADMIN_ROLE))

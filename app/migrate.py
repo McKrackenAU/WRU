@@ -14,6 +14,9 @@ from .models import (  # noqa: F401 — register metadata
     CostEstimate,
     CostEstimateAttachment,
     CostSettings,
+    CommsColumn,
+    CommsRow,
+    CommsSheet,
     CustomColumn,
     Document,
     DocumentCategoryDef,
@@ -142,8 +145,21 @@ def run_migrations() -> None:
     ensure_column("documents", "moa_number", "moa_number VARCHAR(64)")
     ensure_column("documents", "category", "category VARCHAR(64) NOT NULL DEFAULT 'other'")
     ensure_column("documents", "description", "description VARCHAR(255)")
+    ensure_column("documents", "visibility", "visibility VARCHAR(16) NOT NULL DEFAULT 'users'")
+    ensure_column("documents", "source", "source VARCHAR(16) NOT NULL DEFAULT 'site'")
+    ensure_column(
+        "documents",
+        "comms_row_id",
+        "comms_row_id INTEGER REFERENCES comms_rows(id) ON DELETE SET NULL",
+    )
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(64)"))
+    insp = inspect(engine)
+    if "documents" in insp.get_table_names():
+        site_col = next((c for c in insp.get_columns("documents") if c["name"] == "site_id"), None)
+        if site_col is not None and site_col.get("nullable") is False:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE documents ALTER COLUMN site_id DROP NOT NULL"))
 
     # cost estimate expansions (MoA history + attachments)
     ensure_column("cost_estimates", "site_id", "site_id INTEGER REFERENCES sites(id) ON DELETE CASCADE")
@@ -208,6 +224,7 @@ def run_migrations() -> None:
     from .stage_registry import ensure_lookup_seed, ensure_program_seed, ensure_stage_seed
 
     from .auth import ensure_admin_user, ensure_root_user
+    from .comms_seed import ensure_comms_seed
 
     db = SessionLocal()
     try:
@@ -218,6 +235,7 @@ def run_migrations() -> None:
         ensure_settings(db)
         ensure_admin_user(db)
         ensure_root_user(db)
+        ensure_comms_seed(db)
     finally:
         db.close()
 

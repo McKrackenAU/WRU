@@ -51,6 +51,7 @@ async function loadUsers() {
               <td>
                 <select data-role aria-label="Role for ${escapeHtml(u.username)}">
                   <option value="user" ${u.role === "user" ? "selected" : ""}>User</option>
+                  <option value="comms" ${u.role === "comms" ? "selected" : ""}>Comms</option>
                   <option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option>
                 </select>
               </td>

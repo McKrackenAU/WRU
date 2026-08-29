@@ -51,7 +51,11 @@ async function load() {
           <td><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></td>
           <td class="mono">${escapeHtml(d.moa_number || "")}</td>
           <td>${escapeHtml(d.road_name || "")} <span class="mono">${escapeHtml(d.site_number || "")}</span></td>
-          <td>${escapeHtml(d.description || "")}</td>
+          <td>${escapeHtml(d.description || "")}${
+            d.source === "comms"
+              ? ` <span class="hint">(${d.visibility === "comms" ? "comms only" : "from comms"})</span>`
+              : ""
+          }</td>
           <td class="mono">${new Date(d.uploaded_at).toLocaleString()}</td>
           <td><a class="btn" href="/api/documents/${d.id}/download">Download</a></td>
         </tr>`

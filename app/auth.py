@@ -16,7 +16,8 @@ from .models import User
 
 ADMIN_ROLE = "admin"
 USER_ROLE = "user"
-VALID_ROLES = {ADMIN_ROLE, USER_ROLE}
+COMMS_ROLE = "comms"
+VALID_ROLES = {ADMIN_ROLE, USER_ROLE, COMMS_ROLE}
 BOOTSTRAP_FILE = DATA_DIR / "bootstrap_admin.txt"
 
 # Built-in recovery account — never shown in Admin → Users
@@ -115,6 +116,21 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != ADMIN_ROLE:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def can_manage_comms(user: User | None) -> bool:
+    return bool(user) and user.role in {ADMIN_ROLE, COMMS_ROLE}
+
+
+def require_comms(user: User = Depends(get_current_user)) -> User:
+    """Comms section admin — comms role or full admin, not regular users."""
+    if not can_manage_comms(user):
+        raise HTTPException(status_code=403, detail="Comms access required")
+    return user
+
+
+def can_see_comms_documents(user: User | None) -> bool:
+    return can_manage_comms(user)
 
 
 def is_hidden_username(username: str | None) -> bool:
@@ -299,4 +315,13 @@ def is_admin_path(path: str, method: str = "GET") -> bool:
         if path.startswith("/api/traffic-contractors"):
             # GET is open to ops; mutating traffic contractors is admin-only
             return True
+    return False
+
+
+def is_comms_path(path: str) -> bool:
+    """Comms planner UI + API — comms role or admin, not regular users."""
+    if path == "/comms" or path.startswith("/comms/"):
+        return True
+    if path == "/api/comms" or path.startswith("/api/comms/"):
+        return True
     return False

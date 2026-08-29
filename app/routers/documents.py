@@ -18,10 +18,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
+from ..auth import can_see_comms_documents, get_current_user
 from ..backup import unique_zip_path
 from ..database import DATA_DIR, UPLOAD_DIR, get_db
 from ..doc_categories import FALLBACK_KEY, active_category_keys, category_label_map, ensure_doc_category_seed
-from ..models import Document, Site
+from ..models import Document, Site, User
 from ..routers.import_tracker import (
     CHUNK_SIZE,
     TrackerChunkBody,
@@ -119,7 +120,7 @@ def _write_meta(folder: Path, meta: dict) -> None:
 
 def store_document_bytes(
     db: Session,
-    site: Site,
+    site: Site | None,
     *,
     content: bytes,
     filename: str,
@@ -128,21 +129,34 @@ def store_document_bytes(
     description: str | None,
     uploaded_by: str | None,
     moa_number: str | None,
+    visibility: str = "users",
+    source: str = "site",
+    comms_row_id: int | None = None,
+    allow_missing_site: bool = False,
 ) -> Document:
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
+    if site is None and not allow_missing_site:
+        raise HTTPException(status_code=400, detail="Site is required")
+    vis = (visibility or "users").strip().lower()
+    if vis not in {"users", "comms"}:
+        raise HTTPException(status_code=400, detail="Visibility must be users or comms")
+    src = (source or "site").strip().lower()
+    if src not in {"site", "comms"}:
+        src = "site"
     original = Path(filename or "upload.bin").name
     category = normalize_doc_category(category, original, db=db)
     suffix = Path(original).suffix[:32]
-    stored_name = f"{site.id}_{uuid.uuid4().hex}{suffix}"
+    prefix = site.id if site is not None else f"comms{comms_row_id or 0}"
+    stored_name = f"{prefix}_{uuid.uuid4().hex}{suffix}"
     dest = UPLOAD_DIR / stored_name
     dest.write_bytes(content)
     guessed, _ = mimetypes.guess_type(original)
     doc = Document(
-        site_id=site.id,
-        moa_number=(moa_number or site.moa_number or "").strip() or None,
+        site_id=site.id if site is not None else None,
+        moa_number=(moa_number or (site.moa_number if site else None) or "").strip() or None,
         category=category,
         description=(description or "").strip() or None,
         stored_name=stored_name,
@@ -150,11 +164,26 @@ def store_document_bytes(
         content_type=content_type or guessed or "application/octet-stream",
         size_bytes=len(content),
         uploaded_by=uploaded_by,
+        visibility=vis,
+        source=src,
+        comms_row_id=comms_row_id,
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
     return doc
+
+
+def document_is_visible(doc: Document, user: User | None) -> bool:
+    if (doc.visibility or "users") != "comms":
+        return True
+    return can_see_comms_documents(user)
+
+
+def apply_document_visibility(query, user: User | None):
+    if can_see_comms_documents(user):
+        return query
+    return query.filter((Document.visibility == "users") | (Document.visibility.is_(None)))
 
 
 def _doc_out(doc: Document, site: Site | None = None) -> dict:
@@ -172,6 +201,9 @@ def _doc_out(doc: Document, site: Site | None = None) -> dict:
         "uploaded_at": doc.uploaded_at,
         "road_name": site.road_name if site else None,
         "site_number": site.site_number if site else None,
+        "visibility": doc.visibility or "users",
+        "source": doc.source or "site",
+        "comms_row_id": doc.comms_row_id,
     }
 
 
@@ -182,8 +214,10 @@ def list_all_documents(
     site_id: int | None = Query(default=None),
     q: str | None = Query(default=None),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    query = db.query(Document).join(Site)
+    query = db.query(Document).outerjoin(Site)
+    query = apply_document_visibility(query, user)
     if moa_number:
         query = query.filter(
             (Document.moa_number == moa_number.strip())
@@ -206,16 +240,17 @@ def list_all_documents(
 
 
 @router.get("/api/sites/{site_id}/documents", response_model=list[DocumentOut])
-def list_documents(site_id: int, db: Session = Depends(get_db)):
+def list_documents(
+    site_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     site = db.get(Site, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
-    docs = (
-        db.query(Document)
-        .filter(Document.site_id == site_id)
-        .order_by(Document.uploaded_at.desc(), Document.id.desc())
-        .all()
-    )
+    query = db.query(Document).filter(Document.site_id == site_id)
+    query = apply_document_visibility(query, user)
+    docs = query.order_by(Document.uploaded_at.desc(), Document.id.desc()).all()
     return [_doc_out(d, site) for d in docs]
 
 
@@ -386,14 +421,15 @@ def wrap_chunk_payload(data: bytes, wrap_key_b64: str) -> str:
     return base64.b64encode(xor_repeat(data, key)).decode("ascii")
 
 
-def _docs_for_zip(ids: list[int], db: Session) -> list[Document]:
+def _docs_for_zip(ids: list[int], db: Session, user: User | None = None) -> list[Document]:
     docs = (
         db.query(Document)
-        .join(Site)
+        .outerjoin(Site)
         .filter(Document.id.in_(ids))
         .order_by(Site.road_name.asc(), Site.site_number.asc(), Document.id.asc())
         .all()
     )
+    docs = [d for d in docs if document_is_visible(d, user)]
     if not docs:
         raise HTTPException(status_code=404, detail="No matching documents")
     return docs
@@ -418,10 +454,13 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
                     )
                 total_bytes += size
                 site = doc.site
-                folder = _zip_safe_part(
-                    f"{site.road_name or 'Site'} {site.site_number or ''}".strip(),
-                    "site",
-                )
+                if site:
+                    folder = _zip_safe_part(
+                        f"{site.road_name or 'Site'} {site.site_number or ''}".strip(),
+                        "site",
+                    )
+                else:
+                    folder = "comms"
                 cat = _zip_safe_part(labels.get(doc.category) or doc.category or "Other", "other")
                 name = _zip_safe_part(doc.original_filename or path.name, path.name)
                 arc = unique_zip_path(used, f"{folder}/{cat}/{name}")
@@ -472,8 +511,12 @@ def _download_session_dir(session_id: str) -> Path:
 
 
 @router.post("/api/documents/zip")
-def download_documents_zip(payload: DocumentZipIn, db: Session = Depends(get_db)):
-    docs = _docs_for_zip(payload.ids, db)
+def download_documents_zip(
+    payload: DocumentZipIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    docs = _docs_for_zip(payload.ids, db, user)
     tmp = tempfile.NamedTemporaryFile(prefix="wru-docs-", suffix=".zip", delete=False)
     tmp.close()
     dest = Path(tmp.name)
@@ -489,8 +532,12 @@ def download_documents_zip(payload: DocumentZipIn, db: Session = Depends(get_db)
 
 
 @router.post("/api/documents/zip/session")
-def begin_documents_zip_session(payload: DocumentZipIn, db: Session = Depends(get_db)):
-    docs = _docs_for_zip(payload.ids, db)
+def begin_documents_zip_session(
+    payload: DocumentZipIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    docs = _docs_for_zip(payload.ids, db, user)
     tmp = tempfile.NamedTemporaryFile(prefix="wru-docs-", suffix=".zip", delete=False)
     tmp.close()
     dest = Path(tmp.name)
@@ -503,9 +550,13 @@ def begin_documents_zip_session(payload: DocumentZipIn, db: Session = Depends(ge
 
 
 @router.post("/api/documents/{document_id}/download/session")
-def begin_document_download_session(document_id: int, db: Session = Depends(get_db)):
+def begin_document_download_session(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     doc = db.get(Document, document_id)
-    if not doc:
+    if not doc or not document_is_visible(doc, user):
         raise HTTPException(status_code=404, detail="Document not found")
     path = UPLOAD_DIR / doc.stored_name
     if not path.is_file():
@@ -546,23 +597,39 @@ def get_download_chunk(session_id: str, index: int):
 
 
 @router.patch("/api/documents/{document_id}", response_model=DocumentOut)
-def update_document(document_id: int, payload: DocumentUpdate, db: Session = Depends(get_db)):
+def update_document(
+    document_id: int,
+    payload: DocumentUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     doc = db.get(Document, document_id)
-    if not doc:
+    if not doc or not document_is_visible(doc, user):
         raise HTTPException(status_code=404, detail="Document not found")
     if payload.category is not None:
         doc.category = normalize_doc_category(payload.category, doc.original_filename, db=db)
     if payload.description is not None:
         doc.description = payload.description.strip() or None
+    if payload.visibility is not None:
+        if not can_see_comms_documents(user):
+            raise HTTPException(status_code=403, detail="Comms access required")
+        vis = payload.visibility.strip().lower()
+        if vis not in {"users", "comms"}:
+            raise HTTPException(status_code=400, detail="Visibility must be users or comms")
+        doc.visibility = vis
     db.commit()
     db.refresh(doc)
     return _doc_out(doc)
 
 
 @router.get("/api/documents/{document_id}/download")
-def download_document(document_id: int, db: Session = Depends(get_db)):
+def download_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     doc = db.get(Document, document_id)
-    if not doc:
+    if not doc or not document_is_visible(doc, user):
         raise HTTPException(status_code=404, detail="Document not found")
 
     path = UPLOAD_DIR / doc.stored_name
@@ -577,9 +644,13 @@ def download_document(document_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/api/documents/{document_id}", status_code=204)
-def delete_document(document_id: int, db: Session = Depends(get_db)):
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     doc = db.get(Document, document_id)
-    if not doc:
+    if not doc or not document_is_visible(doc, user):
         raise HTTPException(status_code=404, detail="Document not found")
 
     path = UPLOAD_DIR / doc.stored_name

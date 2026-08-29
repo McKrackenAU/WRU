@@ -1716,6 +1716,7 @@ async function refreshDocuments() {
           <span class="doc-meta">
             ${docCategorySelectHtml(d.id, d.category, { disabled: !canDelete })}
             · ${(d.size_bytes / 1024).toFixed(1)} KB
+            ${d.source === "comms" ? ` · <span class="hint">${d.visibility === "comms" ? "Comms only" : "From comms"}</span>` : ""}
           </span>
           ${canDelete ? `<button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>` : ""}
         </div>

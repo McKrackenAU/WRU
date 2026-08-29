@@ -29,7 +29,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    # admin | user
+    # admin | user | comms
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -293,7 +293,9 @@ class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     moa_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(64), nullable=False, default="other", index=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -305,8 +307,16 @@ class Document(Base):
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # users = everyone on the linked job; comms = comms/admin only
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False, default="users", index=True)
+    # site = uploaded on a job; comms = uploaded from the comms planner
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="site")
+    comms_row_id: Mapped[int | None] = mapped_column(
+        ForeignKey("comms_rows.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
-    site: Mapped[Site] = relationship(back_populates="documents")
+    site: Mapped[Site | None] = relationship(back_populates="documents")
+    comms_row: Mapped["CommsRow | None"] = relationship(back_populates="documents")
 
 
 class MapLayer(Base):
@@ -605,6 +615,75 @@ class ActualSpend(Base):
     site: Mapped[Site] = relationship(lazy="selectin")
     traffic_contractor: Mapped[TrafficContractor | None] = relationship(lazy="selectin")
     asphalt_subcontractor: Mapped[AsphaltSubcontractor | None] = relationship(lazy="selectin")
+
+
+class CommsSheet(Base):
+    """A comms planner workbook tab (FMRP, Maintenance, or user-created)."""
+
+    __tablename__ = "comms_sheets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    seeded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    columns: Mapped[list["CommsColumn"]] = relationship(
+        back_populates="sheet", cascade="all, delete-orphan", lazy="selectin"
+    )
+    rows: Mapped[list["CommsRow"]] = relationship(
+        back_populates="sheet", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class CommsColumn(Base):
+    __tablename__ = "comms_columns"
+    __table_args__ = (UniqueConstraint("sheet_id", "field_key", name="uq_comms_sheet_field"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sheet_id: Mapped[int] = mapped_column(ForeignKey("comms_sheets.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    field_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    field_type: Mapped[str] = mapped_column(String(32), nullable=False, default="text")
+    options: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    sheet: Mapped[CommsSheet] = relationship(back_populates="columns")
+
+
+class CommsRow(Base):
+    __tablename__ = "comms_rows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sheet_id: Mapped[int] = mapped_column(ForeignKey("comms_sheets.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    section: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    values: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    sheet: Mapped[CommsSheet] = relationship(back_populates="rows")
+    site: Mapped[Site | None] = relationship(lazy="selectin")
+    documents: Mapped[list[Document]] = relationship(back_populates="comms_row", lazy="selectin")
 
 
 class GanttBoard(Base):
