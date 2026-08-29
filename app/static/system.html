@@ -96,6 +96,12 @@
         <div class="version-strip" id="sysMeta">
           <p class="hint">Loading version…</p>
         </div>
+        <p class="hint">New versions start as Beta. Mark Stable once this install is proven.</p>
+        <div class="updater-cta">
+          <button type="button" class="btn btn-primary" id="btnMarkStable">Mark as Stable</button>
+          <button type="button" class="btn" id="btnMarkBeta" hidden>Mark as Beta</button>
+          <span class="hint" id="channelStatus" aria-live="polite"></span>
+        </div>
       </section>
 
       <section class="panel-card" aria-labelledby="histHeading">
@@ -106,6 +112,7 @@
             <thead>
               <tr>
                 <th scope="col">Version</th>
+                <th scope="col">Channel</th>
                 <th scope="col">Commit</th>
                 <th scope="col">Recorded</th>
                 <th scope="col"><span class="sr-only">Actions</span></th>

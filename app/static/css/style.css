@@ -3119,6 +3119,14 @@ html.dark .leaflet-control-scale-line {
   font-size: 1.15rem;
 }
 
+.version-chip.channel-beta .v {
+  color: var(--warn);
+}
+
+.version-chip.channel-stable .v {
+  color: var(--ok);
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

@@ -1,6 +1,14 @@
 """Tests for VERSION helpers."""
 
-from app.version import bump_rev, read_raw_version, version_string, version_tag
+from app.version import (
+    bump_rev,
+    channel_label,
+    normalize_channel,
+    read_raw_version,
+    read_repo_channel,
+    version_string,
+    version_tag,
+)
 
 
 def test_version_file_readable():
@@ -8,6 +16,15 @@ def test_version_file_readable():
     assert raw
     assert version_string() == raw
     assert version_tag() == f"v{raw.lstrip('vV')}"
+
+
+def test_repo_channel_defaults_to_beta():
+    assert read_repo_channel() in {"beta", "stable"}
+    assert normalize_channel(None) == "beta"
+    assert normalize_channel("STABLE") == "stable"
+    assert normalize_channel("nope") == "beta"
+    assert channel_label("stable") == "Stable"
+    assert channel_label("beta") == "Beta"
 
 
 def test_bump_rev():

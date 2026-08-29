@@ -136,10 +136,22 @@ if not commit and (app_dir / ".git").is_dir():
     except Exception:
         commit = None
 
+channel = (meta.get("channel") or "").strip().lower()
+if channel not in {"beta", "stable"}:
+    channel_file = app_dir / "CHANNEL"
+    if channel_file.is_file():
+        try:
+            channel = channel_file.read_text(encoding="utf-8").strip().splitlines()[0].strip().lower()
+        except Exception:
+            channel = "beta"
+    if channel not in {"beta", "stable"}:
+        channel = "beta"
+
 entry = {
     "version": ver,
     "tag": f"v{ver}",
     "commit": commit,
+    "channel": channel,
     "branch": meta.get("branch"),
     "repo": meta.get("repo"),
     "recorded_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
@@ -232,6 +244,14 @@ commit="unknown"
 if command -v git >/dev/null 2>&1 && [[ -d "$APP_DIR/.git" ]]; then
   commit="$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 fi
+channel="beta"
+if [[ -f "$APP_DIR/CHANNEL" ]]; then
+  channel="$(tr '[:upper:]' '[:lower:]' <"$APP_DIR/CHANNEL" | tr -d '[:space:]')"
+  case "$channel" in
+    beta|stable) ;;
+    *) channel="beta" ;;
+  esac
+fi
 app_ver="unknown"
 if [[ -f "$APP_DIR/VERSION" ]]; then
   app_ver="$(tr -d '[:space:]' <"$APP_DIR/VERSION" | sed 's/^v//')"
@@ -251,6 +271,7 @@ fi
   echo "version_tag=v${app_ver}"
   echo "updated_at=$(date -Is)"
   echo "commit=${commit}"
+  echo "channel=${channel}"
 } >"$VERSION_FILE"
 chmod 644 "$VERSION_FILE"
 

@@ -109,21 +109,29 @@ function renderSteps(s) {
 
 function renderStatus(s) {
   const tag = s.version_tag || (s.app_version ? `v${String(s.app_version).replace(/^v/i, "")}` : "—");
+  const channel = s.channel_label || "Beta";
+  const channelKey = (s.channel || "beta").toLowerCase() === "stable" ? "stable" : "beta";
   const commit = s.commit || "—";
   const when = s.updated_at || "—";
 
   if ($("nowVersion")) $("nowVersion").textContent = tag;
   if ($("nowMeta")) {
-    $("nowMeta").textContent = when !== "—" ? when : "";
+    $("nowMeta").textContent = when !== "—" ? `${channel} · ${when}` : channel;
   }
 
   $("sysMeta").innerHTML = `
     <div class="version-chip accent"><span class="k">Version</span><span class="v">${escapeHtml(tag)}</span></div>
+    <div class="version-chip channel-${channelKey}"><span class="k">Channel</span><span class="v">${escapeHtml(channel)}</span></div>
     <div class="version-chip"><span class="k">Branch</span><span class="v">${escapeHtml(s.branch || "—")}</span></div>
     <div class="version-chip"><span class="k">Commit</span><span class="v">${escapeHtml(commit)}</span></div>
     <div class="version-chip"><span class="k">Updated</span><span class="v">${escapeHtml(when)}</span></div>
     <div class="version-chip" style="grid-column:1/-1"><span class="k">Repository</span><span class="v">${escapeHtml(s.repo || "—")}</span></div>
   `;
+
+  const markStable = $("btnMarkStable");
+  const markBeta = $("btnMarkBeta");
+  if (markStable) markStable.hidden = channelKey === "stable";
+  if (markBeta) markBeta.hidden = channelKey !== "stable";
 
   const btn = $("btnUpdate");
   if (btn) btn.disabled = !s.can_update;
@@ -144,9 +152,7 @@ function renderStatus(s) {
       s.detail || "All set. Hit the green button whenever you want the latest from GitHub.";
     setAlert(
       "ok",
-      `<strong>Ready when you are.</strong> Currently on ${escapeHtml(tag)}${
-        s.commit ? ` (${escapeHtml(s.commit)})` : ""
-      }. Database and uploads are kept.`
+      `<strong>Ready when you are.</strong> Currently on ${escapeHtml(tag)} (${escapeHtml(channel)}). Database and uploads are kept.`
     );
   }
 }
@@ -161,17 +167,19 @@ function renderHistory(payload) {
 
   const body = $("histBody");
   if (!history.length) {
-    body.innerHTML = `<tr><td class="empty" colspan="4">Nothing to roll back to yet — that’s normal on a fresh install.</td></tr>`;
+    body.innerHTML = `<tr><td class="empty" colspan="5">Nothing to roll back to yet — that’s normal on a fresh install.</td></tr>`;
     return;
   }
   body.innerHTML = history
     .map((h) => {
       const tag = escapeHtml(h.tag || `v${h.version}`);
+      const channel = escapeHtml(h.channel_label || "—");
       const commit = escapeHtml(h.commit || "—");
       const when = escapeHtml(h.recorded_at || "—");
       const disabled = can ? "" : "disabled";
       return `<tr>
         <td>${tag}</td>
+        <td>${channel}</td>
         <td><code>${commit}</code></td>
         <td>${when}</td>
         <td>
@@ -189,6 +197,24 @@ function renderHistory(payload) {
       runRollback(ver).catch((e) => { alertDialog(e.message); });
     });
   });
+}
+
+async function setChannel(channel) {
+  const status = $("channelStatus");
+  if (status) status.textContent = channel === "stable" ? "Marking Stable…" : "Marking Beta…";
+  try {
+    const next = await api("/api/system/channel", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+      timeoutMs: 15000,
+    });
+    renderStatus(next);
+    if (status) status.textContent = next.channel_label ? `Now ${next.channel_label}.` : "Saved.";
+  } catch (err) {
+    if (status) status.textContent = "";
+    throw err;
+  }
 }
 
 async function loadVersions() {
@@ -447,6 +473,8 @@ async function init() {
   });
   on("btnCheckUpdate", "click", () => checkForUpdate().catch((e) => { alertDialog(e.message); }));
   on("btnUpdate", "click", () => runUpdate().catch((e) => { alertDialog(e.message); }));
+  on("btnMarkStable", "click", () => setChannel("stable").catch((e) => { alertDialog(e.message); }));
+  on("btnMarkBeta", "click", () => setChannel("beta").catch((e) => { alertDialog(e.message); }));
   on("btnSaveNearmap", "click", () => saveNearmapKey(false).catch((e) => { alertDialog(e.message); }));
   on("btnClearNearmap", "click", async () => {
     if (!(await confirmDialog("Remove the saved Nearmap API key?"))) return;
@@ -458,7 +486,7 @@ async function init() {
     showPageError("sysMeta", err, "Could not load system status");
     if ($("nowVersion")) $("nowVersion").textContent = "—";
     if ($("nowMeta")) $("nowMeta").textContent = err.message;
-    $("histBody").innerHTML = `<tr><td class="empty" colspan="4">${escapeHtml(err.message)}</td></tr>`;
+    $("histBody").innerHTML = `<tr><td class="empty" colspan="5">${escapeHtml(err.message)}</td></tr>`;
     setAlert("bad", `<strong>Couldn’t load status.</strong> ${escapeHtml(err.message)}`);
   }
   try {

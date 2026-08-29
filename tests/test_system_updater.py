@@ -18,6 +18,9 @@ def test_system_page_hides_advanced_and_logs():
     assert 'id="updProgress"' in HTML
     assert 'id="updLog"' in HTML
     assert "Pull &amp; install update" in HTML
+    assert 'id="btnMarkStable"' in HTML
+    assert 'id="btnMarkBeta"' in HTML
+    assert "Mark as Stable" in HTML
 
 
 def test_system_js_progress_and_log_toggle():
@@ -27,6 +30,9 @@ def test_system_js_progress_and_log_toggle():
     assert "updBranch" not in JS
     assert "Need a first-time" not in JS
     assert "DEFAULT_BRANCH" in JS
+    assert "/api/system/channel" in JS
+    assert "channel_label" in JS
+    assert "Currently on" in JS
     assert 's.branch || "main"' not in JS
 
 
@@ -50,3 +56,5 @@ def test_updater_copy_avoids_shell_setup():
     assert "setStep(\"helper\", \"bad\")" in JS
     assert "helperMissing" in JS
     assert "left: calc(100% - var(--admin-switch-thumb)" in CSS
+    assert ".version-chip.channel-beta" in CSS
+    assert ".version-chip.channel-stable" in CSS

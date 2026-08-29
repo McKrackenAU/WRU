@@ -16,7 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import require_admin
-from ..version import version_string, version_tag
+from ..database import DATA_DIR
+from ..version import CHANNELS, channel_label, normalize_channel, read_repo_channel, version_string, version_tag
 
 router = APIRouter(
     prefix="/api/system",
@@ -42,6 +43,8 @@ class SystemStatusOut(BaseModel):
     branch: str
     repo: str
     commit: str | None = None
+    channel: str = "beta"
+    channel_label: str = "Beta"
     updated_at: str | None = None
     update_available_via: str
     can_update: bool
@@ -56,6 +59,8 @@ class VersionEntry(BaseModel):
     version: str
     tag: str
     commit: str | None = None
+    channel: str | None = None
+    channel_label: str | None = None
     branch: str | None = None
     repo: str | None = None
     recorded_at: str | None = None
@@ -79,6 +84,10 @@ class SystemUpdateOut(BaseModel):
     log_tail: str | None = None
     status: SystemStatusOut | None = None
     unit: str | None = None
+
+
+class ChannelUpdateRequest(BaseModel):
+    channel: str = Field(..., min_length=1, max_length=16)
 
 
 class RollbackRequest(BaseModel):
@@ -136,6 +145,55 @@ def _parse_version_file() -> dict[str, str]:
     except OSError:
         return {}
     return out
+
+
+def _channel_override_path() -> Path:
+    return DATA_DIR / "release_channel.json"
+
+
+def _display_commit(value: str | None) -> str | None:
+    raw = (value or "").strip()
+    if not raw or not _is_real_commit(raw):
+        return None
+    return raw
+
+
+def _read_channel_override(current_ver: str) -> str | None:
+    path = _channel_override_path()
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    stored_ver = _normalize_version(str(raw.get("version") or ""))
+    if stored_ver and stored_ver != _normalize_version(current_ver):
+        return None
+    return normalize_channel(str(raw.get("channel") or ""))
+
+
+def _write_channel_override(version: str, channel: str) -> None:
+    path = _channel_override_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {"version": _normalize_version(version), "channel": normalize_channel(channel)},
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _resolve_channel(meta: dict[str, str], app_ver: str) -> str:
+    override = _read_channel_override(app_ver)
+    if override:
+        return override
+    if meta.get("channel"):
+        return normalize_channel(meta.get("channel"))
+    return read_repo_channel()
 
 
 def _app_version_from_code() -> str:
@@ -197,11 +255,14 @@ def _read_history() -> list[VersionEntry]:
             if not ver:
                 continue
             tag = str(item.get("tag") or _normalize_tag(ver))
+            ch = normalize_channel(str(item.get("channel") or "")) if item.get("channel") else None
             out.append(
                 VersionEntry(
                     version=ver,
                     tag=tag,
-                    commit=item.get("commit"),
+                    commit=_display_commit(item.get("commit")),
+                    channel=ch,
+                    channel_label=channel_label(ch) if ch else None,
                     branch=item.get("branch"),
                     repo=item.get("repo"),
                     recorded_at=item.get("recorded_at"),
@@ -480,12 +541,15 @@ def build_status() -> SystemStatusOut:
     can, detail = _probe_can_update()
     app_ver = meta.get("app_version") or _app_version_from_code()
     app_ver = _normalize_version(app_ver) or app_ver
+    channel = _resolve_channel(meta, app_ver)
     return SystemStatusOut(
         app_version=app_ver,
         version_tag=_normalize_tag(app_ver) if app_ver and app_ver != "unknown" else version_tag(),
         branch=meta.get("branch") or DEFAULT_BRANCH,
         repo=meta.get("repo") or DEFAULT_REPO,
-        commit=meta.get("commit") or _local_git_commit(),
+        commit=_display_commit(meta.get("commit") or _local_git_commit()),
+        channel=channel,
+        channel_label=channel_label(channel),
         updated_at=meta.get("updated_at"),
         update_available_via="sudo /usr/local/sbin/wru-update" if can else "shell curl one-liner",
         can_update=can,
@@ -570,6 +634,17 @@ def _start_update_job(*, ref: str, repo: str) -> str:
 
 @router.get("", response_model=SystemStatusOut)
 def system_status():
+    return build_status()
+
+
+@router.put("/channel", response_model=SystemStatusOut)
+def system_set_channel(payload: ChannelUpdateRequest):
+    """Mark the current install as Beta or Stable. Applies to this version only."""
+    wanted = (payload.channel or "").strip().lower()
+    if wanted not in CHANNELS:
+        raise HTTPException(status_code=400, detail="Channel must be beta or stable")
+    status = build_status()
+    _write_channel_override(status.app_version, wanted)
     return build_status()
 
 

@@ -483,6 +483,14 @@ else
 fi
 
 COMMIT="$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+CHANNEL="beta"
+if [[ -f "$APP_DIR/CHANNEL" ]]; then
+  CHANNEL="$(tr '[:upper:]' '[:lower:]' <"$APP_DIR/CHANNEL" | tr -d '[:space:]')"
+  case "$CHANNEL" in
+    beta|stable) ;;
+    *) CHANNEL="beta" ;;
+  esac
+fi
 if [[ -f "$APP_DIR/VERSION" ]]; then
   APP_VER="$(tr -d '[:space:]' <"$APP_DIR/VERSION" | sed 's/^v//')"
 else
@@ -501,6 +509,7 @@ app_version=${APP_VER}
 version_tag=v${APP_VER}
 updated_at=$(date -Is)
 commit=${COMMIT}
+channel=${CHANNEL}
 EOF
 chmod 644 "/opt/${APP_SLUG}_version.txt"
 # Ensure history file exists (updater snapshots into it on subsequent upgrades)

@@ -2,6 +2,9 @@
 
 VERSION file at repo root is the source of truth (e.g. ``0.1``).
 Displayed and tagged as ``v0.1``. Each push bumps the rev (0.1 → 0.2 → …).
+
+CHANNEL file is ``beta`` or ``stable``. New versions start as Beta until
+someone marks the install Stable.
 """
 
 from __future__ import annotations
@@ -10,6 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_PATH = ROOT / "VERSION"
+CHANNEL_PATH = ROOT / "CHANNEL"
+CHANNELS = ("beta", "stable")
 
 
 def read_raw_version() -> str:
@@ -29,6 +34,23 @@ def version_tag() -> str:
     """Git tag / display form, e.g. ``v0.1``."""
     raw = version_string()
     return raw if raw.startswith("v") else f"v{raw}"
+
+
+def normalize_channel(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    return raw if raw in CHANNELS else "beta"
+
+
+def read_repo_channel() -> str:
+    try:
+        text = CHANNEL_PATH.read_text(encoding="utf-8").strip().splitlines()[0].strip()
+        return normalize_channel(text)
+    except (OSError, IndexError):
+        return "beta"
+
+
+def channel_label(value: str | None) -> str:
+    return "Stable" if normalize_channel(value) == "stable" else "Beta"
 
 
 def bump_rev(raw: str | None = None) -> str:
