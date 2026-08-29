@@ -21,6 +21,7 @@ from starlette.background import BackgroundTask
 from ..auth import can_see_comms_documents, get_current_user
 from ..backup import unique_zip_path
 from ..database import DATA_DIR, UPLOAD_DIR, get_db
+from ..file_store import materialize_original, read_stored_bytes, write_stored_bytes
 from ..doc_categories import FALLBACK_KEY, active_category_keys, category_label_map, ensure_doc_category_seed
 from ..models import Document, Site, User
 from ..routers.import_tracker import (
@@ -152,7 +153,7 @@ def store_document_bytes(
     prefix = site.id if site is not None else f"comms{comms_row_id or 0}"
     stored_name = f"{prefix}_{uuid.uuid4().hex}{suffix}"
     dest = UPLOAD_DIR / stored_name
-    dest.write_bytes(content)
+    write_stored_bytes(dest, content)
     guessed, _ = mimetypes.guess_type(original)
     doc = Document(
         site_id=site.id if site is not None else None,
@@ -445,7 +446,11 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
                 path = UPLOAD_DIR / doc.stored_name
                 if not path.is_file():
                     continue
-                size = path.stat().st_size
+                try:
+                    original = read_stored_bytes(path)
+                except OSError:
+                    continue
+                size = len(original)
                 if total_bytes + size > ZIP_MAX_BYTES:
                     dest.unlink(missing_ok=True)
                     raise HTTPException(
@@ -464,7 +469,7 @@ def _write_documents_zip(docs: list[Document], db: Session, dest: Path) -> None:
                 cat = _zip_safe_part(labels.get(doc.category) or doc.category or "Other", "other")
                 name = _zip_safe_part(doc.original_filename or path.name, path.name)
                 arc = unique_zip_path(used, f"{folder}/{cat}/{name}")
-                zf.write(path, arc)
+                zf.writestr(arc, original)
         if not used:
             dest.unlink(missing_ok=True)
             raise HTTPException(status_code=404, detail="Those files are missing on disk")
@@ -561,11 +566,16 @@ def begin_document_download_session(
     path = UPLOAD_DIR / doc.stored_name
     if not path.is_file():
         raise HTTPException(status_code=404, detail="File missing on disk")
-    return _new_download_session(
-        path,
-        doc.original_filename or path.name,
-        doc.content_type or "application/octet-stream",
-    )
+    unpacked, ephemeral = materialize_original(path)
+    try:
+        return _new_download_session(
+            unpacked,
+            doc.original_filename or path.name,
+            doc.content_type or "application/octet-stream",
+        )
+    finally:
+        if ephemeral:
+            unpacked.unlink(missing_ok=True)
 
 
 @router.get("/api/documents/download-session/{session_id}/chunk/{index}")
@@ -636,10 +646,12 @@ def download_document(
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
 
+    unpacked, ephemeral = materialize_original(path)
     return FileResponse(
-        path,
+        unpacked,
         media_type=doc.content_type or "application/octet-stream",
         filename=doc.original_filename,
+        background=BackgroundTask(unpacked.unlink, missing_ok=True) if ephemeral else None,
     )
 
 

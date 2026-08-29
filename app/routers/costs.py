@@ -4,9 +4,9 @@ import uuid
 from datetime import date
 from pathlib import Path
 
-import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -23,6 +23,7 @@ from ..cost_engine import (
 )
 from ..cost_export import build_cost_pdf, build_cost_workbook
 from ..database import UPLOAD_DIR, get_db
+from ..file_store import materialize_original, write_stored_bytes
 from ..models import CostEstimate, CostEstimateAttachment, CostSettings, LabourRate, ShiftExtraRate, Site, User
 from ..rate_import import build_traffic_template, import_traffic_rates
 
@@ -812,17 +813,16 @@ async def upload_estimate_attachment(
     dest = ESTIMATE_UPLOAD_DIR / stored_name
 
     size = 0
-    async with aiofiles.open(dest, "wb") as out:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
-                await out.close()
-                dest.unlink(missing_ok=True)
-                raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
-            await out.write(chunk)
+    chunks: list[bytes] = []
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="File exceeds 25 MB limit")
+        chunks.append(chunk)
+    write_stored_bytes(dest, b"".join(chunks))
 
     att = CostEstimateAttachment(
         estimate_id=estimate_id,
@@ -847,10 +847,12 @@ def download_estimate_attachment(attachment_id: int, db: Session = Depends(get_d
     path = ESTIMATE_UPLOAD_DIR / att.stored_name
     if not path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
+    unpacked, ephemeral = materialize_original(path)
     return FileResponse(
-        path,
+        unpacked,
         media_type=att.content_type or "application/octet-stream",
         filename=att.original_filename,
+        background=BackgroundTask(unpacked.unlink, missing_ok=True) if ephemeral else None,
     )
 
 
