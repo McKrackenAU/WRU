@@ -1160,10 +1160,11 @@ html.dark .bar-fill {
 .map-layout {
   display: grid;
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 1rem;
   align-items: stretch;
-  min-height: min(70vh, 720px);
-  height: min(70vh, 720px);
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .map-side {
@@ -1174,7 +1175,7 @@ html.dark .bar-fill {
 .map-frame {
   position: relative;
   min-width: 0;
-  min-height: 420px;
+  min-height: 0;
   height: 100%;
   border-radius: 0.85rem;
   border: 1px solid var(--ventia-border);
@@ -1186,7 +1187,7 @@ html.dark .bar-fill {
 .leaflet-container {
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 0;
   margin: 0;
   z-index: 1;
   background: #dfe6e2;
@@ -1215,8 +1216,61 @@ html.dark .leaflet-container {
   position: absolute;
 }
 
+html:has(body.map-page) {
+  height: 100%;
+  height: 100dvh;
+}
+
+body.map-page {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.map-page .shell,
+body.map-page .app-shell {
+  display: flex;
+  height: 100%;
+  height: 100dvh;
+  min-height: 0;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+body.map-page .shell {
+  display: grid;
+}
+
+body.map-page .shell-main,
+body.map-page .app-shell {
+  flex-direction: column;
+}
+
+body.map-page .shell-main {
+  display: flex;
+  min-height: 0;
+  height: auto;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+body.map-page .topbar,
+body.map-page .page-head,
+body.map-page .app-footer {
+  flex-shrink: 0;
+}
+
 body.map-page .main {
   max-width: none;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.map-page .app-footer {
+  margin-top: 0;
 }
 
 .doc-cat {
@@ -4016,13 +4070,17 @@ body.drawer-open {
   .compare-grid { grid-template-columns: 1fr; }
   .map-layout {
     grid-template-columns: 1fr;
-    height: auto;
+    grid-template-rows: auto minmax(16rem, 1fr);
     min-height: 0;
+  }
+  .map-side {
+    max-height: min(38vh, 20rem);
   }
   .map-frame,
   #mapCanvas,
   .leaflet-container {
-    height: min(60vh, 560px);
+    height: 100%;
+    min-height: 16rem;
   }
   .topbar { align-items: stretch; }
   .toolbar { width: 100%; }
