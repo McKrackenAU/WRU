@@ -718,11 +718,20 @@ async function init() {
     if (swatch && $("commsTableWrap")?.contains(swatch)) {
       ev.preventDefault();
       ev.stopPropagation();
-      const pop = swatch.parentElement.querySelector(".comms-color-pop");
+      const pop = swatch.closest("td")?.querySelector(".comms-color-pop");
       document.querySelectorAll(".comms-color-pop").forEach((el) => {
         if (el !== pop) el.hidden = true;
       });
-      if (pop) pop.hidden = !pop.hidden;
+      if (pop) {
+        const open = pop.hidden;
+        pop.hidden = !open;
+        if (open) {
+          const r = swatch.getBoundingClientRect();
+          pop.style.position = "fixed";
+          pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 230))}px`;
+          pop.style.top = `${Math.min(r.bottom + 8, window.innerHeight - 220)}px`;
+        }
+      }
       return;
     }
     const choice = ev.target.closest("[data-color][data-group]");
