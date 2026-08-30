@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user, require_comms
+from ..comms_export import build_comms_pdf, build_comms_xlsx, collect_export_tables
 from ..comms_links import normalize_resource_url
 from ..comms_seed import ensure_comms_resources, ensure_comms_seed
 from ..database import get_db
@@ -61,6 +64,7 @@ class ColumnCreate(BaseModel):
     field_type: str = "text"
     options: list[str] | None = None
     created_by: str | None = None
+    apply_all: bool = False
 
 
 class ColumnUpdate(BaseModel):
@@ -90,12 +94,22 @@ class ReorderIn(BaseModel):
 
 class ResourceSectionCreate(BaseModel):
     title: str = Field(min_length=1, max_length=128)
+    body: str | None = Field(default=None, max_length=8000)
     created_by: str | None = None
 
 
 class ResourceSectionUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=128)
+    body: str | None = Field(default=None, max_length=8000)
     position: int | None = None
+
+
+class CommsExportIn(BaseModel):
+    format: str = "xlsx"
+    sheet_ids: list[int] = Field(default_factory=list)
+    column_keys: list[str] = Field(default_factory=list)
+    row_ids: list[int] | None = None
+    include_job: bool = True
 
 
 class ResourceLinkCreate(BaseModel):
@@ -337,6 +351,7 @@ def _section_out(section: CommsResourceSection) -> dict:
     return {
         "id": section.id,
         "title": section.title,
+        "body": section.body or "",
         "position": section.position,
         "created_by": section.created_by,
         "created_at": section.created_at,
@@ -370,6 +385,7 @@ def create_resource_section(payload: ResourceSectionCreate, request: Request, db
     max_pos = db.query(func.max(CommsResourceSection.position)).scalar()
     section = CommsResourceSection(
         title=title[:128],
+        body=(payload.body or "").strip()[:8000] or None,
         position=(max_pos or 0) + 1,
         created_by=payload.created_by,
     )
@@ -390,6 +406,8 @@ def update_resource_section(
         if not title:
             raise HTTPException(status_code=400, detail="Heading is required")
         section.title = title[:128]
+    if payload.body is not None:
+        section.body = payload.body.strip()[:8000] or None
     if payload.position is not None:
         section.position = payload.position
     db.commit()
@@ -464,6 +482,42 @@ def delete_resource_link(link_id: int, request: Request, db: Session = Depends(g
     return None
 
 
+@router.post("/export")
+def export_comms(payload: CommsExportIn, db: Session = Depends(get_db)):
+    fmt = (payload.format or "xlsx").lower().strip()
+    if fmt not in {"xlsx", "pdf"}:
+        raise HTTPException(status_code=400, detail="Choose Excel or PDF")
+    query = db.query(CommsSheet)
+    if payload.sheet_ids:
+        query = query.filter(CommsSheet.id.in_(payload.sheet_ids))
+    sheets = query.order_by(CommsSheet.position.asc(), CommsSheet.id.asc()).all()
+    if not sheets:
+        raise HTTPException(status_code=400, detail="Select at least one planner tab")
+    packed = [_sheet_out(sheet, with_rows=True) for sheet in sheets]
+    tables = collect_export_tables(
+        packed,
+        column_keys=payload.column_keys or [],
+        row_ids=payload.row_ids,
+        include_job=payload.include_job,
+    )
+    title = "WRU comms planner" if len(sheets) > 1 else f"WRU comms — {sheets[0].title}"
+    if fmt == "pdf":
+        data = build_comms_pdf(tables, title=title)
+        media = "application/pdf"
+        ext = "pdf"
+    else:
+        data = build_comms_xlsx(tables, title=title)
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ext = "xlsx"
+    slug = "comms-planner" if len(sheets) > 1 else slugify_field_key(sheets[0].title)
+    filename = f"{slug}-{date.today().isoformat()}.{ext}"
+    return Response(
+        content=data,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/sheets/{sheet_id}/columns", status_code=201)
 def create_column(sheet_id: int, payload: ColumnCreate, request: Request, db: Session = Depends(get_db)):
     sheet = _sheet_or_404(db, sheet_id)
@@ -484,6 +538,31 @@ def create_column(sheet_id: int, payload: ColumnCreate, request: Request, db: Se
         created_by=payload.created_by,
     )
     db.add(col)
+    created = [col]
+    if payload.apply_all:
+        others = db.query(CommsSheet).filter(CommsSheet.id != sheet.id).all()
+        for other in others:
+            exists = (
+                db.query(CommsColumn)
+                .filter(CommsColumn.sheet_id == other.id, CommsColumn.field_key == col.field_key)
+                .first()
+            )
+            if exists:
+                continue
+            max_other = (
+                db.query(func.max(CommsColumn.position)).filter(CommsColumn.sheet_id == other.id).scalar()
+            )
+            extra = CommsColumn(
+                sheet_id=other.id,
+                name=name,
+                field_key=_unique_field_key(db, other.id, name),
+                field_type=ftype,
+                options=payload.options if ftype == "select" else None,
+                position=(max_other or 0) + 1,
+                created_by=payload.created_by,
+            )
+            db.add(extra)
+            created.append(extra)
     db.commit()
     db.refresh(col)
     notify_from_request(request, reason="comms_column")

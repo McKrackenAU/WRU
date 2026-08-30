@@ -43,6 +43,7 @@
           <div class="comms-toolbar">
             <input id="commsSearch" type="search" placeholder="Search this planner…" />
             <div class="comms-filters" id="commsFilters"></div>
+            <button type="button" class="btn" id="btnExport">Export</button>
             <button type="button" class="btn" id="btnColumns">Columns</button>
             <button type="button" class="btn btn-primary" id="btnAddRow">Add row</button>
             <span class="hint" id="commsCount"></span>
@@ -58,7 +59,7 @@
 
       <section class="comms-resources" id="commsResources" hidden>
         <div class="comms-resources-intro">
-          <input id="resourceSearch" type="search" placeholder="Search headings and links…" />
+          <input id="resourceSearch" type="search" placeholder="Search templates, notes, and links…" />
         </div>
         <div id="commsResourceList"></div>
       </section>
@@ -85,6 +86,42 @@
       </footer>
     </div>
   </aside>
+
+  <dialog id="exportDialog" class="panel">
+    <form id="exportForm" onsubmit="return false;">
+      <header class="panel-head">
+        <h2>Export comms</h2>
+        <button type="button" class="icon-btn" data-close-dialog="exportDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">Choose tabs, rows, and columns, then download Excel or PDF. The current list filters are used when you pick visible rows.</p>
+        <div class="form-grid">
+          <label class="full">Planner tabs
+            <div class="comms-export-checks" id="exportSheets"></div>
+          </label>
+          <label>Rows
+            <select id="exportRows">
+              <option value="visible">Visible rows (this tab’s filters)</option>
+              <option value="all">Every row on the selected tabs</option>
+            </select>
+          </label>
+          <label class="full">Columns
+            <div class="comms-export-tools">
+              <button type="button" class="btn btn-sm" data-export-cols="all">All</button>
+              <button type="button" class="btn btn-sm" data-export-cols="none">None</button>
+            </div>
+            <div class="comms-export-checks" id="exportColumns"></div>
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-primary" id="btnExportXlsx">Export Excel</button>
+        <button type="button" class="btn" id="btnExportPdf">Export PDF</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-dialog="exportDialog">Cancel</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog id="resourceLinkDialog" class="panel">
     <form id="resourceLinkForm" onsubmit="return false;">
@@ -137,6 +174,10 @@
           </label>
           <label class="full" id="colOptionsWrap" hidden>Options (comma-separated)
             <input id="colOptions" placeholder="Yes, No, Reassess" />
+          </label>
+          <label class="full check-row">
+            <input type="checkbox" id="colApplyAll" />
+            <span><strong>Add to every planner tab</strong><em>Use this for a field the comms team needs on FMRP, Maintenance, and any extra tabs.</em></span>
           </label>
         </div>
       </div>

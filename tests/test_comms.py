@@ -10,6 +10,7 @@ from app.auth import (
     can_manage_comms,
     is_comms_path,
 )
+from app.comms_export import build_comms_pdf, build_comms_xlsx, collect_export_tables
 from app.comms_links import normalize_resource_url
 from app.routers.documents import document_is_visible
 
@@ -88,10 +89,16 @@ def test_comms_page_has_two_seeded_planner_tabs():
     assert "filterableColumns" in COMMS_JS
     assert 'id="commsFilters"' in COMMS_HTML
     assert 'id="commsResources"' in COMMS_HTML
+    assert 'id="exportDialog"' in COMMS_HTML
+    assert 'id="btnExport"' in COMMS_HTML
     assert 'data-view="resources"' in COMMS_JS
+    assert "Templates" in COMMS_JS
     assert "/api/comms/resources" in COMMS_JS
+    assert "/api/comms/export" in COMMS_JS
+    assert "apply_all" in COMMS_JS
     assert 'def list_resources' in COMMS_PY
     assert 'def create_resource_section' in COMMS_PY
+    assert 'def export_comms' in COMMS_PY
     assert "filter-drop" in COMMS_JS
     assert "comms-swatch" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "/api/comms/sheets" in COMMS_JS
@@ -133,6 +140,34 @@ def test_resource_urls_only_allow_web_links():
         assert False
     except ValueError:
         pass
+
+
+def test_comms_export_collects_selected_columns():
+    tables = collect_export_tables(
+        [
+            {
+                "title": "FMRP",
+                "columns": [{"field_key": "workpack", "name": "Workpack"}],
+                "rows": [
+                    {
+                        "id": 1,
+                        "values": {"workpack": "27A", "location": "Kororoit Creek Rd"},
+                        "site": {"road_name": "BALLARAT RD", "site_number": "S51"},
+                        "document_count": 2,
+                    }
+                ],
+            }
+        ],
+        column_keys=["workpack", "_files"],
+        row_ids=None,
+        include_job=True,
+    )
+    assert tables[0]["headers"] == ["Job", "Workpack", "Files"]
+    assert tables[0]["rows"][0] == ["Kororoit Creek Rd", "27A", "2"]
+    xlsx = build_comms_xlsx(tables, title="WRU comms")
+    pdf = build_comms_pdf(tables, title="WRU comms")
+    assert xlsx[:2] == b"PK"
+    assert pdf.startswith(b"%PDF")
 
 
 def test_comms_only_docs_hidden_from_normal_users():

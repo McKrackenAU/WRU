@@ -290,7 +290,7 @@ function renderSheetTabs() {
     .join("");
   wrap.innerHTML = `${planner}<button type="button" data-view="resources" class="${
     state.view === "resources" ? "active" : ""
-  }" role="tab" aria-selected="${state.view === "resources"}">Resources</button>`;
+  }" role="tab" aria-selected="${state.view === "resources"}">Templates</button>`;
 }
 
 function setViewChrome() {
@@ -304,7 +304,7 @@ function setViewChrome() {
   if ($("btnAddResourceHeading")) $("btnAddResourceHeading").hidden = !resources;
   if ($("commsStatus")) {
     $("commsStatus").textContent = resources
-      ? "Shared headings and links for the comms team — SharePoint libraries, templates, distribution, contacts."
+      ? "Build shared headings, notes, and links that the whole comms team can use — nothing here is locked."
       : "Job plus workpack or site number stay on the list. Open a row for the full planner, or click a colour dot to code a group.";
   }
 }
@@ -314,7 +314,7 @@ function filteredResourceSections() {
   if (!q) return state.resources;
   return state.resources
     .map((section) => {
-      const headingHit = (section.title || "").toLowerCase().includes(q);
+      const headingHit = [section.title, section.body].some((v) => String(v || "").toLowerCase().includes(q));
       const links = (section.links || []).filter((link) =>
         [link.title, link.url, link.note].some((v) => String(v || "").toLowerCase().includes(q))
       );
@@ -329,7 +329,7 @@ function renderResources() {
   if (!host) return;
   const sections = filteredResourceSections();
   if (!state.resources.length) {
-    host.innerHTML = `<p class="hint">No headings yet. Use Add heading, then add SharePoint or other https links under it.</p>`;
+    host.innerHTML = `<p class="hint">Nothing here yet. Add a heading, then drop in notes and SharePoint (or other https) links. It is shared with every comms user.</p>`;
     return;
   }
   if (!sections.length) {
@@ -348,6 +348,11 @@ function renderResources() {
             <button type="button" class="btn btn-sm btn-danger" data-del-section="${section.id}">Remove</button>
           </div>
         </header>
+        <label class="full comms-template-body">Notes / template text
+          <textarea data-section-body="${section.id}" rows="4" placeholder="Letter wording, distribution steps, who to call…">${escapeHtml(
+            section.body || ""
+          )}</textarea>
+        </label>
         ${
           links.length
             ? `<ul class="comms-resource-links">${links
@@ -816,6 +821,96 @@ async function saveGroupColor(group, color) {
   renderTable();
 }
 
+function exportColumnChoices() {
+  const extras = [
+    { key: "_job", name: "Job" },
+    { key: "_linked_site", name: "Linked job" },
+    { key: "_files", name: "Files" },
+  ];
+  const seen = new Map(extras.map((col) => [col.key, col]));
+  for (const sheet of state.sheets) {
+    const cols = state.sheet?.id === sheet.id ? state.sheet.columns || [] : sheet.columns || [];
+    for (const col of cols) seen.set(col.field_key, { key: col.field_key, name: col.name });
+  }
+  if (state.sheet?.columns) {
+    for (const col of state.sheet.columns) seen.set(col.field_key, { key: col.field_key, name: col.name });
+  }
+  return [...seen.values()];
+}
+
+function fillExportDialog() {
+  const sheets = $("exportSheets");
+  const cols = $("exportColumns");
+  if (sheets) {
+    sheets.innerHTML = state.sheets
+      .map(
+        (sheet) => `<label class="lists-check">
+          <input type="checkbox" data-export-sheet="${sheet.id}" ${state.sheet?.id === sheet.id ? "checked" : ""} />
+          <span>${escapeHtml(sheet.title)}</span>
+        </label>`
+      )
+      .join("");
+  }
+  if (cols) {
+    cols.innerHTML = exportColumnChoices()
+      .map(
+        (col) => `<label class="lists-check">
+          <input type="checkbox" data-export-col="${escapeHtml(col.key)}" checked />
+          <span>${escapeHtml(col.name)}</span>
+        </label>`
+      )
+      .join("");
+  }
+  if ($("exportRows")) $("exportRows").value = "visible";
+}
+
+async function runCommsExport(format) {
+  const sheetIds = [...document.querySelectorAll("[data-export-sheet]:checked")].map((box) => Number(box.dataset.exportSheet));
+  const columnKeys = [...document.querySelectorAll("[data-export-col]:checked")].map((box) => box.dataset.exportCol);
+  if (!sheetIds.length) {
+    await alertDialog("Select at least one planner tab");
+    return;
+  }
+  if (!columnKeys.length) {
+    await alertDialog("Select at least one column");
+    return;
+  }
+  const onlyVisible = $("exportRows")?.value === "visible";
+  let rowIds = null;
+  if (onlyVisible) {
+    if (sheetIds.length === 1 && state.sheet && sheetIds[0] === state.sheet.id) {
+      rowIds = filteredRows().map((row) => row.id);
+    } else if (sheetIds.includes(state.sheet?.id) && sheetIds.length > 1) {
+      await alertDialog("Visible rows applies to the open tab only. Select one tab, or choose every row.");
+      return;
+    } else {
+      rowIds = null;
+    }
+  }
+  const res = await api("/api/comms/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      format,
+      sheet_ids: sheetIds,
+      column_keys: columnKeys.filter((key) => key !== "_job"),
+      row_ids: rowIds,
+      include_job: columnKeys.includes("_job"),
+    }),
+    timeoutMs: 120000,
+  });
+  const blob = res instanceof Response ? await res.blob() : res;
+  const cd = res instanceof Response ? res.headers.get("Content-Disposition") || "" : "";
+  const match = cd.match(/filename="([^"]+)"/);
+  const filename = match?.[1] || `comms-planner.${format === "pdf" ? "pdf" : "xlsx"}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function renderColumnList() {
   const cols = state.sheet?.columns || [];
   $("columnList").innerHTML = cols.length
@@ -863,6 +958,22 @@ async function init() {
       body: JSON.stringify({ title, created_by: userName() }),
     });
     await loadResources();
+  });
+
+  $("commsResources")?.addEventListener("change", async (ev) => {
+    const area = ev.target.closest("[data-section-body]");
+    if (!area) return;
+    try {
+      await api(`/api/comms/resources/sections/${area.dataset.sectionBody}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: area.value }),
+      });
+      const section = state.resources.find((item) => item.id === Number(area.dataset.sectionBody));
+      if (section) section.body = area.value;
+    } catch (err) {
+      await alertDialog(errorMessage(err, "Could not save notes"));
+    }
   });
 
   $("commsResources")?.addEventListener("click", async (ev) => {
@@ -1070,12 +1181,45 @@ async function init() {
     await openRow(created.id);
   });
 
+  on("btnExport", "click", () => {
+    fillExportDialog();
+    $("exportDialog").showModal();
+  });
+
+  $("exportDialog")?.addEventListener("click", (ev) => {
+    const tool = ev.target.closest("[data-export-cols]");
+    if (!tool) return;
+    const on = tool.dataset.exportCols === "all";
+    document.querySelectorAll("[data-export-col]").forEach((box) => {
+      box.checked = on;
+    });
+  });
+
+  on("btnExportXlsx", "click", async () => {
+    try {
+      await runCommsExport("xlsx");
+      $("exportDialog").close();
+    } catch (err) {
+      await alertDialog(errorMessage(err, "Could not export Excel"));
+    }
+  });
+
+  on("btnExportPdf", "click", async () => {
+    try {
+      await runCommsExport("pdf");
+      $("exportDialog").close();
+    } catch (err) {
+      await alertDialog(errorMessage(err, "Could not export PDF"));
+    }
+  });
+
   on("btnColumns", "click", () => {
     renderColumnList();
     $("colName").value = "";
     $("colOptions").value = "";
     $("colType").value = "text";
     $("colOptionsWrap").hidden = true;
+    if ($("colApplyAll")) $("colApplyAll").checked = false;
     $("columnsDialog").showModal();
   });
 
@@ -1094,7 +1238,13 @@ async function init() {
     await api(`/api/comms/sheets/${state.sheet.id}/columns`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, field_type, options, created_by: userName() }),
+      body: JSON.stringify({
+        name,
+        field_type,
+        options,
+        created_by: userName(),
+        apply_all: Boolean($("colApplyAll")?.checked),
+      }),
     });
     await loadSheet(state.sheet.id, { keepRow: state.openRowId });
     renderColumnList();
