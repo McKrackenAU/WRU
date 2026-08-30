@@ -4990,6 +4990,10 @@ body.comms-page .app-footer {
   background: var(--panel);
 }
 
+.comms-export-checks[hidden] {
+  display: none !important;
+}
+
 .comms-export-tools {
   display: flex;
   gap: 0.4rem;
