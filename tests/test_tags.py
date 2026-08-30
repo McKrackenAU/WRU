@@ -90,6 +90,8 @@ def test_admin_tags_page_wired():
     assert "data-job-tags" in APP_JS
     assert "data-category-tags" in APP_JS
     assert "registerTagPop" in INDEX
+    assert 'register-row-tags" onclick="event.stopPropagation()"' not in APP_JS
+    assert 'register-program-tags" onclick="event.stopPropagation()"' not in APP_JS
     assert "renderJobTags" in APP_JS
     assert "calendar_note" in NOTIFY_ADMIN
     assert "ensure_calendar_note_rule" in NOTIFY

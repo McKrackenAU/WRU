@@ -471,7 +471,7 @@ function siteRowHtml(site) {
         ${metaBits}
         ${commentSnippet(site.comments)}
       </div>
-      <div class="register-row-tags" onclick="event.stopPropagation()">
+      <div class="register-row-tags">
         ${tagChips}
         <button type="button" class="btn btn-sm" data-job-tags="${site.id}">Tags</button>
       </div>
@@ -1028,7 +1028,7 @@ function renderRegister() {
       } />
             Select all
           </label>
-          <div class="register-program-tags" onclick="event.stopPropagation()">
+          <div class="register-program-tags">
             ${programTagChipsHtml(program)}
             ${
               isAdminUser() && program !== "Unassigned"
@@ -2205,7 +2205,6 @@ function bindEvents() {
       applyProgramCollapsed(section, next);
       return;
     }
-    if (state.suppressRowOpen) return;
     const jobTagsBtn = ev.target.closest("[data-job-tags]");
     if (jobTagsBtn) {
       ev.preventDefault();
@@ -2221,6 +2220,7 @@ function bindEvents() {
       openCategoryTagPop(catTagsBtn, catTagsBtn.dataset.categoryTags || "");
       return;
     }
+    if (state.suppressRowOpen) return;
     if (ev.target.closest("[data-status-select], .status-col, .select-col, a.btn, .drag-grip, .register-select-program, .register-row-tags, .register-program-tags, .register-tag-pop, input, select, label"))
       return;
     const btn = ev.target.closest("[data-action='open']");
