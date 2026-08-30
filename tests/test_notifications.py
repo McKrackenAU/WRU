@@ -24,8 +24,8 @@ SITES = (ROOT / "app/routers/sites.py").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_202():
-    assert VERSION == "2.02"
+def test_version_is_203():
+    assert VERSION == "2.03"
 
 
 def test_normalize_tags_dedupes_and_caps():
@@ -95,6 +95,14 @@ def test_render_body_default_and_template():
     )
 
 
+def test_site_update_ignores_unknown_client_fields():
+    from app.schemas import SiteUpdate
+
+    payload = SiteUpdate.model_validate({"road_name": "Bridge Rd", "legacy_client_flag": True})
+    assert payload.road_name == "Bridge Rd"
+    assert not hasattr(payload, "legacy_client_flag")
+
+
 def test_bell_and_admin_wired():
     assert "notifyBellBtn" in COMMON
     assert 'href: "/admin/notifications"' in COMMON
@@ -108,3 +116,9 @@ def test_bell_and_admin_wired():
     assert 'id="createRuleForm"' in NOTIFY_HTML
     assert "/api/admin/notification-rules" in NOTIFY_ADMIN
     assert "wru:sites-changed" in COMMON
+    assert "wru:app-update" in COMMON
+    assert "pendingAppUpdate" in COMMON
+    assert "applyAppUpdate" in COMMON
+    assert "notifyApplyUpdate" in NOTIFY_JS
+    assert "X-WRU-Client-Version" in COMMON
+    assert 'ident === "reload"' not in COMMON

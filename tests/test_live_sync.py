@@ -34,6 +34,10 @@ def test_common_has_revision_poll_and_coalesced_refresh():
     assert "boot_id" in COMMON
     assert "asset_version" in COMMON
     assert "hardReloadForUpdate" in COMMON
+    assert "applyAppUpdate" in COMMON
+    assert "pendingAppUpdate" in COMMON
+    assert 'ident === "reload"' not in COMMON
+    assert "wru:app-update" in COMMON
     assert "ingestLiveHeaders" in COMMON
     assert "X-WRU-Revision" in COMMON
     assert "X-WRU-Boot-Id" in COMMON

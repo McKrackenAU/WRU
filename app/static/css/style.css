@@ -426,6 +426,20 @@ body.nav-collapsed .shell-sidebar {
   font-size: 0.72rem;
 }
 
+.notify-item.notify-update {
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 28%, var(--ventia-border));
+}
+
+.notify-item.notify-update .btn {
+  justify-self: start;
+  margin-top: 0.25rem;
+}
+
+.notify-bell-wrap.has-app-update .notify-bell-btn {
+  border-color: var(--warn);
+}
+
 .user-menu {
   position: relative;
 }

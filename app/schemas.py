@@ -141,6 +141,10 @@ class SiteCreate(BaseModel):
 
 
 class SiteUpdate(BaseModel):
+    """Partial site save. Extra keys from older tabs are ignored so mid-work deploys still persist."""
+
+    model_config = ConfigDict(extra="ignore")
+
     road_name: str | None = None
     site_number: str | None = None
     program: str | None = None

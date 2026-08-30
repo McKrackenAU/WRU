@@ -143,6 +143,8 @@ export async function api(path, options = {}) {
   try {
     const headers = new Headers(options.headers || {});
     if (!headers.has("X-WRU-Client-Id")) headers.set("X-WRU-Client-Id", liveClientId());
+    const tabVer = loadedAssetVersion();
+    if (tabVer && !headers.has("X-WRU-Client-Version")) headers.set("X-WRU-Client-Version", tabVer);
     const res = await fetch(path, {
       cache: "no-store",
       credentials: "include",
@@ -723,6 +725,7 @@ let liveBootstrapped = false;
 let knownRevision = 0;
 let pageBootId = null;
 let pageAssetVersion = null;
+let serverAssetVersion = null;
 let refreshDebounce = null;
 let refreshRunning = false;
 let refreshPending = null;
@@ -755,48 +758,104 @@ export function markLiveRevision(revision) {
   }
 }
 
+function htmlAssetVersion() {
+  try {
+    const raw =
+      (typeof window !== "undefined" && window.__WRU_ASSET_V) ||
+      document.querySelector?.('meta[name="wru-asset-version"]')?.content ||
+      "";
+    return String(raw || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Version baked into this tab's HTML — not the live server version. */
+export function loadedAssetVersion() {
+  return htmlAssetVersion() || pageAssetVersion || "";
+}
+
+/** When this tab is behind a deploy, stay open and flag the bell until refresh. */
+export function pendingAppUpdate() {
+  const current = loadedAssetVersion();
+  const available = serverAssetVersion ? String(serverAssetVersion) : "";
+  if (current && available && current !== available) {
+    return { current, available };
+  }
+  return null;
+}
+
+function signalAppUpdateIfNeeded() {
+  const pending = pendingAppUpdate();
+  if (!pending) return;
+  try {
+    window.dispatchEvent(new CustomEvent("wru:app-update", { detail: pending }));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Hard-reload this tab onto the installed version. Does not run automatically. */
+export function applyAppUpdate() {
+  const next = (pendingAppUpdate()?.available || serverAssetVersion || loadedAssetVersion() || "").trim();
+  try {
+    navigator.serviceWorker?.getRegistration?.().then((reg) => {
+      try {
+        reg?.waiting?.postMessage({ type: "skip-waiting" });
+      } catch {
+        /* ignore */
+      }
+    });
+  } catch {
+    /* ignore */
+  }
+  const url = new URL(location.href);
+  url.searchParams.set("_av", next || String(Date.now()));
+  location.replace(url.toString());
+}
+
+function hardReloadForUpdate() {
+  applyAppUpdate();
+}
+
 function rememberServerIdentity(data) {
   if (!data || typeof data !== "object") return "ok";
-  let stored = null;
-  try {
-    stored = JSON.parse(sessionStorage.getItem(LIVE_IDENTITY_KEY) || "null");
-  } catch {
-    stored = null;
-  }
   const incomingVersion = data.asset_version != null ? String(data.asset_version) : null;
   const incomingBoot = data.boot_id != null ? String(data.boot_id) : null;
-  if (pageAssetVersion == null && incomingVersion) pageAssetVersion = incomingVersion;
+  if (pageAssetVersion == null) {
+    pageAssetVersion = htmlAssetVersion() || incomingVersion;
+  }
   if (pageBootId == null && incomingBoot) pageBootId = incomingBoot;
-  const prevVersion = stored?.asset_version ? String(stored.asset_version) : pageAssetVersion;
+  if (incomingVersion) serverAssetVersion = incomingVersion;
   try {
     sessionStorage.setItem(
       LIVE_IDENTITY_KEY,
       JSON.stringify({
         boot_id: incomingBoot || pageBootId,
-        asset_version: incomingVersion || pageAssetVersion,
+        tab_asset_version: pageAssetVersion,
+        server_asset_version: incomingVersion || serverAssetVersion,
+        asset_version: incomingVersion || serverAssetVersion || pageAssetVersion,
         revision: data.revision,
       })
     );
   } catch {
     /* ignore */
   }
-  if (incomingVersion && prevVersion && incomingVersion !== prevVersion) {
-    pageAssetVersion = incomingVersion;
-    return "reload";
-  }
+  const versionDrift = Boolean(
+    incomingVersion && pageAssetVersion && incomingVersion !== pageAssetVersion
+  );
+  let restarted = false;
   if (incomingBoot && pageBootId && incomingBoot !== pageBootId) {
     pageBootId = incomingBoot;
     knownRevision = 0;
-    return "restart";
+    restarted = true;
   }
+  if (versionDrift) {
+    signalAppUpdateIfNeeded();
+    return restarted ? "update_restart" : "update";
+  }
+  if (restarted) return "restart";
   return "ok";
-}
-
-function hardReloadForUpdate() {
-  const url = new URL(location.href);
-  if (pageAssetVersion) url.searchParams.set("_av", pageAssetVersion);
-  else url.searchParams.set("_av", String(Date.now()));
-  location.replace(url.toString());
 }
 
 function ingestLiveHeaders(res, method) {
@@ -812,14 +871,9 @@ function ingestLiveHeaders(res, method) {
     asset_version: version || undefined,
   };
   const ident = rememberServerIdentity(data);
-  if (ident === "reload") {
-    hardReloadForUpdate();
-    return;
-  }
-  if (ident === "restart") {
+  if (ident === "restart" || ident === "update_restart") {
     knownRevision = 0;
     queueLiveRefresh({ type: "sites_changed", reason: "restart", ...data });
-    return;
   }
   const verb = String(method || "GET").toUpperCase();
   if (verb !== "GET" && verb !== "HEAD" && verb !== "OPTIONS" && typeof data.revision === "number") {
@@ -832,9 +886,8 @@ export async function syncLiveRevision() {
   try {
     const data = await api("/api/live/revision");
     const ident = rememberServerIdentity(data);
-    if (ident === "reload") {
-      hardReloadForUpdate();
-      return data?.revision ?? knownRevision;
+    if (ident === "restart" || ident === "update_restart") {
+      queueLiveRefresh({ type: "sites_changed", reason: "restart", revision: data?.revision });
     }
     if (typeof data?.revision === "number") {
       markLiveRevision(data.revision);
@@ -898,12 +951,8 @@ function startLivePoll() {
 async function checkLiveRevision() {
   const data = await api("/api/live/revision");
   const ident = rememberServerIdentity(data);
-  if (ident === "reload") {
-    hardReloadForUpdate();
-    return;
-  }
   const rev = data?.revision;
-  if (ident === "restart") {
+  if (ident === "restart" || ident === "update_restart") {
     knownRevision = typeof rev === "number" ? rev : 0;
     queueLiveRefresh({ type: "sites_changed", reason: "restart", revision: rev, ...data });
     return;
@@ -951,19 +1000,15 @@ async function flushLiveRefresh() {
 function ingestLivePayload(data) {
   if (!data || typeof data !== "object") return;
   const ident = rememberServerIdentity(data);
-  if (ident === "reload") {
-    hardReloadForUpdate();
-    return;
-  }
   if (data.type === "hello") {
     if (typeof data.revision === "number") markLiveRevision(data.revision);
-    if (ident === "restart") {
+    if (ident === "restart" || ident === "update_restart") {
       queueLiveRefresh({ type: "sites_changed", reason: "restart", ...data });
     }
     return;
   }
   if (data.type === "ping") {
-    if (ident === "restart") {
+    if (ident === "restart" || ident === "update_restart") {
       knownRevision = 0;
       queueLiveRefresh({ type: "sites_changed", reason: "restart", ...data });
       return;
@@ -982,7 +1027,7 @@ function ingestLivePayload(data) {
   }
   if (data.client_id && data.client_id === liveClientId() && data.reason !== "restart") return;
   if (typeof data.revision === "number") {
-    if (data.revision <= knownRevision && ident !== "restart") return;
+    if (data.revision <= knownRevision && ident !== "restart" && ident !== "update_restart") return;
     knownRevision = data.revision;
   }
   queueLiveRefresh(data);

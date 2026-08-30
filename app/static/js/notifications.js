@@ -1,4 +1,4 @@
-import { $, api, escapeHtml } from "./common.js";
+import { $, api, escapeHtml, applyAppUpdate, pendingAppUpdate } from "./common.js";
 
 const POLL_MS = 45000;
 const BELL_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-6.2V11a7 7 0 0 0-5-6.7V3.8a2 2 0 1 0-4 0v.5A7 7 0 0 0 5 11v4.8L3.4 17.4A1 1 0 0 0 4.1 19h15.8a1 1 0 0 0 .7-1.6Z"/></svg>`;
@@ -19,23 +19,32 @@ function fmtWhen(iso) {
 function setBadge(count) {
   const badge = $("notifyBadge");
   if (!badge) return;
-  const n = Number(count) || 0;
+  const extra = pendingAppUpdate() ? 1 : 0;
+  const n = (Number(count) || 0) + extra;
   badge.hidden = n <= 0;
   badge.textContent = n > 99 ? "99+" : String(n);
   const btn = $("notifyBellBtn");
   if (btn) {
     btn.setAttribute("aria-label", n ? `Notifications, ${n} unread` : "Notifications");
   }
+  $("notifyBellWrap")?.classList.toggle("has-app-update", Boolean(pendingAppUpdate()));
+}
+
+function updateCardHtml() {
+  const pending = pendingAppUpdate();
+  if (!pending) return "";
+  return `<div class="notify-item notify-update is-unread" data-app-update>
+    <strong>App update ready</strong>
+    <span>This tab is still on v${escapeHtml(pending.current)}. The installed app is v${escapeHtml(pending.available)}. Keep working and saving — refresh when you are ready so this flag clears.</span>
+    <button type="button" class="btn btn-primary btn-sm" id="notifyApplyUpdate">Refresh now</button>
+  </div>`;
 }
 
 function renderItems(items) {
   const list = $("notifyList");
   if (!list) return;
-  if (!items.length) {
-    list.innerHTML = `<p class="notify-empty">No notifications yet.</p>`;
-    return;
-  }
-  list.innerHTML = items
+  const updateHtml = updateCardHtml();
+  const rows = (items || [])
     .map((n) => {
       const unread = n.read ? "" : " is-unread";
       const href = n.link || "/";
@@ -46,6 +55,11 @@ function renderItems(items) {
       </a>`;
     })
     .join("");
+  if (!updateHtml && !rows) {
+    list.innerHTML = `<p class="notify-empty">No notifications yet.</p>`;
+    return;
+  }
+  list.innerHTML = `${updateHtml}${rows}`;
 }
 
 export async function refreshNotifications({ render = true } = {}) {
@@ -112,12 +126,21 @@ export function mountNotifications() {
     }
   });
   $("notifyList")?.addEventListener("click", (ev) => {
+    if (ev.target.closest("#notifyApplyUpdate")) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      applyAppUpdate();
+      return;
+    }
     const item = ev.target.closest(".notify-item[data-id]");
     if (!item) return;
     markOneRead(item.dataset.id);
   });
 
   window.addEventListener("wru:sites-changed", () => {
+    refreshNotifications({ render: !$("notifyPanel")?.hidden });
+  });
+  window.addEventListener("wru:app-update", () => {
     refreshNotifications({ render: !$("notifyPanel")?.hidden });
   });
 
