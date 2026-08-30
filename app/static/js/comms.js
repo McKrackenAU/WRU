@@ -854,8 +854,14 @@ async function loadJobCategories() {
   if (!sel) return;
   state.jobCategories = await api("/api/comms/site-categories");
   const current = currentRow()?.site?.program || "";
+  const currentLower = current.trim().toLowerCase();
   sel.innerHTML = `<option value="">Select a category…</option>${state.jobCategories
-    .map((c) => `<option value="${escapeHtml(c.name)}" ${c.name === current ? "selected" : ""}>${escapeHtml(c.name)}</option>`)
+    .map(
+      (c) =>
+        `<option value="${escapeHtml(c.name)}" ${c.name.toLowerCase() === currentLower ? "selected" : ""}>${escapeHtml(
+          c.name
+        )}</option>`
+    )
     .join("")}`;
   if (current) await fillJobPick(current, currentRow()?.site_id);
 }
