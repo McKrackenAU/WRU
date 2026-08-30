@@ -57,7 +57,7 @@ async function loadUsers() {
                 </select>
               </td>
               <td>
-                <input data-tags value="${escapeHtml((u.tags || []).join(", "))}" placeholder="structures" aria-label="Tags for ${escapeHtml(u.username)}" />
+                <input data-tags value="${escapeHtml((u.tags || []).join(", "))}" placeholder="e.g. structures" aria-label="Tags for ${escapeHtml(u.username)}" />
               </td>
               <td>
                 <label class="inline-check">

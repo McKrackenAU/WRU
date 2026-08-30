@@ -77,8 +77,8 @@ async function loadRules() {
                 </td>
                 <td><select data-f="program">${programOptions(r.program)}</select></td>
                 <td>
-                  <input data-f="target_tags" value="${escapeHtml((r.target_tags || []).join(", "))}" placeholder="structures" />
-                  <label class="hint" style="margin-top:0.35rem">Also these users
+                  <input data-f="target_tags" value="${escapeHtml((r.target_tags || []).join(", "))}" placeholder="e.g. structures" />
+                  <label class="hint" style="margin-top:0.35rem">Also these users <span class="hint">(none selected = tags only)</span>
                     <select data-f="target_user_ids" multiple size="3">${userOptions(r.target_user_ids)}</select>
                   </label>
                   <label class="hint" style="margin-top:0.35rem">Message
