@@ -555,6 +555,7 @@ function renderTable({ refreshFilters = false } = {}) {
   const wrap = $("commsTableWrap");
   if (!wrap || !state.sheet) {
     if (wrap) wrap.innerHTML = `<p class="hint">No planner tab selected.</p>`;
+    renderColorKey([]);
     if (refreshFilters) renderFilters();
     return;
   }
@@ -574,11 +575,13 @@ function renderTable({ refreshFilters = false } = {}) {
 
   if (!total) {
     wrap.innerHTML = `<p class="hint">No rows yet. Use Add row, then open a row to fill it in.</p>`;
+    renderColorKey([]);
     return;
   }
 
   const secondaryLabel = secondary ? secondary.name : "Group";
   let last = null;
+  const groups = [];
   const body = [];
   if (!rows.length) {
     body.push(`<tr><td class="empty" colspan="5">No rows match these filters.</td></tr>`);
@@ -589,7 +592,8 @@ function renderTable({ refreshFilters = false } = {}) {
       if (group !== last) {
         last = group;
         const count = rows.filter((r) => groupKey(r) === group).length;
-        body.push(`<tr class="comms-group" style="--comms-wp:${color}">
+        groups.push({ name: group, color, count });
+        body.push(`<tr class="comms-group" data-group-row="${escapeHtml(group)}" style="--comms-wp:${color}">
           <td colspan="5">
             <div class="comms-group-title">
               <button type="button" class="comms-swatch" data-color-group="${escapeHtml(group)}" style="--swatch:${color}" title="Set group colour" aria-label="Set colour for ${escapeHtml(group)}"></button>
@@ -636,6 +640,35 @@ function renderTable({ refreshFilters = false } = {}) {
       <tbody>${body.join("")}</tbody>
     </table>
   `;
+  renderColorKey(groups);
+}
+
+function renderColorKey(groups) {
+  const host = $("commsColorKey");
+  if (!host) return;
+  if (!groups?.length) {
+    host.innerHTML = `<h3>Colour key</h3><p class="hint">Group colours show here so you can scan the list by colour.</p>`;
+    return;
+  }
+  host.innerHTML = `<h3>Colour key</h3>
+    <p class="hint">Tap a colour to jump to that group.</p>
+    <ul>${groups
+      .map(
+        (g) => `<li>
+          <button type="button" data-jump-group="${escapeHtml(g.name)}">
+            <span class="comms-key-swatch" style="--swatch:${g.color}" aria-hidden="true"></span>
+            <span class="comms-key-name">${escapeHtml(g.name)}</span>
+            <span class="hint">${g.count}</span>
+          </button>
+        </li>`
+      )
+      .join("")}</ul>`;
+}
+
+function jumpToGroup(name) {
+  const wrap = $("commsTableWrap");
+  const row = wrap?.querySelector(`[data-group-row="${cssKey(name)}"]`);
+  row?.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
 function openDrawer() {
@@ -1651,6 +1684,11 @@ async function init() {
     await api(`/api/comms/columns/${btn.dataset.delCol}`, { method: "DELETE" });
     await loadSheet(state.sheet.id, { keepRow: state.openRowId });
     renderColumnList();
+  });
+
+  $("commsColorKey")?.addEventListener("click", (ev) => {
+    const jump = ev.target.closest("[data-jump-group]");
+    if (jump) jumpToGroup(jump.dataset.jumpGroup);
   });
 
   $("commsTableWrap")?.addEventListener("click", async (ev) => {

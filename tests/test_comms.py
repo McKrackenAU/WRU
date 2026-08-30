@@ -83,6 +83,11 @@ def test_comms_page_has_two_seeded_planner_tabs():
     assert 'value="comms"' in COMMS_JS
     assert "data-open-row" in COMMS_JS
     assert "saveGroupColor" in COMMS_JS
+    assert "renderColorKey" in COMMS_JS
+    assert "data-jump-group" in COMMS_JS
+    assert 'id="commsColorKey"' in COMMS_HTML
+    assert "comms-color-key" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
+    assert "body.comms-page .shell-main" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "secondaryColumn" in COMMS_JS
     assert "DRAWER_TAB_RULES" in COMMS_JS
     assert "Link / files" not in COMMS_JS
@@ -203,7 +208,10 @@ def test_comms_v20_notes_form_and_export_selects():
     css = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "html:has(body.comms-page)" in css
     assert "body.comms-page" in css
+    assert "body.comms-page .shell-main" in css
     assert ".comms-note-log" in css
+    assert ".comms-color-key" in css
+    assert ".comms-workspace" in css
     models = (ROOT / "app/models.py").read_text(encoding="utf-8")
     assert "class CommsRowNote" in models
     assert "class CommsTemplateField" in models
