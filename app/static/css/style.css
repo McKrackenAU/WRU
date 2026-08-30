@@ -5008,11 +5008,22 @@ body.comms-page .app-footer {
   list-style: none;
   margin: 0 0 0.85rem;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
 }
 
 .comms-note-log li {
-  padding: 0.7rem 0;
-  border-bottom: 1px solid var(--ventia-border);
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.7rem;
+  background: var(--panel);
+}
+
+.comms-note-log li.comms-note-empty {
+  border-style: dashed;
+  color: var(--ventia-muted);
+  font-size: 0.88rem;
 }
 
 .comms-note-log .top {
@@ -5021,11 +5032,59 @@ body.comms-page .app-footer {
   gap: 0.6rem;
   color: var(--ventia-muted);
   font-size: 0.78rem;
+  margin-bottom: 0.35rem;
 }
 
-.comms-note-compose textarea {
+.comms-note-log p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.comms-field,
+.comms-note-compose,
+.form-section > label.full {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--ventia-ink);
+}
+
+.comms-field-label {
+  display: block;
+}
+
+.comms-field input,
+.comms-field select,
+.comms-field textarea,
+.form-section > label.full input,
+.form-section > label.full select,
+.form-section > label.full textarea {
   width: 100%;
+  font: inherit;
+  font-weight: 500;
+  color: var(--ventia-ink);
+  background: var(--field-bg);
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.75rem;
+  min-height: 2.85rem;
+}
+
+.comms-field textarea,
+.form-section > label.full textarea {
   min-height: 4.5rem;
+  resize: vertical;
+}
+
+.form-section .comms-resource-head {
+  margin-bottom: 0.85rem;
+}
+
+.form-section .comms-resource-head h3 {
+  margin: 0;
 }
 
 .comms-form-builder {

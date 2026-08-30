@@ -35,6 +35,7 @@ const state = {
   openRowId: null,
   drawerTab: "overview",
   jobTimer: null,
+  fieldTimer: null,
   filters: {},
   knownFilterValues: {},
   filterSheetId: null,
@@ -84,6 +85,10 @@ function cssKey(key) {
 function fmtCell(value) {
   if (value == null || value === "") return "";
   return String(value);
+}
+
+function labeledControl(name, controlHtml) {
+  return `<label class="full comms-field"><span class="comms-field-label">${escapeHtml(name)}</span>${controlHtml}</label>`;
 }
 
 function cellInput(col, value) {
@@ -727,22 +732,29 @@ function renderDrawer() {
         <div class="form-section">
           <h3>Notes log</h3>
           <ul class="comms-note-log" id="commsNoteLog"></ul>
-          <label class="full comms-note-compose">Add a note
-            <textarea id="commsNoteText" rows="3" placeholder="What happened, who was told, next step…"></textarea>
-          </label>
+          ${labeledControl(
+            "Add a note",
+            `<textarea id="commsNoteText" rows="3" placeholder="What happened, who was told, next step…"></textarea>`
+          )}
           <div class="toolbar">
             <button type="button" class="btn btn-primary" id="btnAddNote">Add note</button>
           </div>
         </div>
         <div class="form-section">
+          <h3>Other details</h3>
+          <div class="form-grid">
+            ${active.columns
+              .filter((col) => !/scoping/i.test(col.field_key + col.name))
+              .map((col) => labeledControl(col.name, cellInput(col, (row.values || {})[col.field_key])))
+              .join("")}
+          </div>
+          <p class="hint">Edits save when you leave the box.</p>
+        </div>
+        <div class="form-section">
           <h3>Scoping document</h3>
-          ${active.columns
-            .filter((col) => !/scoping/i.test(col.field_key + col.name))
-            .map((col) => `<label class="full">${escapeHtml(col.name)}${cellInput(col, (row.values || {})[col.field_key])}</label>`)
-            .join("")}
           <p class="hint">Upload the scoping file for this activity. It stays on this row.</p>
           <div class="form-grid">
-            <label class="full">File<input id="commsScopeFile" type="file" multiple /></label>
+            ${labeledControl("File", `<input id="commsScopeFile" type="file" multiple />`)}
           </div>
           <div class="toolbar" style="margin-top:0.75rem">
             <button type="button" class="btn btn-primary" id="btnUploadScope">Upload scoping doc</button>
@@ -758,17 +770,23 @@ function renderDrawer() {
     $("commsDrawerBody").innerHTML = `
       <section class="tab-panel active">
         <div class="form-section">
-          <h3>Comms</h3>
+          <header class="comms-resource-head">
+            <div>
+              <h3>Comms</h3>
+              <p class="hint">Change a field and it saves. Add extra Yes/No, comments, or file uploads for every row.</p>
+            </div>
+            <button type="button" class="btn btn-sm" id="btnAddFormField">Add field</button>
+          </header>
           <div class="form-grid" id="commsFieldGrid">
             ${active.columns
-              .map((col) => `<label class="full">${escapeHtml(col.name)}${cellInput(col, (row.values || {})[col.field_key])}</label>`)
+              .map((col) => labeledControl(col.name, cellInput(col, (row.values || {})[col.field_key])))
               .join("")}
             ${state.formFields.map((field) => renderFormField(field, row)).join("")}
           </div>
           ${
             state.formFields.length
               ? ""
-              : `<p class="hint">Add Yes/No, comment, or file fields on the Templates tab — they show here on every row.</p>`
+              : `<p class="hint">No extra fields yet. Use Add field for letter drop, comments, or a file upload — they appear on every planner row.</p>`
           }
         </div>
       </section>
@@ -781,7 +799,7 @@ function renderDrawer() {
           <h3>${escapeHtml(active.label)}</h3>
           <div class="form-grid" id="commsFieldGrid">
             ${active.columns
-              .map((col) => `<label class="full">${escapeHtml(col.name)}${cellInput(col, (row.values || {})[col.field_key])}</label>`)
+              .map((col) => labeledControl(col.name, cellInput(col, (row.values || {})[col.field_key])))
               .join("")}
           </div>
         </div>
@@ -814,19 +832,24 @@ function renderFormField(field, row) {
     </div>`;
   }
   if (field.field_type === "textarea") {
-    return `<label class="full">${escapeHtml(field.name)}<textarea data-form-field="${escapeHtml(
-      field.field_key
-    )}" rows="3">${escapeHtml(String(value))}</textarea></label>`;
+    return labeledControl(
+      field.name,
+      `<textarea data-form-field="${escapeHtml(field.field_key)}" rows="3">${escapeHtml(String(value))}</textarea>`
+    );
   }
   if (field.field_type === "select" || field.field_type === "yesno") {
     const opts = field.field_type === "yesno" ? ["", "Yes", "No"] : ["", ...(field.options || [])];
-    return `<label class="full">${escapeHtml(field.name)}<select data-form-field="${escapeHtml(field.field_key)}">${opts
-      .map((o) => `<option value="${escapeHtml(o)}" ${String(o) === String(value) ? "selected" : ""}>${escapeHtml(o || "—")}</option>`)
-      .join("")}</select></label>`;
+    return labeledControl(
+      field.name,
+      `<select data-form-field="${escapeHtml(field.field_key)}">${opts
+        .map((o) => `<option value="${escapeHtml(o)}" ${String(o) === String(value) ? "selected" : ""}>${escapeHtml(o || "—")}</option>`)
+        .join("")}</select>`
+    );
   }
-  return `<label class="full">${escapeHtml(field.name)}<input type="text" data-form-field="${escapeHtml(
-    field.field_key
-  )}" value="${escapeHtml(String(value))}" /></label>`;
+  return labeledControl(
+    field.name,
+    `<input type="text" data-form-field="${escapeHtml(field.field_key)}" value="${escapeHtml(String(value))}" />`
+  );
 }
 
 async function refreshNotes() {
@@ -846,7 +869,7 @@ async function refreshNotes() {
           </li>`
         )
         .join("")
-    : `<li><p class="meta">No notes yet. Add the first one below.</p></li>`;
+    : `<li class="comms-note-empty">No notes yet. Add the first one below.</li>`;
 }
 
 async function loadJobCategories() {
@@ -1066,6 +1089,46 @@ async function loadSheet(id, { keepRow } = {}) {
   setViewChrome();
   renderTable({ refreshFilters: true });
   if (state.openRowId) renderDrawer();
+}
+
+function showDrawerSaved(ok = true) {
+  const hint = $("commsDrawerSaveHint");
+  if (!hint) return;
+  hint.textContent = ok ? "Saved" : "";
+  clearTimeout(showDrawerSaved._t);
+  if (ok) showDrawerSaved._t = setTimeout(() => {
+    if (hint.textContent === "Saved") hint.textContent = "";
+  }, 1600);
+}
+
+async function persistDrawerField(el) {
+  if (!el || !state.openRowId) return;
+  if (el.dataset.formField) {
+    const key = el.dataset.formField;
+    const value = el.value;
+    const next = await api(`/api/comms/rows/${state.openRowId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ form_values: { [key]: value } }),
+    });
+    const row = (state.sheet?.rows || []).find((r) => r.id === state.openRowId);
+    if (row) row.form_values = next.form_values || { ...(row.form_values || {}), [key]: value };
+    showDrawerSaved();
+    return;
+  }
+  const field = el.dataset.field;
+  if (!field) return;
+  const value = el.type === "checkbox" ? (el.checked ? "Yes" : "No") : el.value;
+  await saveCell(state.openRowId, field, value);
+  renderTable();
+  showDrawerSaved();
+}
+
+function queueDrawerField(el) {
+  clearTimeout(state.fieldTimer);
+  state.fieldTimer = setTimeout(() => {
+    persistDrawerField(el).catch((err) => alertDialog(errorMessage(err, "Could not save")));
+  }, 450);
 }
 
 async function saveCell(rowId, field, value) {
@@ -1296,7 +1359,9 @@ async function init() {
         body: JSON.stringify({ name, field_type, options, created_by: userName() }),
       });
       $("formFieldDialog").close();
-      await loadResources();
+      await loadFormFields();
+      if (state.view === "resources") await loadResources();
+      else if (state.openRowId) renderDrawer();
     } catch (err) {
       await alertDialog(errorMessage(err, "Could not add field"));
     }
@@ -1754,31 +1819,12 @@ async function init() {
     }
   });
 
-  $("commsDrawer")?.addEventListener("change", async (ev) => {
-    if (ev.target.dataset.formField && state.openRowId) {
-      const key = ev.target.dataset.formField;
-      const value = ev.target.value;
-      try {
-        const next = await api(`/api/comms/rows/${state.openRowId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ form_values: { [key]: value } }),
-        });
-        const row = (state.sheet?.rows || []).find((r) => r.id === state.openRowId);
-        if (row) row.form_values = next.form_values || { ...(row.form_values || {}), [key]: value };
-      } catch (err) {
-        await alertDialog(errorMessage(err, "Could not save field"));
-      }
-      return;
-    }
-    const field = ev.target.dataset.field;
-    if (!field || !state.openRowId) return;
-    const value = ev.target.type === "checkbox" ? (ev.target.checked ? "Yes" : "No") : ev.target.value;
-    try {
-      await saveCell(state.openRowId, field, value);
-      renderTable();
-    } catch (err) {
-      await alertDialog(errorMessage(err, "Could not save cell"));
+  $("commsDrawer")?.addEventListener("change", (ev) => {
+    persistDrawerField(ev.target).catch((err) => alertDialog(errorMessage(err, "Could not save")));
+  });
+  $("commsDrawer")?.addEventListener("input", (ev) => {
+    if (ev.target.matches("textarea, input[type=text], input[type=number], input[type=date]")) {
+      queueDrawerField(ev.target);
     }
   });
 

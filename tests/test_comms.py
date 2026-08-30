@@ -185,6 +185,11 @@ def test_comms_v20_notes_form_and_export_selects():
     assert 'id="btnUploadScope"' in COMMS_JS
     assert "data-form-field" in COMMS_JS
     assert "uploadCommsRowFile" in COMMS_JS
+    assert "labeledControl" in COMMS_JS
+    assert "persistDrawerField" in COMMS_JS
+    assert "comms-field-label" in COMMS_JS
+    assert "comms-note-empty" in COMMS_JS
+    assert 'id="commsDrawerSaveHint"' in COMMS_HTML
     assert "/api/comms/form-fields" in COMMS_JS
     assert "/api/comms/site-categories" in COMMS_JS
     assert "/api/comms/rows/" in COMMS_JS
