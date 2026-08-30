@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from ..auth import require_admin
 from ..database import get_db
 from ..models import ProgramCategory, Site, WorkflowStageDef, WorkflowStep
+from ..notify import normalize_tags
 from ..stage_registry import ensure_program_seed, ensure_stage_seed
 
 router = APIRouter(
@@ -48,6 +49,7 @@ class ProgramIn(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     position: int | None = None
     active: bool = True
+    tags: list[str] | str | None = None
 
 
 class ProgramOut(BaseModel):
@@ -57,6 +59,7 @@ class ProgramOut(BaseModel):
     name: str
     position: int
     active: bool
+    tags: list[str] = Field(default_factory=list)
 
 
 class StageReorderIn(BaseModel):
@@ -66,6 +69,16 @@ class StageReorderIn(BaseModel):
 def _slug_key(label: str) -> str:
     key = re.sub(r"[^a-zA-Z0-9]+", "_", label.strip().lower()).strip("_")
     return key or "stage"
+
+
+def program_to_public(row: ProgramCategory) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "position": row.position,
+        "active": bool(row.active),
+        "tags": normalize_tags(getattr(row, "tags", None)),
+    }
 
 
 def assign_stage_positions(ordered_ids: list[int], all_ids: list[int]) -> dict[int, int]:
@@ -277,11 +290,12 @@ def delete_stage(stage_id: int, db: Session = Depends(get_db)):
 @router.get("/programs", response_model=list[ProgramOut])
 def list_programs(db: Session = Depends(get_db)):
     ensure_program_seed(db)
-    return (
+    rows = (
         db.query(ProgramCategory)
         .order_by(ProgramCategory.position.asc(), ProgramCategory.id.asc())
         .all()
     )
+    return [program_to_public(row) for row in rows]
 
 
 @router.post("/programs", response_model=ProgramOut, status_code=201)
@@ -298,11 +312,12 @@ def create_program(payload: ProgramIn, db: Session = Depends(get_db)):
         name=payload.name.strip(),
         position=payload.position if payload.position is not None else max_pos + 10,
         active=payload.active,
+        tags=normalize_tags(payload.tags),
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return row
+    return program_to_public(row)
 
 
 @router.patch("/programs/{program_id}", response_model=ProgramOut)
@@ -324,9 +339,11 @@ def update_program(program_id: int, payload: ProgramIn, db: Session = Depends(ge
     if payload.position is not None:
         row.position = payload.position
     row.active = payload.active
+    if payload.tags is not None:
+        row.tags = normalize_tags(payload.tags)
     db.commit()
     db.refresh(row)
-    return row
+    return program_to_public(row)
 
 
 @router.delete("/programs/{program_id}", status_code=204)

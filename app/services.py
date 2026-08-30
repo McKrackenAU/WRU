@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .calculations import compute_must_have_date, compute_today_priority, expand_workflow_prefix, site_metrics
 from .financial_year import australian_financial_year
 from .models import WORKFLOW_STAGES, Site, SiteCouncil, WorkflowStep
+from .notify import category_tags_for_program, effective_job_tags, normalize_tags
 from .settings_store import get_rules
 from .stage_registry import active_stages, stage_keys as registry_stage_keys
 
@@ -265,6 +266,7 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         else {}
     )
     fy = infer_financial_year(site)
+    cat_tags = category_tags_for_program(db, getattr(site, "program", None))
     council_details = [
         {
             "id": c.id,
@@ -326,6 +328,9 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "tracking_count": len(site.tracking_events or []),
         "cost_estimate_count": len(site.cost_estimates or []),
         "latest_cost_total": _latest_cost_total(site),
+        "tags": normalize_tags(getattr(site, "tags", None)),
+        "category_tags": cat_tags,
+        "effective_tags": effective_job_tags(site, cat_tags),
         "created_at": site.created_at,
         "updated_at": site.updated_at,
     }

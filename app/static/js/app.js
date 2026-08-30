@@ -22,11 +22,14 @@ import {
   docCategorySelectHtml,
   downloadDocumentsZip,
 } from "./common.js";
+import { categoryTagsFor, selectedTagsFrom, tagPickerHtml } from "./tag_picker.js";
 
 const state = {
   sites: [],
   columns: [],
   meta: { workflow_stages: [], priority_threshold_days: 14, councils: [], programs: [], roads: [] },
+  tagLibrary: [],
+  programTags: {},
   detailSiteId: null,
   genericMoas: [],
   autosaveTimer: null,
@@ -1050,13 +1053,16 @@ async function loadAll() {
   if (q) params.set("q", q);
 
   setStatus("Loading active TGS / MoA jobs…");
-  const [meta, columns, sites, generics] = await Promise.all([
+  const [meta, columns, sites, generics, tagData] = await Promise.all([
     api("/api/meta"),
     api("/api/columns"),
     api(`/api/sites?${params}`),
     api("/api/sites/generic-moas").catch(() => []),
+    api("/api/tags").catch(() => ({ items: [], program_tags: {} })),
   ]);
   state.meta = meta;
+  state.tagLibrary = tagData.items || [];
+  state.programTags = tagData.program_tags || {};
   applyDocCategories(meta.doc_category_defs || meta.doc_categories);
   fillDocCategorySelect($("docCategory"), $("docCategory")?.value);
   state.columns = columns;
@@ -1166,6 +1172,20 @@ function fillProgramSelect(selected = "") {
       .map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
       .join("");
   if (cur) sel.value = cur;
+}
+
+function renderJobTags(site = null) {
+  const picker = $("jobTagsPicker");
+  if (!picker) return;
+  const program = $("fProgram")?.value || site?.program || "";
+  const inherited = categoryTagsFor(program, state.programTags);
+  const selected = site?.tags || selectedTagsFrom(picker) || [];
+  picker.innerHTML = tagPickerHtml({
+    library: state.tagLibrary,
+    selected,
+    inherited,
+    name: "job-tags",
+  });
 }
 
 function fillGenericSelect(selected) {
@@ -1323,6 +1343,7 @@ async function openSiteDrawer(site = null) {
   fillRoadList(site?.road_name || "");
   $("fSiteNo").value = site?.site_number || "";
   fillProgramSelect(site?.program || "");
+  renderJobTags(site);
   $("fTgs").value = site?.tgs_reference || "";
   $("fStart").value = site?.indicative_site_start_date || "";
   if ($("fShifts")) $("fShifts").value = site?.indicative_shifts_count || "";
@@ -1412,6 +1433,7 @@ function collectSitePayload() {
     road_name: collectedRoadName(),
     site_number: $("fSiteNo").value.trim(),
     program: $("fProgram").value.trim() || null,
+    tags: selectedTagsFrom($("jobTagsPicker")),
     tgs_reference: $("fTgs").value.trim() || null,
     indicative_site_start_date: $("fStart").value || null,
     indicative_shifts_count: (() => {
@@ -1935,6 +1957,7 @@ function bindEvents() {
   on("colType", "change", () => {
     if ($("colOptionsWrap")) $("colOptionsWrap").hidden = $("colType").value !== "select";
   });
+  on("fProgram", "change", () => renderJobTags());
   on("search", "input", debounce(() => loadAll().catch(showLoadError), 250));
   document.addEventListener("change", (ev) => {
     const map = [

@@ -13,7 +13,7 @@ from ..storage_paths import cost_estimates_dir, documents_dir
 from ..financial_year import australian_financial_year
 from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
-from ..notify import dispatch_comms_due_notifications, dispatch_stage_notifications
+from ..notify import dispatch_comms_due_notifications, dispatch_stage_notifications, normalize_tags
 from ..lookups import ensure_lookup_value
 from ..gantt_engine import recompute_board_dates
 from ..models import CostEstimate, GanttBoard, GanttItem, MapFeature, MapLayer, Site, SiteCouncil
@@ -335,6 +335,7 @@ def reorder_sites(
 @router.post("", response_model=SiteOut, status_code=201)
 def create_site(payload: SiteCreate, request: Request, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude={"councils", "workflow", "geometry", "geometry_name", "linked_generic_moa_id", "custom_fields"})
+    data["tags"] = normalize_tags(data.get("tags"))
     for key in ("road_name", "site_number", "program", "tgs_reference", "moa_number", "extension_flag", "comments"):
         if isinstance(data.get(key), str):
             data[key] = data[key].strip() or None
@@ -399,6 +400,8 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     geometry = data.pop("geometry", None)
     geometry_name = data.pop("geometry_name", None)
     linked_id = data.pop("linked_generic_moa_id", None) if "linked_generic_moa_id" in data else ...
+    if "tags" in data:
+        data["tags"] = normalize_tags(data.get("tags"))
 
     before_stage = snapshot_stage(site, db)
     who = actor_name(request)

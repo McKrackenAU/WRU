@@ -1,4 +1,7 @@
 import { $, api, escapeHtml, injectChrome, alertDialog, confirmDialog } from "./common.js";
+import { selectedTagsFrom, tagPickerHtml } from "./tag_picker.js";
+
+let tagLibrary = [];
 
 let allStages = [];
 let showRemoved = false;
@@ -70,10 +73,15 @@ async function loadPrograms() {
   $("programList").innerHTML = rows.length
     ? rows
         .map(
-          (p) => `<li>
+          (p) => `<li data-id="${p.id}" data-name="${escapeHtml(p.name)}" data-active="${p.active ? "1" : "0"}">
           <div class="top">
             <span>${escapeHtml(p.name)} ${p.active ? "" : "(inactive)"}</span>
             <button type="button" class="btn btn-danger" data-del-prog="${p.id}">Remove</button>
+          </div>
+          <p class="hint" style="margin:0.35rem 0 0.25rem">Tags for every job in this category</p>
+          ${tagPickerHtml({ library: tagLibrary, selected: p.tags || [], name: `prog-${p.id}` })}
+          <div class="toolbar" style="margin-top:0.45rem">
+            <button type="button" class="btn btn-sm" data-save-prog-tags="${p.id}">Save tags</button>
           </div>
         </li>`
         )
@@ -129,6 +137,12 @@ function bindStageDrag() {
 
 async function init() {
   injectChrome({ active: "/admin/stages", mode: "admin" });
+  try {
+    const data = await api("/api/tags");
+    tagLibrary = data.items || [];
+  } catch {
+    tagLibrary = [];
+  }
   await Promise.all([loadStages(), loadPrograms()]);
   bindStageDrag();
 
@@ -236,11 +250,31 @@ async function init() {
   });
 
   $("programList").addEventListener("click", async (ev) => {
+    const save = ev.target.closest("[data-save-prog-tags]");
     const del = ev.target.closest("[data-del-prog]");
-    if (!del) return;
-    if (!await confirmDialog("Deactivate this program category?")) return;
-    await api(`/api/admin/programs/${del.dataset.delProg}`, { method: "DELETE" });
-    await loadPrograms();
+    try {
+      if (save) {
+        ev.preventDefault();
+        const li = save.closest("li");
+        await api(`/api/admin/programs/${save.dataset.saveProgTags}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: li?.dataset.name || "",
+            active: li?.dataset.active !== "0",
+            tags: selectedTagsFrom(li),
+          }),
+        });
+        await loadPrograms();
+        return;
+      }
+      if (!del) return;
+      if (!await confirmDialog("Deactivate this program category?")) return;
+      await api(`/api/admin/programs/${del.dataset.delProg}`, { method: "DELETE" });
+      await loadPrograms();
+    } catch (e) {
+      alertDialog(e.message);
+    }
   });
 }
 

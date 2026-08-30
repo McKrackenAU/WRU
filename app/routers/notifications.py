@@ -11,7 +11,7 @@ from ..auth import get_current_user, require_admin, user_to_public
 from ..database import get_db
 from ..models import AppNotification, NotificationRule, User
 from ..notify import (
-    TRIGGER_COMMS_DUE,
+    STAGELESS_TRIGGERS,
     TRIGGER_STAGE_ENTERED,
     mark_read_now,
     normalize_tags,
@@ -171,7 +171,7 @@ def create_rule(payload: RuleIn, db: Session = Depends(get_db)):
         message_template="",
     )
     _apply_rule_fields(rule, payload, creating=True)
-    if rule.trigger != TRIGGER_COMMS_DUE and not rule.stage_key:
+    if rule.trigger not in STAGELESS_TRIGGERS and not rule.stage_key:
         raise HTTPException(status_code=400, detail="Choose a stage trigger")
     if not normalize_tags(rule.target_tags) and not normalize_user_ids(rule.target_user_ids):
         raise HTTPException(status_code=400, detail="Add at least one tag or user to notify")
@@ -187,7 +187,7 @@ def update_rule(rule_id: int, payload: RulePatchIn, db: Session = Depends(get_db
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
     _apply_rule_fields(rule, payload, creating=False)
-    if rule.trigger != TRIGGER_COMMS_DUE and not (rule.stage_key or "").strip():
+    if rule.trigger not in STAGELESS_TRIGGERS and not (rule.stage_key or "").strip():
         raise HTTPException(status_code=400, detail="Choose a stage trigger")
     if not normalize_tags(rule.target_tags) and not normalize_user_ids(rule.target_user_ids):
         raise HTTPException(status_code=400, detail="Add at least one tag or user to notify")

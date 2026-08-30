@@ -24,8 +24,8 @@ SITES = (ROOT / "app/routers/sites.py").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_204():
-    assert VERSION == "2.04"
+def test_version_is_205():
+    assert VERSION == "2.05"
 
 
 def test_normalize_tags_dedupes_and_caps():
@@ -109,8 +109,9 @@ def test_bell_and_admin_wired():
     assert "mountNotifications" in COMMON
     assert "/api/notifications" in NOTIFY_JS
     assert "dispatch_stage_notifications" in SITES
-    assert 'id="newTags"' in USERS_HTML
+    assert 'id="newTagsPicker"' in USERS_HTML
     assert "data-tags" in USERS_JS
+    assert 'href: "/admin/tags"' in COMMON
     assert 'href="/admin/notifications"' in ADMIN
     assert "admin_notifications_page" in MAIN
     assert 'id="createRuleForm"' in NOTIFY_HTML

@@ -474,6 +474,7 @@ export const OPS_NAV = [
 export const ADMIN_NAV = [
   { href: "/admin", label: "Overview", hint: "Admin home" },
   { href: "/admin/users", label: "Users", hint: "Logins & roles" },
+  { href: "/admin/tags", label: "Tags", hint: "Library for jobs & people" },
   { href: "/admin/notifications", label: "Notifications", hint: "Bell rules & tags" },
   { href: "/admin/stages", label: "Stages & programs", hint: "Workflow" },
   { href: "/admin/settings", label: "Rules & roads", hint: "SLAs · roads · document types" },

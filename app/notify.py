@@ -8,16 +8,20 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from .activity import site_label, stage_label_for
-from .auth import is_hidden_user
-from .models import AppNotification, NotificationRule, User
+from .auth import COMMS_ROLE, is_hidden_user
+from .models import AppNotification, NotificationRule, ProgramCategory, Site, TagDef, User
 
 MAX_TAGS = 12
 MAX_TAG_LEN = 32
 MAX_USER_IDS = 50
 TRIGGER_STAGE_ENTERED = "stage_entered"
 TRIGGER_COMMS_DUE = "comms_due"
+TRIGGER_CALENDAR_NOTE = "calendar_note"
 DEFAULT_RULE_NAME = "Structures ready for works"
 COMMS_DUE_RULE_NAME = "Comms item due"
+CALENDAR_NOTE_RULE_NAME = "Calendar note"
+DEFAULT_LIBRARY_TAGS = (("structures", "Structures"), ("comms", "Comms"))
+STAGELESS_TRIGGERS = {TRIGGER_COMMS_DUE, TRIGGER_CALENDAR_NOTE}
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}", re.IGNORECASE)
 
 
@@ -67,6 +71,105 @@ def normalize_user_ids(raw) -> list[int]:
 
 def user_tag_set(user) -> set[str]:
     return set(normalize_tags(getattr(user, "tags", None)))
+
+
+def merge_tag_lists(*groups) -> list[str]:
+    """Union of tag lists, preserving first-seen order."""
+    combined: list[str] = []
+    for group in groups:
+        combined.extend(normalize_tags(group))
+    return normalize_tags(combined)
+
+
+def program_tag_map(db: Session) -> dict[str, list[str]]:
+    """Lowercased program name → category tags."""
+    out: dict[str, list[str]] = {}
+    for row in db.query(ProgramCategory).all():
+        name = (row.name or "").strip().lower()
+        if name:
+            out[name] = normalize_tags(getattr(row, "tags", None))
+    return out
+
+
+def category_tags_for_program(db: Session | None, program: str | None) -> list[str]:
+    if db is None or not (program or "").strip():
+        return []
+    want = program.strip().lower()
+    for row in db.query(ProgramCategory).all():
+        if (row.name or "").strip().lower() == want:
+            return normalize_tags(getattr(row, "tags", None))
+    return []
+
+
+def effective_job_tags(site, category_tags=None) -> list[str]:
+    """Job-specific tags plus inherited category tags."""
+    return merge_tag_lists(category_tags, getattr(site, "tags", None))
+
+
+def tag_to_public(row: TagDef) -> dict:
+    return {
+        "id": row.id,
+        "slug": row.slug,
+        "label": row.label or row.slug,
+        "position": row.position,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def pretty_tag_label(slug: str) -> str:
+    return (slug or "").replace("-", " ").replace("_", " ").title() or slug
+
+
+def ensure_tag_seed(db: Session) -> None:
+    """Seed the library with defaults plus any tags already on users."""
+    existing = {row.slug for row in db.query(TagDef).all()}
+    wanted: list[tuple[str, str]] = list(DEFAULT_LIBRARY_TAGS)
+    seen = {slug for slug, _ in wanted}
+    for user in db.query(User).all():
+        for slug in normalize_tags(getattr(user, "tags", None)):
+            if slug not in seen:
+                wanted.append((slug, pretty_tag_label(slug)))
+                seen.add(slug)
+    changed = False
+    position = 0
+    for slug, label in wanted:
+        position += 10
+        if slug in existing:
+            continue
+        db.add(TagDef(slug=slug, label=label, position=position))
+        existing.add(slug)
+        changed = True
+    if changed:
+        db.commit()
+
+
+def retarget_tag_slug(db: Session, old_slug: str, new_slug: str) -> None:
+    """Rewrite a renamed library slug on users, jobs, categories, and rules."""
+    old = (old_slug or "").strip().lower()
+    new = (new_slug or "").strip().lower()
+    if not old or not new or old == new:
+        return
+
+    def rewrite(raw):
+        tags = normalize_tags(raw)
+        return normalize_tags([new if tag == old else tag for tag in tags])
+
+    for user in db.query(User).all():
+        tags = normalize_tags(getattr(user, "tags", None))
+        if old in tags:
+            user.tags = rewrite(tags)
+    for site in db.query(Site).all():
+        tags = normalize_tags(getattr(site, "tags", None))
+        if old in tags:
+            site.tags = rewrite(tags)
+    for cat in db.query(ProgramCategory).all():
+        tags = normalize_tags(getattr(cat, "tags", None))
+        if old in tags:
+            cat.tags = rewrite(tags)
+    for rule in db.query(NotificationRule).all():
+        tags = normalize_tags(getattr(rule, "target_tags", None))
+        if old in tags:
+            rule.target_tags = rewrite(tags)
 
 
 def user_matches_rule(user, rule) -> bool:
@@ -181,6 +284,119 @@ def ensure_default_notification_rules(db: Session) -> None:
         )
     )
     db.commit()
+
+
+def ensure_calendar_note_rule(db: Session) -> None:
+    existing = (
+        db.query(NotificationRule)
+        .filter(NotificationRule.trigger == TRIGGER_CALENDAR_NOTE)
+        .first()
+    )
+    if existing:
+        return
+    db.add(
+        NotificationRule(
+            name=CALENDAR_NOTE_RULE_NAME,
+            enabled=True,
+            trigger=TRIGGER_CALENDAR_NOTE,
+            stage_key="",
+            program="",
+            target_tags=["comms"],
+            target_user_ids=[],
+            message_template="{author} left a note on {item}: {note}",
+        )
+    )
+    db.commit()
+
+
+def calendar_note_link(row_id: int | None, field_key: str | None) -> str:
+    if not row_id or not field_key:
+        return "/calendar"
+    return f"/calendar?row={int(row_id)}&field={field_key}"
+
+
+def calendar_note_recipients(db: Session, *, author_id: int | None = None) -> list[tuple]:
+    """Users who should hear about a calendar note: matching rules, comms role, or comms tag."""
+    rules = [
+        rule
+        for rule in db.query(NotificationRule).all()
+        if getattr(rule, "enabled", True) and (rule.trigger or "") == TRIGGER_CALENDAR_NOTE
+    ]
+    users = db.query(User).all()
+    out: list[tuple] = []
+    seen: set[int] = set()
+    for user in users:
+        uid = getattr(user, "id", None)
+        if uid is None or int(uid) in seen:
+            continue
+        if author_id is not None and int(uid) == int(author_id):
+            continue
+        if not getattr(user, "active", True) or is_hidden_user(user):
+            continue
+        matched_rule = None
+        for rule in rules:
+            if user_matches_rule(user, rule):
+                matched_rule = rule
+                break
+        role_comms = (getattr(user, "role", None) or "") == COMMS_ROLE
+        tagged_comms = "comms" in user_tag_set(user)
+        if not matched_rule and not role_comms and not tagged_comms:
+            continue
+        seen.add(int(uid))
+        out.append((user, matched_rule or (rules[0] if rules else None)))
+    return out
+
+
+def dispatch_calendar_note_notifications(
+    db: Session,
+    *,
+    note,
+    row,
+    field,
+    site=None,
+    author=None,
+) -> int:
+    """Fan out inbox items for a new calendar note. Caller commits. No unread-title dedup."""
+    author_id = getattr(author, "id", None)
+    pairs = calendar_note_recipients(db, author_id=author_id)
+    if not pairs:
+        return 0
+    author_name = (
+        (getattr(author, "display_name", None) or getattr(author, "username", None) or "")
+        or getattr(note, "created_by", None)
+        or "Someone"
+    ).strip() or "Someone"
+    field_name = (getattr(field, "name", None) or getattr(field, "field_key", None) or "item").strip()
+    site_name = site_label(site) if site is not None else (getattr(row, "section", None) or "Comms row")
+    title = f"{author_name} commented on {field_name} · {site_name}"[:255]
+    note_body = (getattr(note, "body", None) or "").strip()
+    link = calendar_note_link(getattr(row, "id", None), getattr(field, "field_key", None))
+    site_id = getattr(site, "id", None) or getattr(row, "site_id", None)
+    created = 0
+    for user, rule in pairs:
+        body = (getattr(rule, "message_template", None) or "").strip() if rule is not None else ""
+        if body:
+            body = (
+                body.replace("{author}", author_name)
+                .replace("{item}", field_name)
+                .replace("{field}", field_name)
+                .replace("{note}", note_body)
+                .replace("{site}", site_name)
+            )
+        else:
+            body = f"{author_name} left a note on {field_name} · {site_name}: {note_body}"
+        db.add(
+            AppNotification(
+                user_id=user.id,
+                rule_id=getattr(rule, "id", None) if rule is not None else None,
+                site_id=site_id,
+                title=title,
+                body=body[:4000],
+                link=link,
+            )
+        )
+        created += 1
+    return created
 
 
 def ensure_comms_due_rule(db: Session) -> None:

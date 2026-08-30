@@ -73,10 +73,11 @@ async function loadRules() {
                 <td><input data-f="name" value="${escapeHtml(r.name)}" /></td>
                 <td>
                   <select data-f="trigger">
-                    <option value="stage_entered" ${r.trigger !== "comms_due" ? "selected" : ""}>Job enters a stage</option>
+                    <option value="stage_entered" ${r.trigger === "stage_entered" || !r.trigger ? "selected" : ""}>Job enters a stage</option>
                     <option value="comms_due" ${r.trigger === "comms_due" ? "selected" : ""}>Comms due / overdue</option>
+                    <option value="calendar_note" ${r.trigger === "calendar_note" ? "selected" : ""}>Calendar note added</option>
                   </select>
-                  <select data-f="stage_key" ${r.trigger === "comms_due" ? "hidden" : ""}>${stageOptions(r.stage_key)}</select>
+                  <select data-f="stage_key" ${r.trigger === "comms_due" || r.trigger === "calendar_note" ? "hidden" : ""}>${stageOptions(r.stage_key)}</select>
                 </td>
                 <td><select data-f="program">${programOptions(r.program)}</select></td>
                 <td>
@@ -153,7 +154,7 @@ async function init() {
   $("newUsers").innerHTML = userOptions([]);
   const syncTrigger = () => {
     const wrap = $("newStageWrap");
-    if (wrap) wrap.hidden = $("newTrigger").value === "comms_due";
+    if (wrap) wrap.hidden = ["comms_due", "calendar_note"].includes($("newTrigger").value);
   };
   $("newTrigger")?.addEventListener("change", syncTrigger);
   syncTrigger();

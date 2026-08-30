@@ -26,7 +26,7 @@
       <div class="page-head">
         <div>
           <h1>Users</h1>
-          <p>Create logins for your team. Add tags (for example <code>structures</code>) so notification rules can reach Omar and others without naming each person on every rule. Admins manage settings. Comms users get the tracker plus the Comms planner — not the admin console.</p>
+          <p>Create logins for your team. Pick tags from the <a href="/admin/tags">tag library</a> so notification rules can reach Omar and others without naming each person on every rule. Admins manage settings. Comms users get the tracker plus the Comms planner — not the admin console.</p>
         </div>
       </div>
 
@@ -53,9 +53,9 @@
             Password <span class="hint">(optional — generated if blank)</span>
             <input id="newPassword" type="password" minlength="8" autocomplete="new-password" />
           </label>
-          <label>
-            Tags <span class="hint">(comma-separated — e.g. structures)</span>
-            <input id="newTags" maxlength="256" autocomplete="off" placeholder="e.g. structures" />
+          <label class="full">
+            Tags <span class="hint">(<a href="/admin/tags">manage library</a>)</span>
+            <div id="newTagsPicker"></div>
           </label>
           <div class="full">
             <button type="submit" class="btn btn-primary">Create user</button>

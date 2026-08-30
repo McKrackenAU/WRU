@@ -103,6 +103,7 @@ class SiteBase(BaseModel):
     councils: list[str] = Field(default_factory=list)
     council_details: list[CouncilOut] = Field(default_factory=list)
     custom_fields: dict[str, Any] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
 
 
 class SiteCreate(BaseModel):
@@ -138,6 +139,7 @@ class SiteCreate(BaseModel):
     workflow: dict[str, bool] | None = None
     geometry: dict[str, Any] | None = None
     geometry_name: str | None = None
+    tags: list[str] | str = Field(default_factory=list)
 
 
 class SiteUpdate(BaseModel):
@@ -177,6 +179,7 @@ class SiteUpdate(BaseModel):
     workflow: dict[str, bool] | None = None
     geometry: dict[str, Any] | None = None
     geometry_name: str | None = None
+    tags: list[str] | str | None = None
 
 
 class SiteArchiveRequest(BaseModel):
@@ -228,6 +231,9 @@ class SiteOut(SiteBase):
     tracking_count: int = 0
     cost_estimate_count: int = 0
     latest_cost_total: float | None = None
+    tags: list[str] = Field(default_factory=list)
+    category_tags: list[str] = Field(default_factory=list)
+    effective_tags: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

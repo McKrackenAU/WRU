@@ -44,6 +44,26 @@
         </div>
         <div class="comms-cal-grid" id="calGrid"></div>
       </section>
+      <aside class="cal-note-panel panel-card" id="calNotePanel" hidden>
+        <header class="cal-note-head">
+          <div>
+            <h2 id="calNoteTitle">Calendar item</h2>
+            <p class="hint" id="calNoteMeta"></p>
+            <div class="tag-picker" id="calNoteTags"></div>
+          </div>
+          <button type="button" class="icon-btn" id="calNoteClose" aria-label="Close notes">×</button>
+        </header>
+        <div id="calNoteList" class="cal-note-list">
+          <p class="hint">Select an item to see notes.</p>
+        </div>
+        <form id="calNoteForm" class="cal-note-form">
+          <label class="full">Note
+            <textarea id="calNoteBody" rows="3" required maxlength="4000" placeholder="Leave a note for Comms…"></textarea>
+          </label>
+          <button type="submit" class="btn btn-primary">Add note</button>
+        </form>
+        <p class="hint" id="calNotePlanner" hidden><a id="calNotePlannerLink" href="/comms">Open in Comms planner</a></p>
+      </aside>
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>

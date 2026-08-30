@@ -8,6 +8,9 @@ import {
   confirmDialog,
   showPageError,
 } from "./common.js";
+import { selectedTagsFrom, tagPickerHtml } from "./tag_picker.js";
+
+let tagLibrary = [];
 
 function fmtWhen(iso) {
   if (!iso) return "—";
@@ -57,7 +60,7 @@ async function loadUsers() {
                 </select>
               </td>
               <td>
-                <input data-tags value="${escapeHtml((u.tags || []).join(", "))}" placeholder="e.g. structures" aria-label="Tags for ${escapeHtml(u.username)}" />
+                <div data-tags>${tagPickerHtml({ library: tagLibrary, selected: u.tags || [], name: `user-${u.id}` })}</div>
               </td>
               <td>
                 <label class="inline-check">
@@ -89,7 +92,7 @@ async function loadUsers() {
           body: JSON.stringify({
             role: tr.querySelector("[data-role]").value,
             active: tr.querySelector("[data-active]").checked,
-            tags: tr.querySelector("[data-tags]").value,
+            tags: selectedTagsFrom(tr.querySelector("[data-tags]")),
           }),
         });
         await loadUsers();
@@ -121,6 +124,15 @@ async function loadUsers() {
 
 async function init() {
   await injectChrome({ active: "/admin/users", mode: "admin" });
+  try {
+    const data = await api("/api/tags");
+    tagLibrary = data.items || [];
+  } catch {
+    tagLibrary = [];
+  }
+  if ($("newTagsPicker")) {
+    $("newTagsPicker").innerHTML = tagPickerHtml({ library: tagLibrary, selected: [], name: "new-user" });
+  }
   await loadUsers();
 
   on("createUserForm", "submit", async (e) => {
@@ -133,7 +145,7 @@ async function init() {
         username: $("newUsername").value.trim(),
         display_name: $("newDisplayName").value.trim(),
         role: $("newRole").value,
-        tags: $("newTags").value,
+        tags: selectedTagsFrom($("newTagsPicker")),
       };
       if (password) body.password = password;
       const out = await api("/api/admin/users", {
@@ -142,6 +154,9 @@ async function init() {
         body: JSON.stringify(body),
       });
       $("createUserForm").reset();
+      if ($("newTagsPicker")) {
+        $("newTagsPicker").innerHTML = tagPickerHtml({ library: tagLibrary, selected: [], name: "new-user" });
+      }
       if (out.temporary_password) {
         msg.textContent = `Created ${out.username}. Temporary password: ${out.temporary_password}`;
       } else {

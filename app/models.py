@@ -115,6 +115,22 @@ class ProgramCategory(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Tags inherited by every job whose program name matches this category.
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+
+class TagDef(Base):
+    """Admin-managed tag library used on users, jobs, and program categories."""
+
+    __tablename__ = "tag_defs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class StorageLocation(Base):
@@ -222,6 +238,8 @@ class Site(Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_fy: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     custom_fields: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Job-specific tags; category tags are merged at read time.
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -727,6 +745,23 @@ class CommsRowNote(Base):
     row: Mapped[CommsRow] = relationship(back_populates="notes")
 
 
+class CalendarItemNote(Base):
+    """Note on a comms calendar due-item (row + field), not the planner Notes tab."""
+
+    __tablename__ = "calendar_item_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    row_id: Mapped[int] = mapped_column(ForeignKey("comms_rows.id", ondelete="CASCADE"), index=True)
+    field_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    row: Mapped[CommsRow] = relationship(lazy="selectin")
+
+
 class CommsTemplateField(Base):
     """Shared Comms-tab field the team adds from Templates (yes/no, comments, files)."""
 
@@ -871,7 +906,7 @@ class NotificationRule(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # stage_entered
+    # stage_entered | comms_due | calendar_note
     trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="stage_entered")
     stage_key: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     # Empty program = any program

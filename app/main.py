@@ -53,6 +53,7 @@ from .routers import (
     spend,
     stages,
     system,
+    tags,
     tracking,
     users as users_router,
 )
@@ -82,6 +83,8 @@ app.include_router(auth_router.router)
 app.include_router(users_router.router)
 app.include_router(notifications.inbox_router)
 app.include_router(notifications.admin_router)
+app.include_router(tags.public_router)
+app.include_router(tags.admin_router)
 app.include_router(live.router)
 app.include_router(activity.router)
 app.include_router(sites.router)
@@ -448,6 +451,11 @@ def admin_users_page(_: User = Depends(require_admin)):
 @app.get("/admin/notifications")
 def admin_notifications_page(_: User = Depends(require_admin)):
     return _page("notifications.html")
+
+
+@app.get("/admin/tags")
+def admin_tags_page(_: User = Depends(require_admin)):
+    return _page("tags.html")
 
 
 @app.get("/admin/storage")

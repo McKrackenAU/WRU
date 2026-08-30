@@ -134,5 +134,10 @@ def build_calendar_item(field, row, site, today: date | None = None) -> dict | N
         "status": status,
         "color": calendar_color(status),
         "program": (getattr(site, "program", None) or "").strip() if site else "",
-        "link": f"/comms?row={int(row.id)}" if getattr(row, "id", None) else "/calendar",
+        "link": (
+            f"/calendar?row={int(row.id)}&field={field.field_key}"
+            if getattr(row, "id", None)
+            else "/calendar"
+        ),
+        "planner_link": f"/comms?row={int(row.id)}" if getattr(row, "id", None) else "/comms",
     }

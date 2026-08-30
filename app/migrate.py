@@ -42,6 +42,8 @@ from .models import (  # noqa: F401 — register metadata
     WorkflowStep,
     NotificationRule,
     AppNotification,
+    TagDef,
+    CalendarItemNote,
 )
 
 
@@ -219,6 +221,8 @@ def run_migrations() -> None:
         "track_due BOOLEAN NOT NULL DEFAULT FALSE",
     )
     ensure_column("comms_template_fields", "offset_days", "offset_days INTEGER")
+    ensure_column("sites", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
+    ensure_column("program_categories", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
@@ -242,7 +246,12 @@ def run_migrations() -> None:
 
     from .auth import ensure_admin_user, ensure_root_user
     from .comms_seed import ensure_comms_resources, ensure_comms_seed
-    from .notify import ensure_comms_due_rule, ensure_default_notification_rules
+    from .notify import (
+        ensure_calendar_note_rule,
+        ensure_comms_due_rule,
+        ensure_default_notification_rules,
+        ensure_tag_seed,
+    )
 
     db = SessionLocal()
     try:
@@ -257,6 +266,8 @@ def run_migrations() -> None:
         ensure_comms_resources(db)
         ensure_default_notification_rules(db)
         ensure_comms_due_rule(db)
+        ensure_calendar_note_rule(db)
+        ensure_tag_seed(db)
     finally:
         db.close()
 

@@ -78,4 +78,8 @@ def test_field_remove_and_due_ui_wired():
     assert "/api/calendar/comms" in CAL_JS
     assert 'id="calGrid"' in CAL_HTML
     assert "TRIGGER_COMMS_DUE" in NOTIFY
+    assert "/api/calendar/comms/notes" in CAL_JS
+    assert 'id="calNotePanel"' in CAL_HTML
+    assert "TRIGGER_CALENDAR_NOTE" in NOTIFY
+    assert "data-cal-item" in CAL_JS
     assert "dispatch_comms_due_notifications" in NOTIFY
