@@ -19,7 +19,7 @@
     })();
   </script>
 </head>
-<body>
+<body class="comms-page">
   <div class="app-shell">
     <header class="topbar" data-app-header></header>
     <main id="main-content" tabindex="-1" class="main comms-main">
@@ -61,6 +61,7 @@
         <div class="comms-resources-intro">
           <input id="resourceSearch" type="search" placeholder="Search templates, notes, and links…" />
         </div>
+        <div id="commsFormBuilder"></div>
         <div id="commsResourceList"></div>
       </section>
     </main>
@@ -94,24 +95,25 @@
         <button type="button" class="icon-btn" data-close-dialog="exportDialog" aria-label="Close">×</button>
       </header>
       <div class="panel-body">
-        <p class="hint">Choose tabs, rows, and columns, then download Excel or PDF. The current list filters are used when you pick visible rows.</p>
+        <p class="hint">Pick a tab, which rows, and which columns, then download Excel or PDF.</p>
         <div class="form-grid">
-          <label class="full">Planner tabs
-            <div class="comms-export-checks" id="exportSheets"></div>
+          <label>Planner tab
+            <select id="exportSheetScope"></select>
           </label>
           <label>Rows
             <select id="exportRows">
-              <option value="visible">Visible rows (this tab’s filters)</option>
-              <option value="all">Every row on the selected tabs</option>
+              <option value="visible">Visible rows on this tab</option>
+              <option value="all">Every row on the selected tab(s)</option>
             </select>
           </label>
           <label class="full">Columns
-            <div class="comms-export-tools">
-              <button type="button" class="btn btn-sm" data-export-cols="all">All</button>
-              <button type="button" class="btn btn-sm" data-export-cols="none">None</button>
-            </div>
-            <div class="comms-export-checks" id="exportColumns"></div>
+            <select id="exportColScope">
+              <option value="list">List columns (job, workpack or site, status, files)</option>
+              <option value="all">All columns</option>
+              <option value="custom">Choose columns…</option>
+            </select>
           </label>
+          <div class="full comms-export-checks" id="exportColumns" hidden></div>
         </div>
       </div>
       <footer class="panel-foot">
@@ -119,6 +121,40 @@
         <button type="button" class="btn" id="btnExportPdf">Export PDF</button>
         <div class="spacer"></div>
         <button type="button" class="btn" data-close-dialog="exportDialog">Cancel</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="formFieldDialog" class="panel">
+    <form id="formFieldForm" onsubmit="return false;">
+      <header class="panel-head">
+        <h2>Add Comms field</h2>
+        <button type="button" class="icon-btn" data-close-dialog="formFieldDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">This field appears on the Comms tab of every planner row.</p>
+        <div class="form-grid">
+          <label class="full">Name
+            <input id="formFieldName" maxlength="128" placeholder="Letter drop required" />
+          </label>
+          <label>Type
+            <select id="formFieldType">
+              <option value="yesno">Yes / No</option>
+              <option value="select">Dropdown list</option>
+              <option value="text">Short comment</option>
+              <option value="textarea">Long comment</option>
+              <option value="file">File upload</option>
+            </select>
+          </label>
+          <label class="full" id="formFieldOptionsWrap" hidden>Dropdown options (comma-separated)
+            <input id="formFieldOptions" placeholder="Yes, No, Reassess" />
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-primary" id="btnSaveFormField">Add field</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-dialog="formFieldDialog">Cancel</button>
       </footer>
     </form>
   </dialog>

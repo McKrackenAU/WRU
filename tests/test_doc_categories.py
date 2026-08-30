@@ -69,7 +69,7 @@ def test_seed_creates_builtin_types():
     ensure_doc_category_seed(db)
     rows = db.query(DocumentCategoryDef).all()
     keys = {r.key for r in rows}
-    assert {"email", "tgs", "plan", "moa", "correspondence", "photo", "other"} <= keys
+    assert {"email", "tgs", "plan", "moa", "correspondence", "scoping", "photo", "other"} <= keys
     other = next(r for r in rows if r.key == FALLBACK_KEY)
     assert other.protected is True
 

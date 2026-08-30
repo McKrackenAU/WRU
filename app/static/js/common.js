@@ -267,6 +267,7 @@ export const DOC_CATEGORY_LABELS = {
   plan: "Plan",
   moa: "MoA",
   correspondence: "Correspondence",
+  scoping: "Scoping",
   photo: "Photo",
   other: "Other",
 };

@@ -17,6 +17,7 @@ DEFAULT_DOC_CATEGORIES: list[dict] = [
     {"key": "plan", "label": "Plan", "position": 30, "protected": False},
     {"key": "moa", "label": "MoA", "position": 40, "protected": False},
     {"key": "correspondence", "label": "Correspondence", "position": 50, "protected": False},
+    {"key": "scoping", "label": "Scoping", "position": 55, "protected": False},
     {"key": "photo", "label": "Photo", "position": 60, "protected": False},
     {"key": "other", "label": "Other", "position": 70, "protected": True},
 ]

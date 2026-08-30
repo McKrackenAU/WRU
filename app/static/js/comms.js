@@ -38,6 +38,9 @@ const state = {
   filters: {},
   knownFilterValues: {},
   filterSheetId: null,
+  formFields: [],
+  notes: [],
+  jobCategories: [],
 };
 
 function sheetIdFromUrl() {
@@ -270,7 +273,9 @@ function drawerTabs() {
     { id: "notes", label: "Notes", columns: buckets.notes },
     { id: "job", label: "Job & files", columns: [] },
   ];
-  return tabs.filter((tab) => tab.id === "overview" || tab.id === "job" || tab.columns.length);
+  return tabs.filter(
+    (tab) => tab.id === "overview" || tab.id === "job" || tab.id === "notes" || tab.id === "comms" || tab.columns.length
+  );
 }
 
 function currentRow() {
@@ -377,11 +382,48 @@ function renderResources() {
     .join("");
 }
 
+function renderFormBuilder() {
+  const host = $("commsFormBuilder");
+  if (!host) return;
+  host.innerHTML = `<article class="comms-form-builder">
+    <header class="comms-resource-head">
+      <div>
+        <h2>Comms form</h2>
+        <p class="hint">Fields added here show on the Comms tab of every planner row — Yes/No, dropdowns, comments, and file uploads.</p>
+      </div>
+      <button type="button" class="btn btn-sm" id="btnAddFormField">Add field</button>
+    </header>
+    ${
+      state.formFields.length
+        ? `<ul class="comms-form-fields">${state.formFields
+            .map(
+              (field) => `<li>
+                <div>
+                  <strong>${escapeHtml(field.name)}</strong>
+                  <div class="meta">${escapeHtml(field.field_type === "yesno" ? "Yes / No" : field.field_type)}${
+                    field.options?.length ? ` · ${escapeHtml(field.options.join(", "))}` : ""
+                  }</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-danger" data-del-form-field="${field.id}">Remove</button>
+              </li>`
+            )
+            .join("")}</ul>`
+        : `<p class="hint">No extra Comms fields yet. Add the breakdown the team needs.</p>`
+    }
+  </article>`;
+}
+
+async function loadFormFields() {
+  state.formFields = await api("/api/comms/form-fields");
+}
+
 async function loadResources() {
   const data = await api("/api/comms/resources");
   state.resources = data.sections || [];
+  await loadFormFields();
   renderSheetTabs();
   setViewChrome();
+  renderFormBuilder();
   renderResources();
 }
 
@@ -636,10 +678,20 @@ function renderDrawer() {
       <section class="tab-panel active">
         <div class="form-section">
           <h3>Linked job</h3>
-          <p class="hint">User-visible files appear on the job’s Documents tab once a site is linked.</p>
+          <p class="hint">Choose a category, then the job. User-visible files appear on the job’s Documents tab once linked.</p>
           <p id="jobLinked"></p>
           <div class="form-grid">
-            <label class="full">Find a job
+            <label>Category
+              <select id="jobCategory">
+                <option value="">Select a category…</option>
+              </select>
+            </label>
+            <label>Job
+              <select id="jobPick" disabled>
+                <option value="">Select a job…</option>
+              </select>
+            </label>
+            <label class="full">Or search
               <input id="jobSearch" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
             </label>
           </div>
@@ -668,6 +720,60 @@ function renderDrawer() {
     renderJobLinked();
     refreshDocsList().catch(() => {});
     bindDrawerJobHandlers();
+    loadJobCategories().catch(() => {});
+  } else if (active.id === "notes") {
+    $("commsDrawerBody").innerHTML = `
+      <section class="tab-panel active">
+        <div class="form-section">
+          <h3>Notes log</h3>
+          <ul class="comms-note-log" id="commsNoteLog"></ul>
+          <label class="full comms-note-compose">Add a note
+            <textarea id="commsNoteText" rows="3" placeholder="What happened, who was told, next step…"></textarea>
+          </label>
+          <div class="toolbar">
+            <button type="button" class="btn btn-primary" id="btnAddNote">Add note</button>
+          </div>
+        </div>
+        <div class="form-section">
+          <h3>Scoping document</h3>
+          ${active.columns
+            .filter((col) => !/scoping/i.test(col.field_key + col.name))
+            .map((col) => `<label class="full">${escapeHtml(col.name)}${cellInput(col, (row.values || {})[col.field_key])}</label>`)
+            .join("")}
+          <p class="hint">Upload the scoping file for this activity. It stays on this row.</p>
+          <div class="form-grid">
+            <label class="full">File<input id="commsScopeFile" type="file" multiple /></label>
+          </div>
+          <div class="toolbar" style="margin-top:0.75rem">
+            <button type="button" class="btn btn-primary" id="btnUploadScope">Upload scoping doc</button>
+            <span class="hint" id="commsScopeStatus"></span>
+          </div>
+          <ul class="event-list" id="commsScopeList"></ul>
+        </div>
+      </section>
+    `;
+    refreshNotes().catch(() => {});
+    refreshDocsList({ target: "commsScopeList", category: "scoping" }).catch(() => {});
+  } else if (active.id === "comms") {
+    $("commsDrawerBody").innerHTML = `
+      <section class="tab-panel active">
+        <div class="form-section">
+          <h3>Comms</h3>
+          <div class="form-grid" id="commsFieldGrid">
+            ${active.columns
+              .map((col) => `<label class="full">${escapeHtml(col.name)}${cellInput(col, (row.values || {})[col.field_key])}</label>`)
+              .join("")}
+            ${state.formFields.map((field) => renderFormField(field, row)).join("")}
+          </div>
+          ${
+            state.formFields.length
+              ? ""
+              : `<p class="hint">Add Yes/No, comment, or file fields on the Templates tab — they show here on every row.</p>`
+          }
+        </div>
+      </section>
+    `;
+    refreshFormFileLists().catch(() => {});
   } else {
     $("commsDrawerBody").innerHTML = `
       <section class="tab-panel active">
@@ -683,6 +789,149 @@ function renderDrawer() {
     `;
   }
   openDrawer();
+}
+
+function formatStamp(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function renderFormField(field, row) {
+  const value = (row.form_values || {})[field.field_key] ?? "";
+  if (field.field_type === "file") {
+    return `<div class="full">
+      <strong>${escapeHtml(field.name)}</strong>
+      <div class="form-grid" style="margin-top:0.45rem">
+        <label class="full">File<input type="file" multiple data-form-file="${escapeHtml(field.field_key)}" /></label>
+      </div>
+      <div class="toolbar" style="margin-top:0.5rem">
+        <button type="button" class="btn btn-sm btn-primary" data-upload-form-file="${escapeHtml(field.field_key)}">Upload</button>
+        <span class="hint" data-form-file-status="${escapeHtml(field.field_key)}"></span>
+      </div>
+      <ul class="event-list" data-form-file-list="${escapeHtml(field.field_key)}"></ul>
+    </div>`;
+  }
+  if (field.field_type === "textarea") {
+    return `<label class="full">${escapeHtml(field.name)}<textarea data-form-field="${escapeHtml(
+      field.field_key
+    )}" rows="3">${escapeHtml(String(value))}</textarea></label>`;
+  }
+  if (field.field_type === "select" || field.field_type === "yesno") {
+    const opts = field.field_type === "yesno" ? ["", "Yes", "No"] : ["", ...(field.options || [])];
+    return `<label class="full">${escapeHtml(field.name)}<select data-form-field="${escapeHtml(field.field_key)}">${opts
+      .map((o) => `<option value="${escapeHtml(o)}" ${String(o) === String(value) ? "selected" : ""}>${escapeHtml(o || "—")}</option>`)
+      .join("")}</select></label>`;
+  }
+  return `<label class="full">${escapeHtml(field.name)}<input type="text" data-form-field="${escapeHtml(
+    field.field_key
+  )}" value="${escapeHtml(String(value))}" /></label>`;
+}
+
+async function refreshNotes() {
+  const row = currentRow();
+  const host = $("commsNoteLog");
+  if (!row || !host) return;
+  state.notes = await api(`/api/comms/rows/${row.id}/notes`);
+  host.innerHTML = state.notes.length
+    ? state.notes
+        .map(
+          (note) => `<li>
+            <div class="top">
+              <span>${escapeHtml(formatStamp(note.created_at))}${note.created_by ? ` · ${escapeHtml(note.created_by)}` : ""}</span>
+              <button type="button" class="btn btn-sm btn-danger" data-del-note="${note.id}">Remove</button>
+            </div>
+            <p>${escapeHtml(note.message)}</p>
+          </li>`
+        )
+        .join("")
+    : `<li><p class="meta">No notes yet. Add the first one below.</p></li>`;
+}
+
+async function loadJobCategories() {
+  const sel = $("jobCategory");
+  if (!sel) return;
+  state.jobCategories = await api("/api/comms/site-categories");
+  const current = currentRow()?.site?.program || "";
+  sel.innerHTML = `<option value="">Select a category…</option>${state.jobCategories
+    .map((c) => `<option value="${escapeHtml(c.name)}" ${c.name === current ? "selected" : ""}>${escapeHtml(c.name)}</option>`)
+    .join("")}`;
+  if (current) await fillJobPick(current, currentRow()?.site_id);
+}
+
+async function fillJobPick(program, selectedId) {
+  const sel = $("jobPick");
+  if (!sel) return;
+  if (!program) {
+    sel.innerHTML = `<option value="">Select a job…</option>`;
+    sel.disabled = true;
+    return;
+  }
+  const jobs = await api(`/api/comms/sites?program=${encodeURIComponent(program)}`);
+  sel.disabled = false;
+  sel.innerHTML = `<option value="">Select a job…</option>${jobs
+    .map(
+      (s) =>
+        `<option value="${s.id}" ${Number(selectedId) === s.id ? "selected" : ""}>${escapeHtml(s.road_name || "Site")}${
+          s.site_number ? ` · ${escapeHtml(s.site_number)}` : ""
+        }</option>`
+    )
+    .join("")}`;
+}
+
+async function refreshFormFileLists() {
+  const row = currentRow();
+  if (!row) return;
+  const docs = await api(`/api/comms/rows/${row.id}/documents`);
+  for (const field of state.formFields.filter((f) => f.field_type === "file")) {
+    const host = document.querySelector(`[data-form-file-list="${cssKey(field.field_key)}"]`);
+    if (!host) continue;
+    const ids = formFileIds(row, field.field_key);
+    const mine = docs.filter((d) => ids.includes(d.id) || (d.description || "").startsWith(`form:${field.field_key}`));
+    host.innerHTML = mine.length
+      ? mine
+          .map(
+            (d) => `<li>
+              <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></p>
+              <button type="button" class="btn btn-sm btn-danger" data-del-doc="${d.id}">Delete</button>
+            </li>`
+          )
+          .join("")
+      : `<li><p class="meta">No files uploaded for this item yet.</p></li>`;
+  }
+}
+
+function formFileIds(row, key) {
+  const raw = (row.form_values || {})[key];
+  if (Array.isArray(raw)) return raw.map(Number).filter(Boolean);
+  return String(raw || "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter(Boolean);
+}
+
+async function uploadCommsRowFile(row, file, { category = "correspondence", description = null, visibility = "comms", onProgress } = {}) {
+  return uploadFileChunked(file, {
+    beginUrl: `/api/comms/rows/${row.id}/documents/session`,
+    chunkUrl: (id, idx) =>
+      `/api/comms/rows/${row.id}/documents/session/${encodeURIComponent(id)}/chunk/${idx}`,
+    commitUrl: (id) => `/api/comms/rows/${row.id}/documents/session/${encodeURIComponent(id)}/commit`,
+    beginBody: { category, description, uploaded_by: userName(), visibility },
+    onProgress,
+  });
+}
+
+async function refreshActiveDocs() {
+  if (state.drawerTab === "notes") {
+    await refreshDocsList({ target: "commsScopeList", category: "scoping" });
+    return;
+  }
+  if (state.drawerTab === "comms") {
+    await refreshFormFileLists();
+    return;
+  }
+  await refreshDocsList();
 }
 
 function renderJobLinked() {
@@ -705,12 +954,14 @@ function renderJobLinked() {
   });
 }
 
-async function refreshDocsList() {
+async function refreshDocsList({ target = "commsDocList", category = null } = {}) {
   const row = currentRow();
-  if (!row || !$("commsDocList")) return;
+  const host = $(target);
+  if (!row || !host) return;
   const docs = await api(`/api/comms/rows/${row.id}/documents`);
-  $("commsDocList").innerHTML = docs.length
-    ? docs
+  const list = category ? docs.filter((d) => d.category === category) : docs.filter((d) => d.category !== "scoping");
+  host.innerHTML = list.length
+    ? list
         .map(
           (d) => `<li>
             <div class="top">
@@ -725,10 +976,23 @@ async function refreshDocsList() {
           </li>`
         )
         .join("")
-    : `<li><p class="meta">No files on this row yet.</p></li>`;
+    : `<li><p class="meta">${category === "scoping" ? "No scoping document uploaded yet." : "No files on this row yet."}</p></li>`;
 }
 
 function bindDrawerJobHandlers() {
+  on("jobCategory", "change", () => {
+    fillJobPick($("jobCategory").value).catch((e) => alertDialog(errorMessage(e, "Could not load jobs")));
+  });
+  on("jobPick", "change", async () => {
+    const id = Number($("jobPick").value);
+    if (!id || !state.openRowId) return;
+    await api(`/api/comms/rows/${state.openRowId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ site_id: id }),
+    });
+    await loadSheet(state.sheet.id, { keepRow: state.openRowId });
+  });
   on("jobSearch", "input", () => {
     clearTimeout(state.jobTimer);
     const q = $("jobSearch").value.trim();
@@ -839,18 +1103,16 @@ function exportColumnChoices() {
 }
 
 function fillExportDialog() {
-  const sheets = $("exportSheets");
-  const cols = $("exportColumns");
-  if (sheets) {
-    sheets.innerHTML = state.sheets
-      .map(
-        (sheet) => `<label class="lists-check">
-          <input type="checkbox" data-export-sheet="${sheet.id}" ${state.sheet?.id === sheet.id ? "checked" : ""} />
-          <span>${escapeHtml(sheet.title)}</span>
-        </label>`
-      )
-      .join("");
+  const scope = $("exportSheetScope");
+  if (scope) {
+    scope.innerHTML = `<option value="current">This tab (${escapeHtml(state.sheet?.title || "current")})</option>
+      <option value="all">All planner tabs</option>
+      ${state.sheets
+        .map((sheet) => `<option value="${sheet.id}">${escapeHtml(sheet.title)}</option>`)
+        .join("")}`;
+    scope.value = "current";
   }
+  const cols = $("exportColumns");
   if (cols) {
     cols.innerHTML = exportColumnChoices()
       .map(
@@ -860,15 +1122,40 @@ function fillExportDialog() {
         </label>`
       )
       .join("");
+    cols.hidden = true;
   }
   if ($("exportRows")) $("exportRows").value = "visible";
+  if ($("exportColScope")) $("exportColScope").value = "list";
+}
+
+function selectedExportSheetIds() {
+  const scope = $("exportSheetScope")?.value || "current";
+  if (scope === "all") return state.sheets.map((s) => s.id);
+  if (scope === "current") return state.sheet?.id ? [state.sheet.id] : [];
+  const id = Number(scope);
+  return id ? [id] : [];
+}
+
+function selectedExportColumns() {
+  const mode = $("exportColScope")?.value || "list";
+  const all = exportColumnChoices();
+  if (mode === "all") return all.map((c) => c.key);
+  if (mode === "custom") {
+    return [...document.querySelectorAll("[data-export-col]:checked")].map((box) => box.dataset.exportCol);
+  }
+  const keep = new Set(["_job", "_files"]);
+  const secondary = secondaryColumn();
+  const status = statusColumn();
+  if (secondary) keep.add(secondary.field_key);
+  if (status) keep.add(status.field_key);
+  return all.map((c) => c.key).filter((key) => keep.has(key));
 }
 
 async function runCommsExport(format) {
-  const sheetIds = [...document.querySelectorAll("[data-export-sheet]:checked")].map((box) => Number(box.dataset.exportSheet));
-  const columnKeys = [...document.querySelectorAll("[data-export-col]:checked")].map((box) => box.dataset.exportCol);
+  const sheetIds = selectedExportSheetIds();
+  const columnKeys = selectedExportColumns();
   if (!sheetIds.length) {
-    await alertDialog("Select at least one planner tab");
+    await alertDialog("Select a planner tab");
     return;
   }
   if (!columnKeys.length) {
@@ -880,11 +1167,9 @@ async function runCommsExport(format) {
   if (onlyVisible) {
     if (sheetIds.length === 1 && state.sheet && sheetIds[0] === state.sheet.id) {
       rowIds = filteredRows().map((row) => row.id);
-    } else if (sheetIds.includes(state.sheet?.id) && sheetIds.length > 1) {
-      await alertDialog("Visible rows applies to the open tab only. Select one tab, or choose every row.");
-      return;
     } else {
-      rowIds = null;
+      await alertDialog("Visible rows only works when you export this tab. Choose every row, or switch to This tab.");
+      return;
     }
   }
   const res = await api("/api/comms/export", {
@@ -930,6 +1215,7 @@ function renderColumnList() {
 
 async function init() {
   await injectChrome({ active: "/comms" });
+  await loadFormFields().catch(() => {});
   await loadSheets();
 
   $("sheetTabs")?.addEventListener("click", async (ev) => {
@@ -976,7 +1262,48 @@ async function init() {
     }
   });
 
+  document.body.addEventListener("click", (ev) => {
+    if (ev.target.id !== "btnAddFormField") return;
+    $("formFieldName").value = "";
+    $("formFieldType").value = "yesno";
+    $("formFieldOptions").value = "";
+    $("formFieldOptionsWrap").hidden = true;
+    $("formFieldDialog").showModal();
+  });
+
+  on("formFieldType", "change", () => {
+    $("formFieldOptionsWrap").hidden = $("formFieldType").value !== "select";
+  });
+
+  on("btnSaveFormField", "click", async () => {
+    const name = $("formFieldName").value.trim();
+    const field_type = $("formFieldType").value;
+    const options = $("formFieldOptions").value.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!name) {
+      await alertDialog("Field name is required");
+      return;
+    }
+    try {
+      await api("/api/comms/form-fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, field_type, options, created_by: userName() }),
+      });
+      $("formFieldDialog").close();
+      await loadResources();
+    } catch (err) {
+      await alertDialog(errorMessage(err, "Could not add field"));
+    }
+  });
+
   $("commsResources")?.addEventListener("click", async (ev) => {
+    const delField = ev.target.closest("[data-del-form-field]");
+    if (delField) {
+      if (!await confirmDialog("Remove this field from every planner row?")) return;
+      await api(`/api/comms/form-fields/${delField.dataset.delFormField}`, { method: "DELETE" });
+      await loadResources();
+      return;
+    }
     const add = ev.target.closest("[data-add-link]");
     if (add) {
       openResourceLinkDialog({ sectionId: Number(add.dataset.addLink) });
@@ -1186,13 +1513,8 @@ async function init() {
     $("exportDialog").showModal();
   });
 
-  $("exportDialog")?.addEventListener("click", (ev) => {
-    const tool = ev.target.closest("[data-export-cols]");
-    if (!tool) return;
-    const on = tool.dataset.exportCols === "all";
-    document.querySelectorAll("[data-export-col]").forEach((box) => {
-      box.checked = on;
-    });
+  on("exportColScope", "change", () => {
+    if ($("exportColumns")) $("exportColumns").hidden = $("exportColScope").value !== "custom";
   });
 
   on("btnExportXlsx", "click", async () => {
@@ -1289,6 +1611,125 @@ async function init() {
       await loadSheet(state.sheet.id, { keepRow: state.openRowId });
       return;
     }
+    if (ev.target.id === "btnAddNote") {
+      const row = currentRow();
+      const message = ($("commsNoteText")?.value || "").trim();
+      if (!row) return;
+      if (!message) {
+        await alertDialog("Write a note first");
+        return;
+      }
+      try {
+        await api(`/api/comms/rows/${row.id}/notes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, created_by: userName() }),
+        });
+        $("commsNoteText").value = "";
+        await refreshNotes();
+      } catch (err) {
+        await alertDialog(errorMessage(err, "Could not add note"));
+      }
+      return;
+    }
+    if (ev.target.id === "btnUploadScope") {
+      const row = currentRow();
+      const files = [...($("commsScopeFile")?.files || [])].filter((f) => f && f.size);
+      if (!row) return;
+      if (!files.length) {
+        await alertDialog("Choose a scoping document first");
+        return;
+      }
+      const status = $("commsScopeStatus");
+      const errors = [];
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        if (status) status.textContent = `${i + 1}/${files.length} · ${file.name}`;
+        try {
+          await uploadCommsRowFile(row, file, {
+            category: "scoping",
+            description: "Scoping document",
+            onProgress: (msg) => {
+              if (status) status.textContent = msg;
+            },
+          });
+        } catch (err) {
+          errors.push(`${file.name}: ${errorMessage(err, "Upload failed")}`);
+        }
+      }
+      if ($("commsScopeFile")) $("commsScopeFile").value = "";
+      if (state.sheet) await loadSheet(state.sheet.id, { keepRow: row.id });
+      const after = $("commsScopeStatus");
+      if (errors.length) {
+        if (after) after.textContent = `${files.length - errors.length} uploaded · ${errors.length} failed`;
+        await alertDialog(errors.join("\n"));
+        return;
+      }
+      if (after) after.textContent = files.length === 1 ? "Uploaded." : `Uploaded ${files.length} files.`;
+      return;
+    }
+    const uploadForm = ev.target.closest("[data-upload-form-file]");
+    if (uploadForm) {
+      const row = currentRow();
+      const key = uploadForm.dataset.uploadFormFile;
+      const inp = document.querySelector(`[data-form-file="${cssKey(key)}"]`);
+      const files = [...(inp?.files || [])].filter((f) => f && f.size);
+      if (!row) return;
+      if (!files.length) {
+        await alertDialog("Choose a file first");
+        return;
+      }
+      const status = document.querySelector(`[data-form-file-status="${cssKey(key)}"]`);
+      const errors = [];
+      const ids = formFileIds(row, key);
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        if (status) status.textContent = `${i + 1}/${files.length} · ${file.name}`;
+        try {
+          const doc = await uploadCommsRowFile(row, file, {
+            category: "correspondence",
+            description: `form:${key}`,
+            onProgress: (msg) => {
+              if (status) status.textContent = msg;
+            },
+          });
+          if (doc?.id) ids.push(doc.id);
+        } catch (err) {
+          errors.push(`${file.name}: ${errorMessage(err, "Upload failed")}`);
+        }
+      }
+      if (inp) inp.value = "";
+      try {
+        const next = await api(`/api/comms/rows/${row.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ form_values: { [key]: ids } }),
+        });
+        row.form_values = next.form_values || { ...(row.form_values || {}), [key]: ids };
+      } catch (err) {
+        await alertDialog(errorMessage(err, "Could not save file list"));
+      }
+      if (state.sheet) await loadSheet(state.sheet.id, { keepRow: row.id });
+      const after = document.querySelector(`[data-form-file-status="${cssKey(key)}"]`);
+      if (errors.length) {
+        if (after) after.textContent = `${files.length - errors.length} uploaded · ${errors.length} failed`;
+        await alertDialog(errors.join("\n"));
+        return;
+      }
+      if (after) after.textContent = files.length === 1 ? "Uploaded." : `Uploaded ${files.length} files.`;
+      return;
+    }
+    const delNote = ev.target.closest("[data-del-note]");
+    if (delNote) {
+      if (!await confirmDialog("Delete this note?")) return;
+      try {
+        await api(`/api/comms/notes/${delNote.dataset.delNote}`, { method: "DELETE" });
+        await refreshNotes();
+      } catch (err) {
+        await alertDialog(errorMessage(err, "Could not delete note"));
+      }
+      return;
+    }
     const vis = ev.target.closest("[data-vis]");
     if (vis) {
       await api(`/api/documents/${vis.dataset.vis}`, {
@@ -1296,7 +1737,7 @@ async function init() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ visibility: vis.dataset.next }),
       });
-      await refreshDocsList();
+      await refreshActiveDocs();
       return;
     }
     const del = ev.target.closest("[data-del-doc]");
@@ -1308,6 +1749,22 @@ async function init() {
   });
 
   $("commsDrawer")?.addEventListener("change", async (ev) => {
+    if (ev.target.dataset.formField && state.openRowId) {
+      const key = ev.target.dataset.formField;
+      const value = ev.target.value;
+      try {
+        const next = await api(`/api/comms/rows/${state.openRowId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ form_values: { [key]: value } }),
+        });
+        const row = (state.sheet?.rows || []).find((r) => r.id === state.openRowId);
+        if (row) row.form_values = next.form_values || { ...(row.form_values || {}), [key]: value };
+      } catch (err) {
+        await alertDialog(errorMessage(err, "Could not save field"));
+      }
+      return;
+    }
     const field = ev.target.dataset.field;
     if (!field || !state.openRowId) return;
     const value = ev.target.type === "checkbox" ? (ev.target.checked ? "Yes" : "No") : ev.target.value;
@@ -1348,13 +1805,7 @@ async function init() {
       const file = files[i];
       status.textContent = `${i + 1}/${files.length} · ${file.name}`;
       try {
-        await uploadFileChunked(file, {
-          beginUrl: `/api/comms/rows/${row.id}/documents/session`,
-          chunkUrl: (id, idx) =>
-            `/api/comms/rows/${row.id}/documents/session/${encodeURIComponent(id)}/chunk/${idx}`,
-          commitUrl: (id) => `/api/comms/rows/${row.id}/documents/session/${encodeURIComponent(id)}/commit`,
-          beginBody: { category: "correspondence", description, uploaded_by: userName(), visibility },
-        });
+        await uploadCommsRowFile(row, file, { category: "correspondence", description, visibility });
       } catch (err) {
         errors.push(`${file.name}: ${errorMessage(err, "Upload failed")}`);
       }

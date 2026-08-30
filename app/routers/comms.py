@@ -22,8 +22,11 @@ from ..models import (
     CommsResourceLink,
     CommsResourceSection,
     CommsRow,
+    CommsRowNote,
     CommsSheet,
+    CommsTemplateField,
     Document,
+    ProgramCategory,
     Site,
     User,
 )
@@ -44,7 +47,9 @@ from ..services import slugify_field_key
 router = APIRouter(prefix="/api/comms", tags=["comms"], dependencies=[Depends(require_comms)])
 
 FIELD_TYPES = {"text", "number", "date", "checkbox", "select"}
+FORM_FIELD_TYPES = {"yesno", "select", "text", "textarea", "file"}
 VISIBILITY = {"users", "comms"}
+SCOPING_CATEGORY = "scoping"
 
 
 class SheetCreate(BaseModel):
@@ -83,9 +88,29 @@ class RowCreate(BaseModel):
 
 class RowUpdate(BaseModel):
     values: dict | None = None
+    form_values: dict | None = None
     section: str | None = Field(default=None, max_length=255)
     site_id: int | None = None
     clear_site: bool = False
+
+
+class NoteCreate(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    created_by: str | None = None
+
+
+class FormFieldCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    field_type: str = "yesno"
+    options: list[str] | None = None
+    created_by: str | None = None
+
+
+class FormFieldUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=128)
+    field_type: str | None = None
+    options: list[str] | None = None
+    position: int | None = None
 
 
 class ReorderIn(BaseModel):
@@ -209,6 +234,8 @@ def _row_out(row: CommsRow, *, include_docs: bool = False) -> dict:
         "position": row.position,
         "section": row.section,
         "values": row.values or {},
+        "form_values": row.form_values or {},
+        "note_count": len(row.notes or []),
         "site_id": row.site_id,
         "site": _site_brief(row.site),
         "document_count": len(row.documents or []),
@@ -654,6 +681,10 @@ def update_row(row_id: int, payload: RowUpdate, request: Request, db: Session = 
         merged = dict(row.values or {})
         merged.update(payload.values)
         row.values = merged
+    if payload.form_values is not None:
+        merged_form = dict(row.form_values or {})
+        merged_form.update(payload.form_values)
+        row.form_values = merged_form
     if payload.section is not None:
         row.section = payload.section.strip() or None
     if payload.clear_site:
@@ -681,8 +712,16 @@ def delete_row(row_id: int, request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/sites")
-def lookup_sites(q: str | None = Query(default=None), db: Session = Depends(get_db)):
+def lookup_sites(
+    q: str | None = Query(default=None),
+    program: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
     query = db.query(Site).filter(Site.archived.is_(False))
+    if program == "(Unassigned)":
+        query = query.filter((Site.program.is_(None)) | (Site.program == ""))
+    elif program and program.strip():
+        query = query.filter(func.lower(Site.program) == program.strip().lower())
     if q and q.strip():
         like = f"%{q.strip()}%"
         query = query.filter(
@@ -691,8 +730,178 @@ def lookup_sites(q: str | None = Query(default=None), db: Session = Depends(get_
             | (Site.moa_number.ilike(like))
             | (Site.program.ilike(like))
         )
-    rows = query.order_by(Site.road_name.asc(), Site.site_number.asc()).limit(80).all()
+    limit = 400 if program else 80
+    rows = query.order_by(Site.road_name.asc(), Site.site_number.asc()).limit(limit).all()
     return [_site_brief(s) for s in rows]
+
+
+@router.get("/site-categories")
+def list_site_categories(db: Session = Depends(get_db)):
+    named = [
+        r[0]
+        for r in db.query(ProgramCategory.name)
+        .filter(ProgramCategory.active.is_(True))
+        .order_by(ProgramCategory.position.asc(), ProgramCategory.name.asc())
+        .all()
+    ]
+    used = {
+        (row[0] or "").strip()
+        for row in db.query(Site.program).filter(Site.archived.is_(False)).distinct().all()
+    }
+    used.discard("")
+    labels = []
+    seen = set()
+    for name in named + sorted(used, key=str.lower):
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append(name)
+    if (
+        db.query(Site)
+        .filter(Site.archived.is_(False), (Site.program.is_(None)) | (Site.program == ""))
+        .first()
+    ):
+        labels.append("(Unassigned)")
+    return [{"name": name} for name in labels]
+
+
+def _note_out(note: CommsRowNote) -> dict:
+    return {
+        "id": note.id,
+        "row_id": note.row_id,
+        "message": note.message,
+        "created_by": note.created_by,
+        "created_at": note.created_at,
+    }
+
+
+def _form_field_out(field: CommsTemplateField) -> dict:
+    return {
+        "id": field.id,
+        "name": field.name,
+        "field_key": field.field_key,
+        "field_type": field.field_type,
+        "options": field.options,
+        "position": field.position,
+        "created_by": field.created_by,
+        "created_at": field.created_at,
+    }
+
+
+def _unique_form_key(db: Session, name: str) -> str:
+    base = slugify_field_key(name)
+    key = base
+    suffix = 2
+    while db.query(CommsTemplateField).filter(CommsTemplateField.field_key == key).first():
+        key = f"{base}_{suffix}"
+        suffix += 1
+    return key
+
+
+@router.get("/rows/{row_id}/notes")
+def list_row_notes(row_id: int, db: Session = Depends(get_db)):
+    row = _row_or_404(db, row_id)
+    notes = sorted(row.notes or [], key=lambda n: (n.created_at, n.id), reverse=True)
+    return [_note_out(n) for n in notes]
+
+
+@router.post("/rows/{row_id}/notes", status_code=201)
+def create_row_note(row_id: int, payload: NoteCreate, request: Request, db: Session = Depends(get_db)):
+    row = _row_or_404(db, row_id)
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Note is required")
+    note = CommsRowNote(row_id=row.id, message=message[:4000], created_by=payload.created_by)
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    notify_from_request(request, site_ids=[row.site_id] if row.site_id else None, reason="comms_note")
+    return _note_out(note)
+
+
+@router.delete("/notes/{note_id}", status_code=204)
+def delete_row_note(note_id: int, request: Request, db: Session = Depends(get_db)):
+    note = db.get(CommsRowNote, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    site_id = note.row.site_id if note.row else None
+    db.delete(note)
+    db.commit()
+    notify_from_request(request, site_ids=[site_id] if site_id else None, reason="comms_note")
+    return None
+
+
+@router.get("/form-fields")
+def list_form_fields(db: Session = Depends(get_db)):
+    rows = db.query(CommsTemplateField).order_by(CommsTemplateField.position.asc(), CommsTemplateField.id.asc()).all()
+    return [_form_field_out(f) for f in rows]
+
+
+@router.post("/form-fields", status_code=201)
+def create_form_field(payload: FormFieldCreate, request: Request, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Field name is required")
+    ftype = payload.field_type if payload.field_type in FORM_FIELD_TYPES else "yesno"
+    options = payload.options if ftype == "select" else (["Yes", "No"] if ftype == "yesno" else None)
+    if ftype == "select":
+        options = [str(o).strip() for o in (payload.options or []) if str(o).strip()]
+        if not options:
+            raise HTTPException(status_code=400, detail="Select fields need at least one option")
+    max_pos = db.query(func.max(CommsTemplateField.position)).scalar()
+    field = CommsTemplateField(
+        name=name[:128],
+        field_key=_unique_form_key(db, name),
+        field_type=ftype,
+        options=options,
+        position=(max_pos or 0) + 1,
+        created_by=payload.created_by,
+    )
+    db.add(field)
+    db.commit()
+    db.refresh(field)
+    notify_from_request(request, reason="comms_form_field")
+    return _form_field_out(field)
+
+
+@router.patch("/form-fields/{field_id}")
+def update_form_field(field_id: int, payload: FormFieldUpdate, request: Request, db: Session = Depends(get_db)):
+    field = db.get(CommsTemplateField, field_id)
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Field name is required")
+        field.name = name[:128]
+    if payload.field_type is not None:
+        if payload.field_type not in FORM_FIELD_TYPES:
+            raise HTTPException(status_code=400, detail="Invalid field type")
+        field.field_type = payload.field_type
+        if payload.field_type == "yesno":
+            field.options = ["Yes", "No"]
+        elif payload.field_type != "select":
+            field.options = None
+    if payload.options is not None and field.field_type == "select":
+        field.options = [str(o).strip() for o in payload.options if str(o).strip()]
+    if payload.position is not None:
+        field.position = payload.position
+    db.commit()
+    db.refresh(field)
+    notify_from_request(request, reason="comms_form_field")
+    return _form_field_out(field)
+
+
+@router.delete("/form-fields/{field_id}", status_code=204)
+def delete_form_field(field_id: int, request: Request, db: Session = Depends(get_db)):
+    field = db.get(CommsTemplateField, field_id)
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    db.delete(field)
+    db.commit()
+    notify_from_request(request, reason="comms_form_field")
+    return None
 
 
 @router.get("/rows/{row_id}/documents")

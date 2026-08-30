@@ -18,7 +18,9 @@ from .models import (  # noqa: F401 — register metadata
     CommsResourceLink,
     CommsResourceSection,
     CommsRow,
+    CommsRowNote,
     CommsSheet,
+    CommsTemplateField,
     CustomColumn,
     Document,
     DocumentCategoryDef,
@@ -207,6 +209,7 @@ def run_migrations() -> None:
     ensure_column("site_councils", "no_objection_date", "no_objection_date DATE")
     ensure_column("comms_sheets", "settings", "settings JSONB NOT NULL DEFAULT '{}'::jsonb")
     ensure_column("comms_resource_sections", "body", "body TEXT")
+    ensure_column("comms_rows", "form_values", "form_values JSONB NOT NULL DEFAULT '{}'::jsonb")
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))

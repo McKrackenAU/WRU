@@ -170,6 +170,41 @@ def test_comms_export_collects_selected_columns():
     assert pdf.startswith(b"%PDF")
 
 
+def test_comms_v20_notes_form_and_export_selects():
+    assert 'class="comms-page"' in COMMS_HTML
+    assert 'id="exportSheetScope"' in COMMS_HTML
+    assert 'id="exportRows"' in COMMS_HTML
+    assert 'id="exportColScope"' in COMMS_HTML
+    assert 'id="commsFormBuilder"' in COMMS_HTML
+    assert 'id="formFieldDialog"' in COMMS_HTML
+    assert 'id="jobCategory"' in COMMS_JS
+    assert 'id="jobPick"' in COMMS_JS
+    assert 'id="commsNoteText"' in COMMS_JS
+    assert 'id="btnAddNote"' in COMMS_JS
+    assert 'id="commsScopeFile"' in COMMS_JS
+    assert 'id="btnUploadScope"' in COMMS_JS
+    assert "data-form-field" in COMMS_JS
+    assert "uploadCommsRowFile" in COMMS_JS
+    assert "/api/comms/form-fields" in COMMS_JS
+    assert "/api/comms/site-categories" in COMMS_JS
+    assert "/api/comms/rows/" in COMMS_JS
+    assert "category: \"scoping\"" in COMMS_JS
+    assert "def list_row_notes" in COMMS_PY
+    assert "def create_row_note" in COMMS_PY
+    assert "def list_form_fields" in COMMS_PY
+    assert "def list_site_categories" in COMMS_PY
+    assert "form_values" in COMMS_PY
+    assert "SCOPING_CATEGORY" in COMMS_PY
+    css = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
+    assert "html:has(body.comms-page)" in css
+    assert "body.comms-page" in css
+    assert ".comms-note-log" in css
+    models = (ROOT / "app/models.py").read_text(encoding="utf-8")
+    assert "class CommsRowNote" in models
+    assert "class CommsTemplateField" in models
+    assert '"scoping"' in models
+
+
 def test_comms_only_docs_hidden_from_normal_users():
     hidden = _Doc("comms")
     shown = _Doc("users")

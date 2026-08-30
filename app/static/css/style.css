@@ -4493,6 +4493,74 @@ html.dark .gantt-bar {
   max-height: calc(100vh - 16rem);
 }
 
+html:has(body.comms-page) {
+  height: 100%;
+  height: 100dvh;
+}
+
+body.comms-page {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.comms-page .app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  min-height: 0;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+body.comms-page .topbar,
+body.comms-page .page-head,
+body.comms-page .tabs,
+body.comms-page .app-footer {
+  flex-shrink: 0;
+}
+
+body.comms-page .main.comms-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.comms-page #commsPlannerChrome {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+body.comms-page #commsPlannerChrome[hidden] {
+  display: none !important;
+}
+
+body.comms-page .comms-toolbar-card {
+  flex-shrink: 0;
+}
+
+body.comms-page .comms-table-card,
+body.comms-page .comms-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+}
+
+body.comms-page .comms-resources {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+body.comms-page .app-footer {
+  margin-top: 0;
+}
+
 .comms-table {
   min-width: 70rem;
 }
@@ -4926,4 +4994,55 @@ html.dark .gantt-bar {
   display: flex;
   gap: 0.4rem;
   margin-top: 0.4rem;
+}
+
+.comms-note-log {
+  list-style: none;
+  margin: 0 0 0.85rem;
+  padding: 0;
+}
+
+.comms-note-log li {
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--ventia-border);
+}
+
+.comms-note-log .top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: var(--ventia-muted);
+  font-size: 0.78rem;
+}
+
+.comms-note-compose textarea {
+  width: 100%;
+  min-height: 4.5rem;
+}
+
+.comms-form-builder {
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.9rem;
+  background: var(--panel);
+  padding: 1rem 1.15rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.comms-form-builder h2 {
+  margin: 0 0 0.45rem;
+  font-size: 1.15rem;
+}
+
+.comms-form-fields {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.comms-form-fields li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--ventia-border);
 }

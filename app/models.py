@@ -72,6 +72,7 @@ DOC_CATEGORIES = [
     "plan",
     "moa",
     "correspondence",
+    "scoping",
     "photo",
     "other",
 ]
@@ -82,6 +83,7 @@ DOC_CATEGORY_LABELS = {
     "plan": "Plan",
     "moa": "MoA",
     "correspondence": "Correspondence",
+    "scoping": "Scoping",
     "photo": "Photo",
     "other": "Other",
 }
@@ -684,6 +686,7 @@ class CommsRow(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     section: Mapped[str | None] = mapped_column(String(255), nullable=True)
     values: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    form_values: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     site_id: Mapped[int | None] = mapped_column(
         ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -701,6 +704,42 @@ class CommsRow(Base):
     sheet: Mapped[CommsSheet] = relationship(back_populates="rows")
     site: Mapped[Site | None] = relationship(lazy="selectin")
     documents: Mapped[list[Document]] = relationship(back_populates="comms_row", lazy="selectin")
+    notes: Mapped[list["CommsRowNote"]] = relationship(
+        back_populates="row", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class CommsRowNote(Base):
+    """Timestamped note on a planner row."""
+
+    __tablename__ = "comms_row_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    row_id: Mapped[int] = mapped_column(ForeignKey("comms_rows.id", ondelete="CASCADE"), index=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    row: Mapped[CommsRow] = relationship(back_populates="notes")
+
+
+class CommsTemplateField(Base):
+    """Shared Comms-tab field the team adds from Templates (yes/no, comments, files)."""
+
+    __tablename__ = "comms_template_fields"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    field_key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    field_type: Mapped[str] = mapped_column(String(32), nullable=False, default="yesno")
+    options: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class CommsResourceSection(Base):
