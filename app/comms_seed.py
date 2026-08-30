@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .models import CommsColumn, CommsRow, CommsSheet, Site
+from .models import CommsColumn, CommsResourceSection, CommsRow, CommsSheet, Site
 from .services import slugify_field_key
 
 SEED_PATH = Path(__file__).resolve().parent / "comms_seed_data.json"
@@ -109,4 +109,21 @@ def ensure_comms_seed(db: Session) -> None:
                     created_by="seed",
                 )
             )
+    db.commit()
+
+
+DEFAULT_RESOURCE_HEADINGS = (
+    "SharePoint",
+    "Templates",
+    "Distribution",
+    "Contacts",
+)
+
+
+def ensure_comms_resources(db: Session) -> None:
+    """Create empty Resources headings once so the comms team can add links."""
+    if db.query(CommsResourceSection).count() > 0:
+        return
+    for index, title in enumerate(DEFAULT_RESOURCE_HEADINGS):
+        db.add(CommsResourceSection(title=title, position=index, created_by="seed"))
     db.commit()

@@ -703,6 +703,49 @@ class CommsRow(Base):
     documents: Mapped[list[Document]] = relationship(back_populates="comms_row", lazy="selectin")
 
 
+class CommsResourceSection(Base):
+    """A custom heading on the comms Resources tab (SharePoint, contacts, …)."""
+
+    __tablename__ = "comms_resource_sections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    links: Mapped[list["CommsResourceLink"]] = relationship(
+        back_populates="section", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class CommsResourceLink(Base):
+    __tablename__ = "comms_resource_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    section_id: Mapped[int] = mapped_column(
+        ForeignKey("comms_resource_sections.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    url: Mapped[str] = mapped_column(String(2000), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    section: Mapped[CommsResourceSection] = relationship(back_populates="links")
+
+
 class GanttBoard(Base):
     """Program-level works sequence / Gantt settings."""
 

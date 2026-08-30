@@ -28,7 +28,10 @@ const DRAWER_TAB_RULES = [
 const state = {
   sheets: [],
   sheet: null,
+  view: "planner",
   search: "",
+  resourceSearch: "",
+  resources: [],
   openRowId: null,
   drawerTab: "overview",
   jobTimer: null,
@@ -49,12 +52,25 @@ function rowIdFromUrl() {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function viewFromUrl() {
+  return new URLSearchParams(location.search).get("view") === "resources" ? "resources" : "planner";
+}
+
 function setSheetUrl(id, rowId) {
   const url = new URL(location.href);
+  url.searchParams.delete("view");
   if (id) url.searchParams.set("sheet", String(id));
   else url.searchParams.delete("sheet");
   if (rowId) url.searchParams.set("row", String(rowId));
   else url.searchParams.delete("row");
+  history.replaceState(null, "", url);
+}
+
+function setResourcesUrl() {
+  const url = new URL(location.href);
+  url.searchParams.set("view", "resources");
+  url.searchParams.delete("sheet");
+  url.searchParams.delete("row");
   history.replaceState(null, "", url);
 }
 
@@ -264,14 +280,130 @@ function currentRow() {
 function renderSheetTabs() {
   const wrap = $("sheetTabs");
   if (!wrap) return;
-  wrap.innerHTML = state.sheets
+  const planner = state.sheets
     .map(
       (s) =>
-        `<button type="button" data-sheet="${s.id}" class="${state.sheet?.id === s.id ? "active" : ""}" role="tab" aria-selected="${
-          state.sheet?.id === s.id
+        `<button type="button" data-sheet="${s.id}" class="${state.view === "planner" && state.sheet?.id === s.id ? "active" : ""}" role="tab" aria-selected="${
+          state.view === "planner" && state.sheet?.id === s.id
         }">${escapeHtml(s.title)}</button>`
     )
     .join("");
+  wrap.innerHTML = `${planner}<button type="button" data-view="resources" class="${
+    state.view === "resources" ? "active" : ""
+  }" role="tab" aria-selected="${state.view === "resources"}">Resources</button>`;
+}
+
+function setViewChrome() {
+  const resources = state.view === "resources";
+  const planner = $("commsPlannerChrome");
+  const panel = $("commsResources");
+  if (planner) planner.hidden = resources;
+  if (panel) panel.hidden = !resources;
+  if ($("btnRenameSheet")) $("btnRenameSheet").hidden = resources;
+  if ($("btnDeleteSheet")) $("btnDeleteSheet").hidden = resources;
+  if ($("btnAddResourceHeading")) $("btnAddResourceHeading").hidden = !resources;
+  if ($("commsStatus")) {
+    $("commsStatus").textContent = resources
+      ? "Shared headings and links for the comms team — SharePoint libraries, templates, distribution, contacts."
+      : "Job plus workpack or site number stay on the list. Open a row for the full planner, or click a colour dot to code a group.";
+  }
+}
+
+function filteredResourceSections() {
+  const q = state.resourceSearch.trim().toLowerCase();
+  if (!q) return state.resources;
+  return state.resources
+    .map((section) => {
+      const headingHit = (section.title || "").toLowerCase().includes(q);
+      const links = (section.links || []).filter((link) =>
+        [link.title, link.url, link.note].some((v) => String(v || "").toLowerCase().includes(q))
+      );
+      if (headingHit) return section;
+      return links.length ? { ...section, links } : null;
+    })
+    .filter(Boolean);
+}
+
+function renderResources() {
+  const host = $("commsResourceList");
+  if (!host) return;
+  const sections = filteredResourceSections();
+  if (!state.resources.length) {
+    host.innerHTML = `<p class="hint">No headings yet. Use Add heading, then add SharePoint or other https links under it.</p>`;
+    return;
+  }
+  if (!sections.length) {
+    host.innerHTML = `<p class="hint">No headings or links match that search.</p>`;
+    return;
+  }
+  host.innerHTML = sections
+    .map((section) => {
+      const links = section.links || [];
+      return `<article class="comms-resource-card" data-section="${section.id}">
+        <header class="comms-resource-head">
+          <h2>${escapeHtml(section.title)}</h2>
+          <div class="toolbar">
+            <button type="button" class="btn btn-sm" data-add-link="${section.id}">Add link</button>
+            <button type="button" class="btn btn-sm" data-rename-section="${section.id}">Rename</button>
+            <button type="button" class="btn btn-sm btn-danger" data-del-section="${section.id}">Remove</button>
+          </div>
+        </header>
+        ${
+          links.length
+            ? `<ul class="comms-resource-links">${links
+                .map(
+                  (link) => `<li>
+                    <div>
+                      <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.title)}</a>
+                      <span class="comms-resource-url">${escapeHtml(link.url)}</span>
+                      ${link.note ? `<span class="hint">${escapeHtml(link.note)}</span>` : ""}
+                    </div>
+                    <div class="toolbar">
+                      <button type="button" class="btn btn-sm" data-edit-link="${link.id}">Edit</button>
+                      <button type="button" class="btn btn-sm btn-danger" data-del-link="${link.id}">Remove</button>
+                    </div>
+                  </li>`
+                )
+                .join("")}</ul>`
+            : `<p class="hint">No links under this heading yet.</p>`
+        }
+      </article>`;
+    })
+    .join("");
+}
+
+async function loadResources() {
+  const data = await api("/api/comms/resources");
+  state.resources = data.sections || [];
+  renderSheetTabs();
+  setViewChrome();
+  renderResources();
+}
+
+function findResourceLink(id) {
+  for (const section of state.resources) {
+    const hit = (section.links || []).find((link) => link.id === id);
+    if (hit) return { section, link: hit };
+  }
+  return null;
+}
+
+function openResourceLinkDialog({ sectionId, link } = {}) {
+  $("resourceLinkDialogTitle").textContent = link ? "Edit link" : "Add link";
+  $("resourceLinkSectionId").value = String(sectionId || link?.section_id || "");
+  $("resourceLinkId").value = link ? String(link.id) : "";
+  $("resourceLinkTitle").value = link?.title || "";
+  $("resourceLinkUrl").value = link?.url || "";
+  $("resourceLinkNote").value = link?.note || "";
+  $("resourceLinkDialog").showModal();
+  $("resourceLinkTitle").focus();
+}
+
+async function showResourcesView() {
+  closeDrawer();
+  state.view = "resources";
+  setResourcesUrl();
+  await loadResources();
 }
 
 function setFilterDropOpen(drop, open) {
@@ -632,23 +764,31 @@ async function openRow(rowId) {
 
 async function loadSheets(preferredId) {
   state.sheets = await api("/api/comms/sheets");
+  if (!preferredId && viewFromUrl() === "resources") {
+    await showResourcesView();
+    return;
+  }
   const want = preferredId || sheetIdFromUrl() || state.sheet?.id;
   const pick = state.sheets.find((s) => s.id === want) || state.sheets[0] || null;
   if (pick) await loadSheet(pick.id, { keepRow: rowIdFromUrl() });
   else {
     state.sheet = null;
+    state.view = "planner";
     renderSheetTabs();
+    setViewChrome();
     renderTable({ refreshFilters: true });
   }
 }
 
 async function loadSheet(id, { keepRow } = {}) {
+  state.view = "planner";
   state.sheet = await api(`/api/comms/sheets/${id}`);
   const keep = keepRow || state.openRowId;
   if (keep && !(state.sheet.rows || []).some((r) => r.id === keep)) state.openRowId = null;
   else if (keep) state.openRowId = keep;
   setSheetUrl(id, state.openRowId);
   renderSheetTabs();
+  setViewChrome();
   renderTable({ refreshFilters: true });
   if (state.openRowId) renderDrawer();
 }
@@ -698,10 +838,102 @@ async function init() {
   await loadSheets();
 
   $("sheetTabs")?.addEventListener("click", async (ev) => {
+    const resourcesBtn = ev.target.closest("[data-view=resources]");
+    if (resourcesBtn) {
+      await showResourcesView();
+      return;
+    }
     const btn = ev.target.closest("[data-sheet]");
     if (!btn) return;
     closeDrawer();
     await loadSheet(Number(btn.dataset.sheet));
+  });
+
+  on("resourceSearch", "input", () => {
+    state.resourceSearch = $("resourceSearch").value;
+    renderResources();
+  });
+
+  on("btnAddResourceHeading", "click", async () => {
+    const title = await promptDialog("New heading name:", "SharePoint");
+    if (!title) return;
+    await api("/api/comms/resources/sections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, created_by: userName() }),
+    });
+    await loadResources();
+  });
+
+  $("commsResources")?.addEventListener("click", async (ev) => {
+    const add = ev.target.closest("[data-add-link]");
+    if (add) {
+      openResourceLinkDialog({ sectionId: Number(add.dataset.addLink) });
+      return;
+    }
+    const rename = ev.target.closest("[data-rename-section]");
+    if (rename) {
+      const section = state.resources.find((item) => item.id === Number(rename.dataset.renameSection));
+      const title = await promptDialog("Rename this heading:", section?.title || "");
+      if (!title) return;
+      await api(`/api/comms/resources/sections/${rename.dataset.renameSection}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      await loadResources();
+      return;
+    }
+    const delSection = ev.target.closest("[data-del-section]");
+    if (delSection) {
+      if (!await confirmDialog("Remove this heading and all of its links?")) return;
+      await api(`/api/comms/resources/sections/${delSection.dataset.delSection}`, { method: "DELETE" });
+      await loadResources();
+      return;
+    }
+    const edit = ev.target.closest("[data-edit-link]");
+    if (edit) {
+      const found = findResourceLink(Number(edit.dataset.editLink));
+      if (found) openResourceLinkDialog({ sectionId: found.section.id, link: found.link });
+      return;
+    }
+    const delLink = ev.target.closest("[data-del-link]");
+    if (delLink) {
+      if (!await confirmDialog("Remove this link?")) return;
+      await api(`/api/comms/resources/links/${delLink.dataset.delLink}`, { method: "DELETE" });
+      await loadResources();
+    }
+  });
+
+  on("btnSaveResourceLink", "click", async () => {
+    const sectionId = Number($("resourceLinkSectionId").value);
+    const linkId = Number($("resourceLinkId").value);
+    const title = $("resourceLinkTitle").value.trim();
+    const url = $("resourceLinkUrl").value.trim();
+    const note = $("resourceLinkNote").value.trim();
+    if (!title || !url) {
+      await alertDialog("Link name and URL are required");
+      return;
+    }
+    try {
+      if (linkId) {
+        await api(`/api/comms/resources/links/${linkId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, url, note }),
+        });
+      } else {
+        await api(`/api/comms/resources/sections/${sectionId}/links`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, url, note, created_by: userName() }),
+        });
+      }
+      $("resourceLinkDialog").close();
+      await loadResources();
+    } catch (err) {
+      await alertDialog(errorMessage(err, "Could not save link"));
+    }
   });
 
   on("commsSearch", "input", () => {

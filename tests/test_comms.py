@@ -10,6 +10,7 @@ from app.auth import (
     can_manage_comms,
     is_comms_path,
 )
+from app.comms_links import normalize_resource_url
 from app.routers.documents import document_is_visible
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -86,6 +87,11 @@ def test_comms_page_has_two_seeded_planner_tabs():
     assert "Link / files" not in COMMS_JS
     assert "filterableColumns" in COMMS_JS
     assert 'id="commsFilters"' in COMMS_HTML
+    assert 'id="commsResources"' in COMMS_HTML
+    assert 'data-view="resources"' in COMMS_JS
+    assert "/api/comms/resources" in COMMS_JS
+    assert 'def list_resources' in COMMS_PY
+    assert 'def create_resource_section' in COMMS_PY
     assert "filter-drop" in COMMS_JS
     assert "comms-swatch" in (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
     assert "/api/comms/sheets" in COMMS_JS
@@ -110,6 +116,23 @@ def test_comms_router_and_page_wired():
     assert 'def comms_page' in MAIN
     assert "is_comms_path" in MAIN
     assert "COMMS_ROLE" in AUTH_PY
+
+
+def test_resource_urls_only_allow_web_links():
+    assert normalize_resource_url("ventia.sharepoint.com/sites/comms") == "https://ventia.sharepoint.com/sites/comms"
+    assert normalize_resource_url("https://ventia.sharepoint.com/teams/CT-Transport-3057") == (
+        "https://ventia.sharepoint.com/teams/CT-Transport-3057"
+    )
+    try:
+        normalize_resource_url("javascript:alert(1)")
+        assert False
+    except ValueError:
+        pass
+    try:
+        normalize_resource_url("https://user:pass@evil.example/x")
+        assert False
+    except ValueError:
+        pass
 
 
 def test_comms_only_docs_hidden_from_normal_users():

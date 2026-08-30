@@ -10,10 +10,20 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user, require_comms
-from ..comms_seed import ensure_comms_seed
+from ..comms_links import normalize_resource_url
+from ..comms_seed import ensure_comms_resources, ensure_comms_seed
 from ..database import get_db
 from ..live_hub import notify_from_request
-from ..models import CommsColumn, CommsRow, CommsSheet, Document, Site, User
+from ..models import (
+    CommsColumn,
+    CommsResourceLink,
+    CommsResourceSection,
+    CommsRow,
+    CommsSheet,
+    Document,
+    Site,
+    User,
+)
 from ..routers.documents import (
     DocumentUploadBegin,
     _doc_out,
@@ -76,6 +86,30 @@ class RowUpdate(BaseModel):
 
 class ReorderIn(BaseModel):
     ids: list[int] = Field(min_length=1)
+
+
+class ResourceSectionCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=128)
+    created_by: str | None = None
+
+
+class ResourceSectionUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=128)
+    position: int | None = None
+
+
+class ResourceLinkCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=2000)
+    note: str | None = Field(default=None, max_length=500)
+    created_by: str | None = None
+
+
+class ResourceLinkUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    url: str | None = Field(default=None, max_length=2000)
+    note: str | None = Field(default=None, max_length=500)
+    position: int | None = None
 
 
 def _sheet_or_404(db: Session, sheet_id: int) -> CommsSheet:
@@ -267,6 +301,166 @@ def delete_sheet(sheet_id: int, request: Request, db: Session = Depends(get_db))
     db.delete(sheet)
     db.commit()
     notify_from_request(request, reason="comms_sheet")
+    return None
+
+
+def _section_or_404(db: Session, section_id: int) -> CommsResourceSection:
+    section = db.get(CommsResourceSection, section_id)
+    if not section:
+        raise HTTPException(status_code=404, detail="Heading not found")
+    return section
+
+
+def _link_or_404(db: Session, link_id: int) -> CommsResourceLink:
+    link = db.get(CommsResourceLink, link_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    return link
+
+
+def _link_out(link: CommsResourceLink) -> dict:
+    return {
+        "id": link.id,
+        "section_id": link.section_id,
+        "title": link.title,
+        "url": link.url,
+        "note": link.note,
+        "position": link.position,
+        "created_by": link.created_by,
+        "created_at": link.created_at,
+        "updated_at": link.updated_at,
+    }
+
+
+def _section_out(section: CommsResourceSection) -> dict:
+    links = sorted(section.links or [], key=lambda item: (item.position, item.id))
+    return {
+        "id": section.id,
+        "title": section.title,
+        "position": section.position,
+        "created_by": section.created_by,
+        "created_at": section.created_at,
+        "links": [_link_out(link) for link in links],
+    }
+
+
+def _safe_url(raw: str) -> str:
+    try:
+        return normalize_resource_url(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/resources")
+def list_resources(db: Session = Depends(get_db)):
+    ensure_comms_resources(db)
+    sections = (
+        db.query(CommsResourceSection)
+        .order_by(CommsResourceSection.position.asc(), CommsResourceSection.id.asc())
+        .all()
+    )
+    return {"sections": [_section_out(section) for section in sections]}
+
+
+@router.post("/resources/sections", status_code=201)
+def create_resource_section(payload: ResourceSectionCreate, request: Request, db: Session = Depends(get_db)):
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Heading is required")
+    max_pos = db.query(func.max(CommsResourceSection.position)).scalar()
+    section = CommsResourceSection(
+        title=title[:128],
+        position=(max_pos or 0) + 1,
+        created_by=payload.created_by,
+    )
+    db.add(section)
+    db.commit()
+    db.refresh(section)
+    notify_from_request(request, reason="comms_resources")
+    return _section_out(section)
+
+
+@router.patch("/resources/sections/{section_id}")
+def update_resource_section(
+    section_id: int, payload: ResourceSectionUpdate, request: Request, db: Session = Depends(get_db)
+):
+    section = _section_or_404(db, section_id)
+    if payload.title is not None:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Heading is required")
+        section.title = title[:128]
+    if payload.position is not None:
+        section.position = payload.position
+    db.commit()
+    db.refresh(section)
+    notify_from_request(request, reason="comms_resources")
+    return _section_out(section)
+
+
+@router.delete("/resources/sections/{section_id}", status_code=204)
+def delete_resource_section(section_id: int, request: Request, db: Session = Depends(get_db)):
+    section = _section_or_404(db, section_id)
+    db.delete(section)
+    db.commit()
+    notify_from_request(request, reason="comms_resources")
+    return None
+
+
+@router.post("/resources/sections/{section_id}/links", status_code=201)
+def create_resource_link(
+    section_id: int, payload: ResourceLinkCreate, request: Request, db: Session = Depends(get_db)
+):
+    section = _section_or_404(db, section_id)
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Link name is required")
+    max_pos = (
+        db.query(func.max(CommsResourceLink.position))
+        .filter(CommsResourceLink.section_id == section.id)
+        .scalar()
+    )
+    link = CommsResourceLink(
+        section_id=section.id,
+        title=title[:200],
+        url=_safe_url(payload.url),
+        note=(payload.note or "").strip()[:500] or None,
+        position=(max_pos or 0) + 1,
+        created_by=payload.created_by,
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    notify_from_request(request, reason="comms_resources")
+    return _link_out(link)
+
+
+@router.patch("/resources/links/{link_id}")
+def update_resource_link(link_id: int, payload: ResourceLinkUpdate, request: Request, db: Session = Depends(get_db)):
+    link = _link_or_404(db, link_id)
+    if payload.title is not None:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Link name is required")
+        link.title = title[:200]
+    if payload.url is not None:
+        link.url = _safe_url(payload.url)
+    if payload.note is not None:
+        link.note = payload.note.strip()[:500] or None
+    if payload.position is not None:
+        link.position = payload.position
+    db.commit()
+    db.refresh(link)
+    notify_from_request(request, reason="comms_resources")
+    return _link_out(link)
+
+
+@router.delete("/resources/links/{link_id}", status_code=204)
+def delete_resource_link(link_id: int, request: Request, db: Session = Depends(get_db)):
+    link = _link_or_404(db, link_id)
+    db.delete(link)
+    db.commit()
+    notify_from_request(request, reason="comms_resources")
     return None
 
 

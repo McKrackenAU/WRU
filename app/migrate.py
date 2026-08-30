@@ -15,6 +15,8 @@ from .models import (  # noqa: F401 — register metadata
     CostEstimateAttachment,
     CostSettings,
     CommsColumn,
+    CommsResourceLink,
+    CommsResourceSection,
     CommsRow,
     CommsSheet,
     CustomColumn,
@@ -226,7 +228,7 @@ def run_migrations() -> None:
     from .stage_registry import ensure_lookup_seed, ensure_program_seed, ensure_stage_seed
 
     from .auth import ensure_admin_user, ensure_root_user
-    from .comms_seed import ensure_comms_seed
+    from .comms_seed import ensure_comms_resources, ensure_comms_seed
 
     db = SessionLocal()
     try:
@@ -238,6 +240,7 @@ def run_migrations() -> None:
         ensure_admin_user(db)
         ensure_root_user(db)
         ensure_comms_seed(db)
+        ensure_comms_resources(db)
     finally:
         db.close()
 

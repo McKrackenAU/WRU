@@ -29,6 +29,7 @@
           <p id="commsStatus">Job plus workpack or site number stay on the list. Open a row for the full planner, or click a colour dot to code a group.</p>
         </div>
         <div class="toolbar">
+          <button type="button" class="btn" id="btnAddResourceHeading" hidden>Add heading</button>
           <button type="button" class="btn" id="btnRenameSheet">Rename tab</button>
           <button type="button" class="btn" id="btnAddSheet">Add tab</button>
           <button type="button" class="btn btn-danger" id="btnDeleteSheet">Remove tab</button>
@@ -37,21 +38,30 @@
 
       <div class="tabs" role="tablist" id="sheetTabs"></div>
 
-      <section class="panel-card comms-toolbar-card">
-        <div class="comms-toolbar">
-          <input id="commsSearch" type="search" placeholder="Search this planner…" />
-          <div class="comms-filters" id="commsFilters"></div>
-          <button type="button" class="btn" id="btnColumns">Columns</button>
-          <button type="button" class="btn btn-primary" id="btnAddRow">Add row</button>
-          <span class="hint" id="commsCount"></span>
-        </div>
-      </section>
+      <div id="commsPlannerChrome">
+        <section class="panel-card comms-toolbar-card">
+          <div class="comms-toolbar">
+            <input id="commsSearch" type="search" placeholder="Search this planner…" />
+            <div class="comms-filters" id="commsFilters"></div>
+            <button type="button" class="btn" id="btnColumns">Columns</button>
+            <button type="button" class="btn btn-primary" id="btnAddRow">Add row</button>
+            <span class="hint" id="commsCount"></span>
+          </div>
+        </section>
 
-      <div class="table-card comms-table-card">
-        <div class="table-scroll comms-scroll" id="commsTableWrap">
-          <p class="hint">Loading…</p>
+        <div class="table-card comms-table-card">
+          <div class="table-scroll comms-scroll" id="commsTableWrap">
+            <p class="hint">Loading…</p>
+          </div>
         </div>
       </div>
+
+      <section class="comms-resources" id="commsResources" hidden>
+        <div class="comms-resources-intro">
+          <input id="resourceSearch" type="search" placeholder="Search headings and links…" />
+        </div>
+        <div id="commsResourceList"></div>
+      </section>
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>
@@ -75,6 +85,35 @@
       </footer>
     </div>
   </aside>
+
+  <dialog id="resourceLinkDialog" class="panel">
+    <form id="resourceLinkForm" onsubmit="return false;">
+      <header class="panel-head">
+        <h2 id="resourceLinkDialogTitle">Add link</h2>
+        <button type="button" class="icon-btn" data-close-dialog="resourceLinkDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <input type="hidden" id="resourceLinkSectionId" />
+        <input type="hidden" id="resourceLinkId" />
+        <div class="form-grid">
+          <label class="full">Heading name
+            <input id="resourceLinkTitle" maxlength="200" placeholder="Works notification template" />
+          </label>
+          <label class="full">Link
+            <input id="resourceLinkUrl" maxlength="2000" placeholder="https://ventia.sharepoint.com/…" />
+          </label>
+          <label class="full">Note (optional)
+            <input id="resourceLinkNote" maxlength="500" placeholder="Who uses this, or which library it is" />
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <button type="button" class="btn btn-primary" id="btnSaveResourceLink">Save link</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-dialog="resourceLinkDialog">Cancel</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog id="columnsDialog" class="panel">
     <form id="columnsForm" onsubmit="return false;">
