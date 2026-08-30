@@ -35,6 +35,7 @@ async function loadUsers() {
             <th>Username</th>
             <th>Display name</th>
             <th>Role</th>
+            <th>Tags</th>
             <th>Active</th>
             <th>Last login</th>
             <th></th>
@@ -54,6 +55,9 @@ async function loadUsers() {
                   <option value="comms" ${u.role === "comms" ? "selected" : ""}>Comms</option>
                   <option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option>
                 </select>
+              </td>
+              <td>
+                <input data-tags value="${escapeHtml((u.tags || []).join(", "))}" placeholder="structures" aria-label="Tags for ${escapeHtml(u.username)}" />
               </td>
               <td>
                 <label class="inline-check">
@@ -85,6 +89,7 @@ async function loadUsers() {
           body: JSON.stringify({
             role: tr.querySelector("[data-role]").value,
             active: tr.querySelector("[data-active]").checked,
+            tags: tr.querySelector("[data-tags]").value,
           }),
         });
         await loadUsers();
@@ -128,6 +133,7 @@ async function init() {
         username: $("newUsername").value.trim(),
         display_name: $("newDisplayName").value.trim(),
         role: $("newRole").value,
+        tags: $("newTags").value,
       };
       if (password) body.password = password;
       const out = await api("/api/admin/users", {

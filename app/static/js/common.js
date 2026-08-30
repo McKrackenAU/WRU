@@ -471,6 +471,7 @@ export const OPS_NAV = [
 export const ADMIN_NAV = [
   { href: "/admin", label: "Overview", hint: "Admin home" },
   { href: "/admin/users", label: "Users", hint: "Logins & roles" },
+  { href: "/admin/notifications", label: "Notifications", hint: "Bell rules & tags" },
   { href: "/admin/stages", label: "Stages & programs", hint: "Workflow" },
   { href: "/admin/settings", label: "Rules & roads", hint: "SLAs · roads · document types" },
   { href: "/admin/rates", label: "Traffic rates", hint: "Crew & allowances" },
@@ -974,6 +975,11 @@ function ingestLivePayload(data) {
     return;
   }
   if (data.type !== "sites_changed") return;
+  try {
+    window.dispatchEvent(new CustomEvent("wru:sites-changed", { detail: data }));
+  } catch {
+    /* ignore */
+  }
   if (data.client_id && data.client_id === liveClientId() && data.reason !== "restart") return;
   if (typeof data.revision === "number") {
     if (data.revision <= knownRevision && ident !== "restart") return;
@@ -1116,6 +1122,21 @@ export async function injectChrome({ active, mode } = {}) {
         </div>
       </div>
       <div class="topbar-end">
+        ${who ? `<div class="notify-bell-wrap" id="notifyBellWrap">
+          <button type="button" class="notify-bell-btn" id="notifyBellBtn" aria-expanded="false" aria-controls="notifyPanel" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-6.2V11a7 7 0 0 0-5-6.7V3.8a2 2 0 1 0-4 0v.5A7 7 0 0 0 5 11v4.8L3.4 17.4A1 1 0 0 0 4.1 19h15.8a1 1 0 0 0 .7-1.6Z"/></svg>
+            <span class="notify-badge" id="notifyBadge" hidden>0</span>
+          </button>
+          <div class="notify-panel" id="notifyPanel" hidden role="dialog" aria-label="Notifications">
+            <div class="notify-panel-head">
+              <strong>Notifications</strong>
+              <button type="button" class="btn btn-sm" id="notifyReadAll">Mark all read</button>
+            </div>
+            <div class="notify-list" id="notifyList">
+              <p class="notify-empty">Loading…</p>
+            </div>
+          </div>
+        </div>` : ""}
         ${adminToggle}
         ${userMenu}
       </div>
@@ -1162,7 +1183,12 @@ export async function injectChrome({ active, mode } = {}) {
   watchNumberInputs();
   registerServiceWorker();
   initPwaChrome();
-  if (location.pathname !== "/login") bootstrapLiveSync();
+  if (location.pathname !== "/login") {
+    bootstrapLiveSync();
+    import("./notifications.js")
+      .then((m) => m.mountNotifications())
+      .catch(() => {});
+  }
   if (!document.documentElement.dataset.wruDocDl) {
     document.documentElement.dataset.wruDocDl = "1";
     document.addEventListener("click", (ev) => {

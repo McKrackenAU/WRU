@@ -40,6 +40,8 @@ from .models import (  # noqa: F401 — register metadata
     User,
     WorkflowStageDef,
     WorkflowStep,
+    NotificationRule,
+    AppNotification,
 )
 
 
@@ -210,6 +212,7 @@ def run_migrations() -> None:
     ensure_column("comms_sheets", "settings", "settings JSONB NOT NULL DEFAULT '{}'::jsonb")
     ensure_column("comms_resource_sections", "body", "body TEXT")
     ensure_column("comms_rows", "form_values", "form_values JSONB NOT NULL DEFAULT '{}'::jsonb")
+    ensure_column("users", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
@@ -233,6 +236,7 @@ def run_migrations() -> None:
 
     from .auth import ensure_admin_user, ensure_root_user
     from .comms_seed import ensure_comms_resources, ensure_comms_seed
+    from .notify import ensure_default_notification_rules
 
     db = SessionLocal()
     try:
@@ -245,6 +249,7 @@ def run_migrations() -> None:
         ensure_root_user(db)
         ensure_comms_seed(db)
         ensure_comms_resources(db)
+        ensure_default_notification_rules(db)
     finally:
         db.close()
 

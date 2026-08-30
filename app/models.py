@@ -37,6 +37,8 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Lowercase tags used to route notification rules (e.g. "structures").
+    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
 
 # Fallback constants — live config is WorkflowStageDef (seeded from these keys).
@@ -856,3 +858,51 @@ class GanttItem(Base):
     site: Mapped[Site] = relationship(lazy="selectin")
     subcontractor: Mapped[AsphaltSubcontractor | None] = relationship(lazy="selectin")
     traffic_contractor: Mapped[TrafficContractor | None] = relationship(lazy="selectin")
+
+
+class NotificationRule(Base):
+    """Admin-defined trigger that fans out inbox notifications to tagged users."""
+
+    __tablename__ = "notification_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # stage_entered
+    trigger: Mapped[str] = mapped_column(String(32), nullable=False, default="stage_entered")
+    stage_key: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    # Empty program = any program
+    program: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    target_tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    target_user_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    message_template: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class AppNotification(Base):
+    """Per-user inbox item created by a notification rule."""
+
+    __tablename__ = "app_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    rule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("notification_rules.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    site_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sites.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    link: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )

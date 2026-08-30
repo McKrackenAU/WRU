@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Notifications · WRU Admin</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Notification rules</h1>
+          <p>Push a bell notice to people with matching account tags. Example: a Structures job enters Ready for Works → anyone tagged <code>structures</code> (Omar and others) is flagged.</p>
+        </div>
+      </div>
+
+      <section class="panel-card">
+        <h2>Add rule</h2>
+        <form class="form-grid" id="createRuleForm">
+          <label>
+            Name
+            <input id="newRuleName" required maxlength="128" placeholder="Structures ready for works" />
+          </label>
+          <label>
+            When a job enters
+            <select id="newStage" required></select>
+          </label>
+          <label>
+            Program
+            <select id="newProgram"></select>
+          </label>
+          <label>
+            Notify tags
+            <input id="newTags" placeholder="structures" />
+          </label>
+          <label class="full">
+            Also notify these users <span class="hint">(optional — hold Ctrl/Cmd to pick several)</span>
+            <select id="newUsers" multiple size="4"></select>
+          </label>
+          <label class="full">
+            Custom message <span class="hint">(optional — {site}, {stage}, {program}, {road})</span>
+            <textarea id="newMessage" rows="2" maxlength="4000" placeholder="Structures job {site} is ready for works."></textarea>
+          </label>
+          <label class="full">
+            <span><input id="newEnabled" type="checkbox" checked /> Enabled</span>
+          </label>
+          <div class="full">
+            <button type="submit" class="btn btn-primary">Create rule</button>
+          </div>
+        </form>
+        <p class="hint" id="createRuleMsg" aria-live="polite"></p>
+      </section>
+
+      <section class="panel-card" style="margin-top:1.25rem">
+        <h2>Rules</h2>
+        <p class="hint">Tag people on <a href="/admin/users">Users</a> so the same rule can reach Omar and anyone else on that crew without editing this list each time.</p>
+        <div id="rulesTableWrap">
+          <p class="hint">Loading…</p>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/notify_admin.js"></script>
+</body>
+</html>

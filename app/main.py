@@ -46,6 +46,7 @@ from .routers import (
     import_tracker,
     live,
     map_layers,
+    notifications,
     settings_admin,
     sites,
     spend,
@@ -78,6 +79,8 @@ run_migrations()
 
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
+app.include_router(notifications.inbox_router)
+app.include_router(notifications.admin_router)
 app.include_router(live.router)
 app.include_router(activity.router)
 app.include_router(sites.router)
@@ -433,6 +436,11 @@ def admin_backup_page(_: User = Depends(require_admin)):
 @app.get("/admin/users")
 def admin_users_page(_: User = Depends(require_admin)):
     return _page("users.html")
+
+
+@app.get("/admin/notifications")
+def admin_notifications_page(_: User = Depends(require_admin)):
+    return _page("notifications.html")
 
 
 @app.get("/admin/storage")

@@ -22,6 +22,7 @@ from ..auth import (
 )
 from ..database import get_db
 from ..models import User
+from ..notify import normalize_tags
 
 router = APIRouter(prefix="/api/admin/users", tags=["users"])
 
@@ -32,6 +33,7 @@ class UserCreateIn(BaseModel):
     password: str | None = Field(default=None, min_length=8, max_length=256)
     role: str = Field(default=USER_ROLE, pattern="^(admin|user|comms)$")
     active: bool = True
+    tags: list[str] | str = Field(default_factory=list)
 
 
 class UserUpdateIn(BaseModel):
@@ -39,6 +41,7 @@ class UserUpdateIn(BaseModel):
     role: str | None = Field(default=None, pattern="^(admin|user|comms)$")
     active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=256)
+    tags: list[str] | str | None = None
 
 
 def _norm_username(value: str) -> str:
@@ -90,6 +93,7 @@ def create_user(
         role=role,
         active=bool(payload.active),
         must_change_password=generated,
+        tags=normalize_tags(payload.tags),
     )
     db.add(user)
     db.commit()
@@ -129,6 +133,9 @@ def update_user(
     if payload.password:
         user.password_hash = hash_password(payload.password.strip())
         user.must_change_password = False
+
+    if payload.tags is not None:
+        user.tags = normalize_tags(payload.tags)
 
     db.commit()
     db.refresh(user)
