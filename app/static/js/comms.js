@@ -112,14 +112,29 @@ function statusColumn() {
 }
 
 function groupColumn() {
-  return (
-    workpackColumn() ||
-    findColumn(/^crew$/i) ||
-    findColumn(/^suburb$/i) ||
-    findColumn(/council|lga|local_government/i) ||
-    siteNumberColumn() ||
-    findColumn(/location/i, /road/i)
-  );
+  const workpack = workpackColumn();
+  if (workpack) return workpack;
+  const candidates = [
+    findColumn(/^suburb$/i),
+    findColumn(/^crew$/i),
+    findColumn(/council|lga|local_government/i),
+    siteNumberColumn(),
+    findColumn(/location/i, /road/i),
+  ].filter(Boolean);
+  let best = candidates[0] || null;
+  let bestScore = -1;
+  for (const col of candidates) {
+    const values = (state.sheet?.rows || []).map((row) => rowValue(row, col.field_key));
+    const filled = values.filter((v) => v && v !== BLANK);
+    const unique = new Set(filled);
+    if (unique.size > 24 && candidates.length > 1) continue;
+    const score = filled.length + (unique.size >= 2 ? 20 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = col;
+    }
+  }
+  return best;
 }
 
 function listTitle(row) {
