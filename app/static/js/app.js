@@ -30,6 +30,7 @@ const state = {
   meta: { workflow_stages: [], priority_threshold_days: 14, councils: [], programs: [], roads: [] },
   tagLibrary: [],
   programTags: {},
+  programs: [],
   detailSiteId: null,
   genericMoas: [],
   autosaveTimer: null,
@@ -459,6 +460,7 @@ function siteRowHtml(site) {
   const metaBits = [councils ? `${escapeHtml(councils)}${escapeHtml(more)}` : ""]
     .filter(Boolean)
     .join("");
+  const tagChips = siteTagChipsHtml(site);
   return `<tr class="register-row ${highlight}" draggable="${state.sortKey ? "false" : "true"}" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
     <td class="select-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
@@ -468,6 +470,10 @@ function siteRowHtml(site) {
       <div class="site-meta">
         ${metaBits}
         ${commentSnippet(site.comments)}
+      </div>
+      <div class="register-row-tags" onclick="event.stopPropagation()">
+        ${tagChips}
+        <button type="button" class="btn btn-sm" data-job-tags="${site.id}">Tags</button>
       </div>
     </td>
     <td class="status-col" onclick="event.stopPropagation()">
@@ -1022,6 +1028,14 @@ function renderRegister() {
       } />
             Select all
           </label>
+          <div class="register-program-tags" onclick="event.stopPropagation()">
+            ${programTagChipsHtml(program)}
+            ${
+              isAdminUser() && program !== "Unassigned"
+                ? `<button type="button" class="btn btn-sm" data-category-tags="${escapeHtml(program)}">Category tags</button>`
+                : ""
+            }
+          </div>
           <div class="register-program-actions">${ganttLink}</div>
         </div>
         <div class="register-table-wrap">
@@ -1053,16 +1067,18 @@ async function loadAll() {
   if (q) params.set("q", q);
 
   setStatus("Loading active TGS / MoA jobs…");
-  const [meta, columns, sites, generics, tagData] = await Promise.all([
+  const [meta, columns, sites, generics, tagData, programs] = await Promise.all([
     api("/api/meta"),
     api("/api/columns"),
     api(`/api/sites?${params}`),
     api("/api/sites/generic-moas").catch(() => []),
     api("/api/tags").catch(() => ({ items: [], program_tags: {} })),
+    isAdminUser() ? api("/api/admin/programs").catch(() => []) : Promise.resolve([]),
   ]);
   state.meta = meta;
   state.tagLibrary = tagData.items || [];
   state.programTags = tagData.program_tags || {};
+  state.programs = Array.isArray(programs) ? programs : [];
   applyDocCategories(meta.doc_category_defs || meta.doc_categories);
   fillDocCategorySelect($("docCategory"), $("docCategory")?.value);
   state.columns = columns;
@@ -1160,6 +1176,130 @@ function maybeScrollHighlight() {
   state.highlightHandled = true;
   row.scrollIntoView({ block: "center", behavior: "smooth" });
   if (site) setTimeout(() => openSiteDrawer(site), 300);
+}
+
+function uniqueTags(list) {
+  return [...new Set((list || []).map((t) => String(t).toLowerCase()).filter(Boolean))];
+}
+
+function siteTagChipsHtml(site) {
+  const inherited = uniqueTags(site.category_tags || categoryTagsFor(site.program, state.programTags));
+  const inheritedSet = new Set(inherited);
+  const tags = uniqueTags([...(site.effective_tags || []), ...inherited, ...(site.tags || [])]);
+  return tags
+    .map(
+      (slug) =>
+        `<span class="tag-chip is-readonly${inheritedSet.has(slug) ? " is-inherited" : ""}">${escapeHtml(slug)}</span>`
+    )
+    .join("");
+}
+
+function programTagChipsHtml(program) {
+  return categoryTagsFor(program, state.programTags)
+    .map((slug) => `<span class="tag-chip is-readonly is-inherited">${escapeHtml(slug)}</span>`)
+    .join("");
+}
+
+function closeRegisterTagPop() {
+  const pop = $("registerTagPop");
+  if (pop) pop.hidden = true;
+  state.tagPop = null;
+}
+
+function placeRegisterTagPop(anchor) {
+  const pop = $("registerTagPop");
+  if (!pop || !anchor) return;
+  pop.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  const top = Math.min(rect.bottom + 6, window.innerHeight - 12);
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - 340));
+  pop.style.top = `${top}px`;
+  pop.style.left = `${left}px`;
+}
+
+function openJobTagPop(anchor, site) {
+  const pop = $("registerTagPop");
+  if (!pop || !site) return;
+  state.tagPop = { kind: "job", siteId: site.id, program: site.program || "" };
+  $("registerTagPopTitle").textContent = "Job tags";
+  $("registerTagPopHint").textContent =
+    "These tags are only on this job. Category tags stay on until you change them on the program heading.";
+  const inherited = categoryTagsFor(site.program, state.programTags);
+  $("registerTagPopPicker").innerHTML = tagPickerHtml({
+    library: state.tagLibrary,
+    selected: site.tags || [],
+    inherited,
+    name: `reg-job-${site.id}`,
+  });
+  placeRegisterTagPop(anchor);
+}
+
+function openCategoryTagPop(anchor, program) {
+  const pop = $("registerTagPop");
+  if (!pop || !program) return;
+  state.tagPop = { kind: "category", siteId: null, program };
+  $("registerTagPopTitle").textContent = "Category tags";
+  $("registerTagPopHint").textContent = `These tags apply to every job in ${program}.`;
+  $("registerTagPopPicker").innerHTML = tagPickerHtml({
+    library: state.tagLibrary,
+    selected: categoryTagsFor(program, state.programTags),
+    inherited: [],
+    name: `reg-cat-${program}`,
+  });
+  placeRegisterTagPop(anchor);
+}
+
+function applyCategoryTagsLocally(program, tags) {
+  const key = programKey(program);
+  const match = Object.keys(state.programTags).find((name) => programKey(name) === key);
+  if (match) state.programTags[match] = tags;
+  else state.programTags[program] = tags;
+  for (const site of state.sites) {
+    if (programKey(site.program) !== key) continue;
+    site.category_tags = tags;
+    site.effective_tags = uniqueTags([...(site.tags || []), ...tags]);
+  }
+}
+
+async function saveRegisterTagPop() {
+  const pop = state.tagPop;
+  if (!pop) return;
+  const tags = selectedTagsFrom($("registerTagPopPicker"));
+  try {
+    if (pop.kind === "job") {
+      const site = await api(`/api/sites/${pop.siteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags }),
+      });
+      const idx = state.sites.findIndex((s) => s.id === pop.siteId);
+      if (idx >= 0) state.sites[idx] = { ...state.sites[idx], ...site };
+    } else if (pop.kind === "category") {
+      let rec = (state.programs || []).find(
+        (p) => programKey(p.name) === programKey(pop.program)
+      );
+      if (!rec) {
+        rec = await api("/api/admin/programs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pop.program, active: true, tags }),
+        });
+        state.programs = [...(state.programs || []), rec];
+      } else {
+        rec = await api(`/api/admin/programs/${rec.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: rec.name, active: rec.active !== false, tags }),
+        });
+        state.programs = (state.programs || []).map((p) => (p.id === rec.id ? rec : p));
+      }
+      applyCategoryTagsLocally(pop.program, rec.tags || tags);
+    }
+    closeRegisterTagPop();
+    renderRegister();
+  } catch (err) {
+    alertDialog(errorMessage(err, "Could not save tags"));
+  }
 }
 
 function fillProgramSelect(selected = "") {
@@ -1958,6 +2098,13 @@ function bindEvents() {
     if ($("colOptionsWrap")) $("colOptionsWrap").hidden = $("colType").value !== "select";
   });
   on("fProgram", "change", () => renderJobTags());
+  on("registerTagPopSave", "click", () => saveRegisterTagPop().catch((e) => alertDialog(errorMessage(e, "Could not save tags"))));
+  on("registerTagPopClose", "click", () => closeRegisterTagPop());
+  document.addEventListener("click", (ev) => {
+    if (!$("registerTagPop") || $("registerTagPop").hidden) return;
+    if (ev.target.closest("#registerTagPop, [data-job-tags], [data-category-tags]")) return;
+    closeRegisterTagPop();
+  });
   on("search", "input", debounce(() => loadAll().catch(showLoadError), 250));
   document.addEventListener("change", (ev) => {
     const map = [
@@ -2012,6 +2159,10 @@ function bindEvents() {
       closeFilterDrops();
       return;
     }
+    if ($("registerTagPop") && !$("registerTagPop").hidden) {
+      closeRegisterTagPop();
+      return;
+    }
     if ($("siteDrawer") && !$("siteDrawer").hidden) closeDrawer();
   });
 
@@ -2055,7 +2206,22 @@ function bindEvents() {
       return;
     }
     if (state.suppressRowOpen) return;
-    if (ev.target.closest("[data-status-select], .status-col, .select-col, a.btn, .drag-grip, .register-select-program, input, select, label"))
+    const jobTagsBtn = ev.target.closest("[data-job-tags]");
+    if (jobTagsBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const site = state.sites.find((s) => s.id === Number(jobTagsBtn.dataset.jobTags));
+      if (site) openJobTagPop(jobTagsBtn, site);
+      return;
+    }
+    const catTagsBtn = ev.target.closest("[data-category-tags]");
+    if (catTagsBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openCategoryTagPop(catTagsBtn, catTagsBtn.dataset.categoryTags || "");
+      return;
+    }
+    if (ev.target.closest("[data-status-select], .status-col, .select-col, a.btn, .drag-grip, .register-select-program, .register-row-tags, .register-program-tags, .register-tag-pop, input, select, label"))
       return;
     const btn = ev.target.closest("[data-action='open']");
     if (!btn) return;

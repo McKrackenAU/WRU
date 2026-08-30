@@ -139,6 +139,18 @@
     <footer class="app-footer" data-app-footer></footer>
   </div>
 
+  <div class="register-tag-pop" id="registerTagPop" hidden>
+    <header class="register-tag-pop-head">
+      <strong id="registerTagPopTitle">Tags</strong>
+      <button type="button" class="icon-btn" id="registerTagPopClose" aria-label="Close tags">×</button>
+    </header>
+    <p class="hint" id="registerTagPopHint"></p>
+    <div id="registerTagPopPicker"></div>
+    <div class="toolbar" style="margin-top:0.6rem">
+      <button type="button" class="btn btn-primary btn-sm" id="registerTagPopSave">Save tags</button>
+    </div>
+  </div>
+
   <!-- Site drawer -->
   <aside class="drawer" id="siteDrawer" hidden aria-hidden="true">
     <div class="drawer-backdrop" data-close-drawer></div>
@@ -179,7 +191,7 @@
               </label>
               <label>TGS reference<input id="fTgs" maxlength="128" /></label>
               <div class="full" id="jobTagsSection">
-                <p class="hint" style="margin:0 0 0.35rem">Tags — category tags apply to every job in this program. Extra tags are for this job only.</p>
+                <p class="hint" style="margin:0 0 0.35rem">Job tags can also be set on the register. Category tags on a program heading apply to every job in that program.</p>
                 <div id="jobTagsPicker"></div>
               </div>
             </div>

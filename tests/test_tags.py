@@ -21,6 +21,7 @@ ADMIN = (ROOT / "app/static/admin.html").read_text(encoding="utf-8")
 TAGS_HTML = (ROOT / "app/static/tags.html").read_text(encoding="utf-8")
 TAGS_JS = (ROOT / "app/static/js/tags.js").read_text(encoding="utf-8")
 STAGES_JS = (ROOT / "app/static/js/stages.js").read_text(encoding="utf-8")
+STAGES_HTML = (ROOT / "app/static/stages.html").read_text(encoding="utf-8")
 APP_JS = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
 INDEX = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
 CAL_JS = (ROOT / "app/static/js/calendar.js").read_text(encoding="utf-8")
@@ -83,8 +84,12 @@ def test_admin_tags_page_wired():
     assert 'href="/admin/tags"' in ADMIN
     assert 'id="createTagForm"' in TAGS_HTML
     assert "/api/admin/tags" in TAGS_JS
-    assert "data-save-prog-tags" in STAGES_JS
+    assert "data-save-prog-tags" not in STAGES_JS
+    assert "site register" in STAGES_HTML
     assert "jobTagsPicker" in INDEX
+    assert "data-job-tags" in APP_JS
+    assert "data-category-tags" in APP_JS
+    assert "registerTagPop" in INDEX
     assert "renderJobTags" in APP_JS
     assert "calendar_note" in NOTIFY_ADMIN
     assert "ensure_calendar_note_rule" in NOTIFY
