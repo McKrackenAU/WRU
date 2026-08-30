@@ -29,8 +29,37 @@ def test_channel_override_is_version_scoped(tmp_path, monkeypatch):
     system_mod._write_channel_override("1.95", "stable")
     assert system_mod._read_channel_override("1.95") == "stable"
     assert system_mod._read_channel_override("1.96") is None
+    system_mod._write_channel_override("1.96", "beta")
+    assert system_mod._read_channel_override("1.95") == "stable"
     payload = json.loads((tmp_path / "release_channel.json").read_text(encoding="utf-8"))
-    assert payload == {"version": "1.95", "channel": "stable"}
+    assert payload == {"channels": {"1.95": "stable", "1.96": "beta"}}
+
+
+def test_legacy_single_override_still_reads(tmp_path, monkeypatch):
+    monkeypatch.setattr(system_mod, "DATA_DIR", tmp_path)
+    (tmp_path / "release_channel.json").write_text(
+        json.dumps({"version": "1.99", "channel": "stable"}), encoding="utf-8"
+    )
+    assert system_mod._read_channel_override("1.99") == "stable"
+    assert system_mod._read_channel_override("2.0") is None
+
+
+def test_history_uses_stored_stable_mark(tmp_path, monkeypatch):
+    monkeypatch.setattr(system_mod, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(system_mod, "HISTORY_FILE", tmp_path / "wru_version_history.json")
+    (tmp_path / "wru_version_history.json").write_text(
+        json.dumps({"versions": [{"version": "1.99", "tag": "v1.99", "channel": "beta"}]}),
+        encoding="utf-8",
+    )
+    rows = system_mod._read_history()
+    assert rows[0].channel == "beta"
+    system_mod._write_channel_override("1.99", "stable")
+    system_mod._write_history_channel("1.99", "stable")
+    rows = system_mod._read_history()
+    assert rows[0].channel == "stable"
+    assert rows[0].channel_label == "Stable"
+    stored = json.loads((tmp_path / "wru_version_history.json").read_text(encoding="utf-8"))
+    assert stored["versions"][0]["channel"] == "stable"
 
 
 def test_resolve_channel_prefers_override(tmp_path, monkeypatch):
@@ -49,3 +78,4 @@ def test_system_ui_exposes_channel_controls():
     assert "/api/system/channel" in js
     assert '@router.put("/channel"' in py
     assert "channel=${channel}" in (ROOT / "scripts/wru-update.sh").read_text(encoding="utf-8")
+    assert "release_channel.json" in (ROOT / "scripts/wru-update.sh").read_text(encoding="utf-8")

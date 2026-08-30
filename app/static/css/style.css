@@ -3127,6 +3127,10 @@ html.dark .leaflet-control-scale-line {
   color: var(--ok);
 }
 
+#histTable tr.is-current td {
+  background: color-mix(in srgb, var(--ventia-green) 8%, transparent);
+}
+
 .storage-all {
   align-items: flex-end;
   gap: 0.75rem;

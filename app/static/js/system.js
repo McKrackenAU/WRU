@@ -159,18 +159,25 @@ function renderStatus(s) {
 
 function renderHistory(payload) {
   const history = payload.history || [];
-  const can = payload.current?.can_update;
+  const current = payload.current || {};
+  const can = current.can_update;
   const max = payload.max_history || 5;
   $("histHint").textContent = history.length
-    ? `${history.length} of ${max} earlier installs ready if you need to roll back.`
-    : `After your next update we’ll keep up to ${max} earlier installs here for rollback.`;
+    ? `This install plus ${history.length} of ${max} earlier ones. Channel is the last Beta / Stable mark for that version.`
+    : `This install is listed below. After your next update we’ll keep up to ${max} earlier ones for rollback.`;
 
   const body = $("histBody");
-  if (!history.length) {
-    body.innerHTML = `<tr><td class="empty" colspan="5">Nothing to roll back to yet — that’s normal on a fresh install.</td></tr>`;
-    return;
-  }
-  body.innerHTML = history
+  const currentTag = escapeHtml(current.version_tag || (current.app_version ? `v${current.app_version}` : "—"));
+  const currentRow = current.app_version
+    ? `<tr class="is-current">
+        <td>${currentTag} <span class="hint">this install</span></td>
+        <td>${escapeHtml(current.channel_label || "—")}</td>
+        <td><code>${escapeHtml(current.commit || "—")}</code></td>
+        <td>${escapeHtml(current.updated_at || "—")}</td>
+        <td><span class="hint">Current</span></td>
+      </tr>`
+    : "";
+  const rows = history
     .map((h) => {
       const tag = escapeHtml(h.tag || `v${h.version}`);
       const channel = escapeHtml(h.channel_label || "—");
@@ -190,6 +197,7 @@ function renderHistory(payload) {
       </tr>`;
     })
     .join("");
+  body.innerHTML = currentRow + (rows || (current.app_version ? "" : `<tr><td class="empty" colspan="5">Nothing to roll back to yet — that’s normal on a fresh install.</td></tr>`));
 
   body.querySelectorAll("[data-rollback]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -209,7 +217,7 @@ async function setChannel(channel) {
       body: JSON.stringify({ channel }),
       timeoutMs: 15000,
     });
-    renderStatus(next);
+    await loadVersions();
     if (status) status.textContent = next.channel_label ? `Now ${next.channel_label}.` : "Saved.";
   } catch (err) {
     if (status) status.textContent = "";

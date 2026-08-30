@@ -158,33 +158,96 @@ def _display_commit(value: str | None) -> str | None:
     return raw
 
 
-def _read_channel_override(current_ver: str) -> str | None:
+def _read_channel_map() -> dict[str, str]:
+    """Version → beta|stable marks. Keeps older installs after you mark a new one."""
     path = _channel_override_path()
     if not path.is_file():
-        return None
+        return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return None
+        return {}
     if not isinstance(raw, dict):
-        return None
-    stored_ver = _normalize_version(str(raw.get("version") or ""))
-    if stored_ver and stored_ver != _normalize_version(current_ver):
-        return None
-    return normalize_channel(str(raw.get("channel") or ""))
+        return {}
+    out: dict[str, str] = {}
+    channels = raw.get("channels")
+    if isinstance(channels, dict):
+        for key, value in channels.items():
+            ver = _normalize_version(str(key))
+            if ver:
+                out[ver] = normalize_channel(str(value or ""))
+    ver = _normalize_version(str(raw.get("version") or ""))
+    if ver and raw.get("channel"):
+        out.setdefault(ver, normalize_channel(str(raw.get("channel") or "")))
+    return out
+
+
+def _read_channel_override(current_ver: str) -> str | None:
+    return _read_channel_map().get(_normalize_version(current_ver))
 
 
 def _write_channel_override(version: str, channel: str) -> None:
     path = _channel_override_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {"version": _normalize_version(version), "channel": normalize_channel(channel)},
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    mapping = _read_channel_map()
+    mapping[_normalize_version(version)] = normalize_channel(channel)
+    path.write_text(json.dumps({"channels": mapping}, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_version_file_channel(channel: str) -> None:
+    """Best-effort: keep /opt/wru_version.txt in sync so the next snapshot is right."""
+    if not VERSION_FILE.is_file():
+        return
+    wanted = normalize_channel(channel)
+    try:
+        lines = VERSION_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError:
+        return
+    found = False
+    next_lines: list[str] = []
+    for line in lines:
+        if line.split("=", 1)[0].strip() == "channel":
+            next_lines.append(f"channel={wanted}")
+            found = True
+        else:
+            next_lines.append(line)
+    if not found:
+        next_lines.append(f"channel={wanted}")
+    try:
+        VERSION_FILE.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
+    except OSError:
+        return
+
+
+def _write_history_channel(version: str, channel: str) -> None:
+    """Best-effort: stamp the marked channel onto a history row for that version."""
+    if not HISTORY_FILE.is_file():
+        return
+    wanted = normalize_channel(channel)
+    ver = _normalize_version(version)
+    try:
+        raw = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return
+    items = raw.get("versions") if isinstance(raw, dict) else raw
+    if not isinstance(items, list):
+        return
+    changed = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if _normalize_version(str(item.get("version") or "")) != ver:
+            continue
+        if item.get("channel") != wanted:
+            item["channel"] = wanted
+            changed = True
+    if not changed:
+        return
+    payload = {"versions": items} if isinstance(raw, dict) else items
+    try:
+        HISTORY_FILE.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        return
 
 
 def _resolve_channel(meta: dict[str, str], app_ver: str) -> str:
@@ -255,7 +318,9 @@ def _read_history() -> list[VersionEntry]:
             if not ver:
                 continue
             tag = str(item.get("tag") or _normalize_tag(ver))
-            ch = normalize_channel(str(item.get("channel") or "")) if item.get("channel") else None
+            marked = _read_channel_override(ver)
+            stored = str(item.get("channel") or "").strip()
+            ch = marked or (normalize_channel(stored) if stored else None)
             out.append(
                 VersionEntry(
                     version=ver,
@@ -645,6 +710,8 @@ def system_set_channel(payload: ChannelUpdateRequest):
         raise HTTPException(status_code=400, detail="Channel must be beta or stable")
     status = build_status()
     _write_channel_override(status.app_version, wanted)
+    _write_version_file_channel(wanted)
+    _write_history_channel(status.app_version, wanted)
     return build_status()
 
 

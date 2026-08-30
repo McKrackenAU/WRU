@@ -137,6 +137,26 @@ if not commit and (app_dir / ".git").is_dir():
         commit = None
 
 channel = (meta.get("channel") or "").strip().lower()
+# Prefer the in-app Beta/Stable mark so history matches what was shown.
+candidates = [app_dir / "data" / "release_channel.json", Path("/data/release_channel.json")]
+if os.environ.get("WRU_DATA_DIR"):
+    candidates.insert(0, Path(os.environ["WRU_DATA_DIR"]) / "release_channel.json")
+for candidate in candidates:
+    if not candidate.is_file():
+        continue
+    try:
+        raw = json.loads(candidate.read_text(encoding="utf-8"))
+    except Exception:
+        continue
+    marks = raw.get("channels") if isinstance(raw, dict) else None
+    marked = None
+    if isinstance(marks, dict):
+        marked = marks.get(ver) or marks.get(f"v{ver}")
+    if not marked and isinstance(raw, dict) and str(raw.get("version") or "").lstrip("vV") == ver:
+        marked = raw.get("channel")
+    if str(marked or "").strip().lower() in {"beta", "stable"}:
+        channel = str(marked).strip().lower()
+        break
 if channel not in {"beta", "stable"}:
     channel_file = app_dir / "CHANNEL"
     if channel_file.is_file():

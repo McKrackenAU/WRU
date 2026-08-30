@@ -33,6 +33,8 @@ def test_system_js_progress_and_log_toggle():
     assert "/api/system/channel" in JS
     assert "channel_label" in JS
     assert "Currently on" in JS
+    assert "this install" in JS
+    assert "await loadVersions()" in JS
     assert 's.branch || "main"' not in JS
 
 
