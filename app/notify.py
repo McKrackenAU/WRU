@@ -15,7 +15,9 @@ MAX_TAGS = 12
 MAX_TAG_LEN = 32
 MAX_USER_IDS = 50
 TRIGGER_STAGE_ENTERED = "stage_entered"
+TRIGGER_COMMS_DUE = "comms_due"
 DEFAULT_RULE_NAME = "Structures ready for works"
+COMMS_DUE_RULE_NAME = "Comms item due"
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}", re.IGNORECASE)
 
 
@@ -179,6 +181,135 @@ def ensure_default_notification_rules(db: Session) -> None:
         )
     )
     db.commit()
+
+
+def ensure_comms_due_rule(db: Session) -> None:
+    existing = (
+        db.query(NotificationRule)
+        .filter(NotificationRule.trigger == TRIGGER_COMMS_DUE)
+        .first()
+    )
+    if existing:
+        return
+    db.add(
+        NotificationRule(
+            name=COMMS_DUE_RULE_NAME,
+            enabled=True,
+            trigger=TRIGGER_COMMS_DUE,
+            stage_key="",
+            program="",
+            target_tags=["comms"],
+            target_user_ids=[],
+            message_template="{item} is {status} ({due}).",
+        )
+    )
+    db.commit()
+
+
+def _comms_due_rules(db: Session) -> list[NotificationRule]:
+    return [
+        rule
+        for rule in db.query(NotificationRule).all()
+        if getattr(rule, "enabled", True) and (rule.trigger or "") == TRIGGER_COMMS_DUE
+    ]
+
+
+def dispatch_comms_due_notifications(db: Session, *, row=None, site=None) -> int:
+    """Flag comms-tagged users when a tracked item is due soon or overdue. Caller commits."""
+    from .comms_due import (
+        DUE_SOON_DAYS,
+        build_calendar_item,
+        should_notify_status,
+    )
+    from .models import CommsRow, CommsTemplateField, Site
+
+    rules = _comms_due_rules(db)
+    if not rules:
+        return 0
+    fields = (
+        db.query(CommsTemplateField)
+        .filter(CommsTemplateField.track_due.is_(True))
+        .all()
+    )
+    if not fields:
+        return 0
+    rows = []
+    if row is not None:
+        rows = [row]
+    elif site is not None and getattr(site, "id", None):
+        rows = db.query(CommsRow).filter(CommsRow.site_id == site.id).all()
+    if not rows:
+        return 0
+    users = db.query(User).all()
+    created = 0
+    for current in rows:
+        linked = site
+        if linked is None and getattr(current, "site_id", None):
+            linked = db.get(Site, current.site_id)
+        program = (getattr(linked, "program", None) or "").strip().lower()
+        for field in fields:
+            item = build_calendar_item(field, current, linked)
+            if not item or not should_notify_status(item["status"], parse_due(item.get("due_date")), lead_days=DUE_SOON_DAYS):
+                continue
+            for rule in rules:
+                wanted_program = (rule.program or "").strip()
+                if wanted_program and wanted_program.lower() != program:
+                    continue
+                for user in users:
+                    if not getattr(user, "active", True) or is_hidden_user(user):
+                        continue
+                    if not user_matches_rule(user, rule):
+                        continue
+                    already = (
+                        db.query(AppNotification)
+                        .filter(
+                            AppNotification.user_id == user.id,
+                            AppNotification.rule_id == rule.id,
+                            AppNotification.site_id == item.get("site_id"),
+                            AppNotification.read_at.is_(None),
+                            AppNotification.title == item["title"][:255],
+                        )
+                        .first()
+                    )
+                    if already:
+                        continue
+                    status_label = "overdue" if item["status"] == "overdue" else "due soon"
+                    due_label = item["due_date"] or "no date"
+                    body = (rule.message_template or "").strip()
+                    if body:
+                        body = (
+                            body.replace("{item}", item["title"])
+                            .replace("{status}", status_label)
+                            .replace("{due}", due_label)
+                            .replace("{site}", item["title"].split(" · ")[-1])
+                        )
+                    else:
+                        body = f"{item['title']} is {status_label} ({due_label})."
+                    db.add(
+                        AppNotification(
+                            user_id=user.id,
+                            rule_id=rule.id,
+                            site_id=item.get("site_id"),
+                            title=item["title"][:255],
+                            body=body[:4000],
+                            link=item.get("link") or "/calendar",
+                        )
+                    )
+                    created += 1
+    return created
+
+
+def parse_due(value) -> date | None:
+    from datetime import date as date_cls
+
+    if not value:
+        return None
+    if isinstance(value, date_cls):
+        return value
+    try:
+        return date_cls.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
 
 
 def dispatch_stage_notifications(db: Session, site, before: str | None, after: str | None) -> int:

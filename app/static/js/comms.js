@@ -407,6 +407,12 @@ function renderFormBuilder() {
                   <strong>${escapeHtml(field.name)}</strong>
                   <div class="meta">${escapeHtml(field.field_type === "yesno" ? "Yes / No" : field.field_type)}${
                     field.options?.length ? ` · ${escapeHtml(field.options.join(", "))}` : ""
+                  }${
+                    field.track_due
+                      ? field.offset_days != null
+                        ? ` · due ${field.offset_days} bd before start`
+                        : " · due date"
+                      : ""
                   }</div>
                 </div>
                 <button type="button" class="btn btn-sm btn-danger" data-del-form-field="${field.id}">Remove</button>
@@ -815,6 +821,7 @@ function renderDrawer() {
               .map((col) => labeledControl(col.name, cellInput(col, (row.values || {})[col.field_key])))
               .join("")}
             ${state.formFields.map((field) => renderFormField(field, row)).join("")}
+            <p class="hint full">Use Remove on a field if it was added to the wrong place — it comes off every planner row.</p>
           </div>
           ${
             state.formFields.length
@@ -849,11 +856,69 @@ function formatStamp(iso) {
   return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+function formValue(row, key, fallback = "") {
+  const raw = (row.form_values || {})[key];
+  return raw == null ? fallback : raw;
+}
+
+function isOn(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || "").trim());
+}
+
+function addBusinessDaysJs(startIso, days) {
+  if (!startIso || days == null || days === "") return "";
+  const start = new Date(`${startIso}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return "";
+  let remaining = Math.abs(Number(days));
+  const step = Number(days) >= 0 ? 1 : -1;
+  const cursor = new Date(start);
+  while (remaining) {
+    cursor.setDate(cursor.getDate() + step);
+    const dow = cursor.getDay();
+    if (dow !== 0 && dow !== 6) remaining -= 1;
+  }
+  const y = cursor.getFullYear();
+  const m = String(cursor.getMonth() + 1).padStart(2, "0");
+  const d = String(cursor.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function fieldDueControls(field, row) {
+  if (!field.track_due) return "";
+  const key = field.field_key;
+  const start = row.site?.indicative_site_start_date || "";
+  const rawAuto = formValue(row, `${key}__due_auto`, "");
+  const auto = rawAuto === "" ? field.offset_days != null : isOn(rawAuto);
+  const storedDue = String(formValue(row, `${key}__due`, ""));
+  const due = auto && field.offset_days != null && start ? addBusinessDaysJs(start, -Number(field.offset_days)) : storedDue;
+  const done = isOn(formValue(row, `${key}__done`, false));
+  return `<div class="comms-due-box">
+    <label>Due date
+      <input type="date" data-form-due="${escapeHtml(key)}" value="${escapeHtml(due)}" ${auto ? "readonly" : ""} />
+    </label>
+    ${
+      field.offset_days != null
+        ? `<label class="inline-check"><input type="checkbox" data-form-due-auto="${escapeHtml(key)}" ${auto ? "checked" : ""} /> Auto from indicative start (${field.offset_days} business days before${start ? "" : " — link a job first"})</label>`
+        : `<p class="hint">Type the due date for this row.</p>`
+    }
+    <label class="inline-check"><input type="checkbox" data-form-done="${escapeHtml(key)}" ${done ? "checked" : ""} /> Completed</label>
+  </div>`;
+}
+
+function fieldRemoveButton(field) {
+  return `<button type="button" class="btn btn-sm btn-danger" data-del-form-field="${field.id}">Remove field</button>`;
+}
+
 function renderFormField(field, row) {
-  const value = (row.form_values || {})[field.field_key] ?? "";
+  const value = formValue(row, field.field_key, "");
+  const due = fieldDueControls(field, row);
+  const remove = fieldRemoveButton(field);
   if (field.field_type === "file") {
-    return `<div class="full">
-      <strong>${escapeHtml(field.name)}</strong>
+    return `<div class="full comms-form-block">
+      <div class="comms-form-block-head">
+        <strong>${escapeHtml(field.name)}</strong>
+        ${remove}
+      </div>
       <div class="form-grid" style="margin-top:0.45rem">
         <label class="full">File<input type="file" multiple data-form-file="${escapeHtml(field.field_key)}" /></label>
       </div>
@@ -862,27 +927,28 @@ function renderFormField(field, row) {
         <span class="hint" data-form-file-status="${escapeHtml(field.field_key)}"></span>
       </div>
       <ul class="event-list" data-form-file-list="${escapeHtml(field.field_key)}"></ul>
+      ${due}
     </div>`;
   }
+  let control;
   if (field.field_type === "textarea") {
-    return labeledControl(
-      field.name,
-      `<textarea data-form-field="${escapeHtml(field.field_key)}" rows="3">${escapeHtml(String(value))}</textarea>`
-    );
-  }
-  if (field.field_type === "select" || field.field_type === "yesno") {
+    control = `<textarea data-form-field="${escapeHtml(field.field_key)}" rows="3">${escapeHtml(String(value))}</textarea>`;
+  } else if (field.field_type === "select" || field.field_type === "yesno") {
     const opts = field.field_type === "yesno" ? ["", "Yes", "No"] : ["", ...(field.options || [])];
-    return labeledControl(
-      field.name,
-      `<select data-form-field="${escapeHtml(field.field_key)}">${opts
-        .map((o) => `<option value="${escapeHtml(o)}" ${String(o) === String(value) ? "selected" : ""}>${escapeHtml(o || "—")}</option>`)
-        .join("")}</select>`
-    );
+    control = `<select data-form-field="${escapeHtml(field.field_key)}">${opts
+      .map((o) => `<option value="${escapeHtml(o)}" ${String(o) === String(value) ? "selected" : ""}>${escapeHtml(o || "—")}</option>`)
+      .join("")}</select>`;
+  } else {
+    control = `<input type="text" data-form-field="${escapeHtml(field.field_key)}" value="${escapeHtml(String(value))}" />`;
   }
-  return labeledControl(
-    field.name,
-    `<input type="text" data-form-field="${escapeHtml(field.field_key)}" value="${escapeHtml(String(value))}" />`
-  );
+  return `<div class="full comms-form-block">
+    <div class="comms-form-block-head">
+      <span class="comms-field-label">${escapeHtml(field.name)}</span>
+      ${remove}
+    </div>
+    ${control}
+    ${due}
+  </div>`;
 }
 
 async function refreshNotes() {
@@ -1136,17 +1202,30 @@ function showDrawerSaved(ok = true) {
 
 async function persistDrawerField(el) {
   if (!el || !state.openRowId) return;
-  if (el.dataset.formField) {
-    const key = el.dataset.formField;
-    const value = el.value;
+  if (el.dataset.formField || el.dataset.formDue || el.dataset.formDueAuto || el.dataset.formDone) {
+    const key = el.dataset.formField || el.dataset.formDue || el.dataset.formDueAuto || el.dataset.formDone;
+    const patch = {};
+    if (el.dataset.formField) patch[key] = el.value;
+    if (el.dataset.formDue) patch[`${key}__due`] = el.value;
+    if (el.dataset.formDueAuto) {
+      patch[`${key}__due_auto`] = el.checked ? "1" : "0";
+      const field = state.formFields.find((f) => f.field_key === key);
+      const row = currentRow();
+      const start = row?.site?.indicative_site_start_date;
+      if (el.checked && field?.offset_days != null && start) {
+        patch[`${key}__due`] = addBusinessDaysJs(start, -Number(field.offset_days));
+      }
+    }
+    if (el.dataset.formDone) patch[`${key}__done`] = el.checked ? "1" : "0";
     const next = await api(`/api/comms/rows/${state.openRowId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ form_values: { [key]: value } }),
+      body: JSON.stringify({ form_values: patch }),
     });
     const row = (state.sheet?.rows || []).find((r) => r.id === state.openRowId);
-    if (row) row.form_values = next.form_values || { ...(row.form_values || {}), [key]: value };
-    showDrawerSaved();
+    if (row) row.form_values = next.form_values || { ...(row.form_values || {}), ...patch };
+    if (el.dataset.formDueAuto) renderDrawer();
+    else showDrawerSaved();
     return;
   }
   const field = el.dataset.field;
@@ -1370,11 +1449,17 @@ async function init() {
     $("formFieldType").value = "yesno";
     $("formFieldOptions").value = "";
     $("formFieldOptionsWrap").hidden = true;
+    if ($("formFieldTrackDue")) $("formFieldTrackDue").checked = false;
+    if ($("formFieldOffsetDays")) $("formFieldOffsetDays").value = "";
+    if ($("formFieldOffsetWrap")) $("formFieldOffsetWrap").hidden = true;
     $("formFieldDialog").showModal();
   });
 
   on("formFieldType", "change", () => {
     $("formFieldOptionsWrap").hidden = $("formFieldType").value !== "select";
+  });
+  on("formFieldTrackDue", "change", () => {
+    if ($("formFieldOffsetWrap")) $("formFieldOffsetWrap").hidden = !$("formFieldTrackDue").checked;
   });
 
   on("btnSaveFormField", "click", async () => {
@@ -1389,7 +1474,16 @@ async function init() {
       await api("/api/comms/form-fields", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, field_type, options, created_by: userName() }),
+        body: JSON.stringify({
+          name,
+          field_type,
+          options,
+          track_due: Boolean($("formFieldTrackDue")?.checked),
+          offset_days: $("formFieldTrackDue")?.checked && $("formFieldOffsetDays")?.value
+            ? Number($("formFieldOffsetDays").value)
+            : null,
+          created_by: userName(),
+        }),
       });
       $("formFieldDialog").close();
       await loadFormFields();
@@ -1700,6 +1794,14 @@ async function init() {
   });
 
   $("commsDrawer")?.addEventListener("click", async (ev) => {
+    const delField = ev.target.closest("[data-del-form-field]");
+    if (delField) {
+      if (!await confirmDialog("Remove this field from every planner row?")) return;
+      await api(`/api/comms/form-fields/${delField.dataset.delFormField}`, { method: "DELETE" });
+      await loadFormFields();
+      renderDrawer();
+      return;
+    }
     if (ev.target.closest("[data-close-comms-drawer]")) {
       closeDrawer();
       return;

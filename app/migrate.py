@@ -213,6 +213,12 @@ def run_migrations() -> None:
     ensure_column("comms_resource_sections", "body", "body TEXT")
     ensure_column("comms_rows", "form_values", "form_values JSONB NOT NULL DEFAULT '{}'::jsonb")
     ensure_column("users", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
+    ensure_column(
+        "comms_template_fields",
+        "track_due",
+        "track_due BOOLEAN NOT NULL DEFAULT FALSE",
+    )
+    ensure_column("comms_template_fields", "offset_days", "offset_days INTEGER")
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
@@ -236,7 +242,7 @@ def run_migrations() -> None:
 
     from .auth import ensure_admin_user, ensure_root_user
     from .comms_seed import ensure_comms_resources, ensure_comms_seed
-    from .notify import ensure_default_notification_rules
+    from .notify import ensure_comms_due_rule, ensure_default_notification_rules
 
     db = SessionLocal()
     try:
@@ -250,6 +256,7 @@ def run_migrations() -> None:
         ensure_comms_seed(db)
         ensure_comms_resources(db)
         ensure_default_notification_rules(db)
+        ensure_comms_due_rule(db)
     finally:
         db.close()
 

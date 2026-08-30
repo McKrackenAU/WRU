@@ -440,6 +440,123 @@ body.nav-collapsed .shell-sidebar {
   border-color: var(--warn);
 }
 
+.comms-form-block {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.comms-form-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.comms-due-box {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--ventia-green) 5%, var(--panel));
+}
+
+.comms-cal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.85rem;
+}
+
+.comms-cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.comms-cal-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.comms-cal-chip.is-green,
+.comms-cal-item.is-green {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.comms-cal-chip.is-yellow,
+.comms-cal-item.is-yellow {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.comms-cal-chip.is-red,
+.comms-cal-item.is-red {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.comms-cal-weekdays,
+.comms-cal-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.comms-cal-weekdays {
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--ventia-muted);
+}
+
+.comms-cal-day {
+  min-height: 7.2rem;
+  padding: 0.4rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.5rem;
+  background: var(--panel);
+}
+
+.comms-cal-day.is-outside {
+  opacity: 0.45;
+}
+
+.comms-cal-day.is-today {
+  border-color: var(--ventia-green);
+}
+
+.comms-cal-num {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.comms-cal-items {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.comms-cal-item {
+  display: block;
+  padding: 0.2rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .user-menu {
   position: relative;
 }

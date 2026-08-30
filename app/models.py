@@ -738,6 +738,9 @@ class CommsTemplateField(Base):
     field_type: Mapped[str] = mapped_column(String(32), nullable=False, default="yesno")
     options: Mapped[list | None] = mapped_column(JSON, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    track_due: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Business days before the linked site's indicative start. None = manual due date.
+    offset_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

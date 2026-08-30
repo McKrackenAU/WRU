@@ -153,6 +153,13 @@
           <label class="full" id="formFieldOptionsWrap" hidden>Dropdown options (comma-separated)
             <input id="formFieldOptions" placeholder="Yes, No, Reassess" />
           </label>
+          <label class="full">
+            <span><input id="formFieldTrackDue" type="checkbox" /> Track a due date</span>
+          </label>
+          <label class="full" id="formFieldOffsetWrap" hidden>
+            Days before indicative start <span class="hint">(business days — leave blank to type the date on each row)</span>
+            <input id="formFieldOffsetDays" type="number" min="0" max="365" placeholder="e.g. 10" />
+          </label>
         </div>
       </div>
       <footer class="panel-foot">

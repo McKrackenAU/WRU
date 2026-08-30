@@ -13,7 +13,7 @@ from ..storage_paths import cost_estimates_dir, documents_dir
 from ..financial_year import australian_financial_year
 from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
-from ..notify import dispatch_stage_notifications
+from ..notify import dispatch_comms_due_notifications, dispatch_stage_notifications
 from ..lookups import ensure_lookup_value
 from ..gantt_engine import recompute_board_dates
 from ..models import CostEstimate, GanttBoard, GanttItem, MapFeature, MapLayer, Site, SiteCouncil
@@ -465,6 +465,8 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
         log_stage_change(db, site, before_key=before_stage, after_key=after_stage, who=who)
     if before_stage != after_stage:
         dispatch_stage_notifications(db, site, before_stage, after_stage)
+    if "indicative_site_start_date" in data:
+        dispatch_comms_due_notifications(db, site=site)
 
     try:
         db.commit()

@@ -56,10 +56,13 @@ def test_comms_paths():
     assert not is_comms_path("/")
     assert not is_comms_path("/api/sites")
     assert not is_comms_path("/admin/users")
+    assert not is_comms_path("/calendar")
+    assert not is_comms_path("/api/calendar/comms")
 
 
 def test_comms_nav_is_ops_only_for_comms_and_admin():
     assert 'href: "/comms"' in COMMON
+    assert 'href: "/calendar"' in COMMON
     assert "commsOnly: true" in COMMON
     assert "isCommsUser" in COMMON
     assert "!l.commsOnly || canComms" in COMMON

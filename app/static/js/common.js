@@ -465,6 +465,7 @@ export const OPS_NAV = [
   { href: "/gantt", label: "Gantt", hint: "Works sequence" },
   { href: "/documents", label: "Documents", hint: "Files" },
   { href: "/comms", label: "Comms", hint: "Stakeholder planner", commsOnly: true },
+  { href: "/calendar", label: "Comms calendar", hint: "Due dates" },
   { href: "/map", label: "Map", hint: "Site markups" },
   { href: "/archive", label: "Archive", hint: "Completed jobs" },
 ];

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Comms calendar · WRU TGS Tracker</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Comms calendar</h1>
+          <p>Due dates for letter drops and other tracked Comms items. Green is done, yellow is still open, red is overdue.</p>
+        </div>
+      </div>
+      <section class="panel-card">
+        <div class="comms-cal-toolbar">
+          <button type="button" class="btn" id="calPrev">Previous</button>
+          <strong id="calMonthLabel">Month</strong>
+          <button type="button" class="btn" id="calNext">Next</button>
+          <button type="button" class="btn" id="calToday">Today</button>
+          <div class="comms-cal-legend" aria-label="Colour key">
+            <span class="comms-cal-chip is-green">Completed</span>
+            <span class="comms-cal-chip is-yellow">Open</span>
+            <span class="comms-cal-chip is-red">Overdue</span>
+          </div>
+          <span class="hint" id="calCounts"></span>
+        </div>
+        <div class="comms-cal-grid" id="calGrid"></div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/calendar.js"></script>
+</body>
+</html>

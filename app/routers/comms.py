@@ -103,6 +103,8 @@ class FormFieldCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     field_type: str = "yesno"
     options: list[str] | None = None
+    track_due: bool = False
+    offset_days: int | None = Field(default=None, ge=0, le=365)
     created_by: str | None = None
 
 
@@ -111,6 +113,8 @@ class FormFieldUpdate(BaseModel):
     field_type: str | None = None
     options: list[str] | None = None
     position: int | None = None
+    track_due: bool | None = None
+    offset_days: int | None = Field(default=None, ge=0, le=365)
 
 
 class ReorderIn(BaseModel):
@@ -206,6 +210,9 @@ def _site_brief(site: Site | None) -> dict | None:
         "site_number": site.site_number,
         "program": site.program,
         "moa_number": site.moa_number,
+        "indicative_site_start_date": site.indicative_site_start_date.isoformat()
+        if site.indicative_site_start_date
+        else None,
         "archived": bool(site.archived),
     }
 
@@ -695,6 +702,10 @@ def update_row(row_id: int, payload: RowUpdate, request: Request, db: Session = 
             raise HTTPException(status_code=404, detail="Site not found")
         row.site_id = site.id
     _sync_row_documents_site(row)
+    if payload.form_values is not None or payload.site_id is not None or payload.clear_site:
+        from ..notify import dispatch_comms_due_notifications
+
+        dispatch_comms_due_notifications(db, row=row)
     db.commit()
     db.refresh(row)
     notify_from_request(request, site_ids=[row.site_id] if row.site_id else None, reason="comms_row")
@@ -786,6 +797,8 @@ def _form_field_out(field: CommsTemplateField) -> dict:
         "position": field.position,
         "created_by": field.created_by,
         "created_at": field.created_at,
+        "track_due": bool(getattr(field, "track_due", False)),
+        "offset_days": getattr(field, "offset_days", None),
     }
 
 
@@ -856,6 +869,8 @@ def create_form_field(payload: FormFieldCreate, request: Request, db: Session = 
         field_type=ftype,
         options=options,
         position=(max_pos or 0) + 1,
+        track_due=bool(payload.track_due),
+        offset_days=payload.offset_days if payload.track_due else None,
         created_by=payload.created_by,
     )
     db.add(field)
@@ -887,6 +902,10 @@ def update_form_field(field_id: int, payload: FormFieldUpdate, request: Request,
         field.options = [str(o).strip() for o in payload.options if str(o).strip()]
     if payload.position is not None:
         field.position = payload.position
+    if payload.track_due is not None:
+        field.track_due = bool(payload.track_due)
+    if payload.offset_days is not None or payload.track_due is False:
+        field.offset_days = payload.offset_days if field.track_due else None
     db.commit()
     db.refresh(field)
     notify_from_request(request, reason="comms_form_field")

@@ -72,8 +72,11 @@ async function loadRules() {
               return `<tr data-id="${r.id}">
                 <td><input data-f="name" value="${escapeHtml(r.name)}" /></td>
                 <td>
-                  <select data-f="stage_key">${stageOptions(r.stage_key)}</select>
-                  <p class="hint" style="margin:0.25rem 0 0">Stage entered</p>
+                  <select data-f="trigger">
+                    <option value="stage_entered" ${r.trigger !== "comms_due" ? "selected" : ""}>Job enters a stage</option>
+                    <option value="comms_due" ${r.trigger === "comms_due" ? "selected" : ""}>Comms due / overdue</option>
+                  </select>
+                  <select data-f="stage_key" ${r.trigger === "comms_due" ? "hidden" : ""}>${stageOptions(r.stage_key)}</select>
                 </td>
                 <td><select data-f="program">${programOptions(r.program)}</select></td>
                 <td>
@@ -112,6 +115,7 @@ async function loadRules() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: tr.querySelector('[data-f="name"]').value.trim(),
+            trigger: tr.querySelector('[data-f="trigger"]').value,
             stage_key: tr.querySelector('[data-f="stage_key"]').value,
             program: tr.querySelector('[data-f="program"]').value,
             target_tags: tr.querySelector('[data-f="target_tags"]').value,
@@ -147,6 +151,12 @@ async function init() {
   $("newStage").innerHTML = stageOptions("ready_for_works");
   $("newProgram").innerHTML = programOptions("Structures");
   $("newUsers").innerHTML = userOptions([]);
+  const syncTrigger = () => {
+    const wrap = $("newStageWrap");
+    if (wrap) wrap.hidden = $("newTrigger").value === "comms_due";
+  };
+  $("newTrigger")?.addEventListener("change", syncTrigger);
+  syncTrigger();
 
   await loadRules();
 
@@ -160,7 +170,7 @@ async function init() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: $("newRuleName").value.trim(),
-          trigger: "stage_entered",
+          trigger: $("newTrigger").value,
           stage_key: $("newStage").value,
           program: $("newProgram").value,
           target_tags: $("newTags").value,

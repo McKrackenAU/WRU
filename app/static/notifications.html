@@ -38,8 +38,15 @@
             <input id="newRuleName" required maxlength="128" placeholder="Structures ready for works" />
           </label>
           <label>
+            Trigger
+            <select id="newTrigger">
+              <option value="stage_entered">Job enters a stage</option>
+              <option value="comms_due">Comms item due or overdue</option>
+            </select>
+          </label>
+          <label id="newStageWrap">
             When a job enters
-            <select id="newStage" required></select>
+            <select id="newStage"></select>
           </label>
           <label>
             Program

@@ -36,6 +36,7 @@ from .routers import (
     asphalt,
     auth as auth_router,
     backup,
+    calendar,
     columns,
     comms,
     costs,
@@ -88,6 +89,7 @@ app.include_router(columns.router)
 app.include_router(tracking.router)
 app.include_router(documents.router)
 app.include_router(comms.router)
+app.include_router(calendar.router)
 app.include_router(dashboard.router)
 app.include_router(export.router)
 app.include_router(map_layers.router)
@@ -375,6 +377,11 @@ def documents_page():
 @app.get("/comms")
 def comms_page(_: User = Depends(require_comms)):
     return _page("comms.html")
+
+
+@app.get("/calendar")
+def calendar_page():
+    return _page("calendar.html")
 
 
 @app.get("/costs")
