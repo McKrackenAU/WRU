@@ -74,6 +74,34 @@ def test_revision_persists_across_disk_reread(tmp_path, monkeypatch):
     assert current_revision() >= 4
 
 
+def test_workers_reuse_disk_boot_id(tmp_path, monkeypatch):
+    from app import live_hub
+
+    path = tmp_path / "live_state.json"
+    monkeypatch.setattr(live_hub, "STATE_PATH", path)
+    live_hub._boot_id = ""
+    live_hub._revision = 0
+    live_hub._state_mtime_ns = 0
+    live_hub._ident_cache = None
+    live_hub._init_cluster_state()
+    first = live_hub.boot_id()
+    assert first
+    live_hub._boot_id = "other-worker"
+    live_hub._refresh_from_disk_locked()
+    assert live_hub.boot_id() == first
+
+
+def test_cached_live_identity_matches_live_identity():
+    from app.live_hub import cached_live_identity, live_identity
+
+    cached_a = cached_live_identity()
+    cached_b = cached_live_identity()
+    assert cached_a["boot_id"] == cached_b["boot_id"]
+    ident = live_identity()
+    assert ident["boot_id"] == cached_a["boot_id"]
+    assert "revision" in cached_a
+
+
 def test_full_queue_drops_oldest_not_raise():
     hub = LiveHub()
     _, q = hub.subscribe("full")

@@ -27,7 +27,7 @@ from .auth import (
 )
 from .database import get_db
 from .financial_year import fy_choices
-from .live_hub import live_identity
+from .live_hub import cached_live_identity
 from .migrate import run_migrations
 from .doc_categories import category_meta, ensure_doc_category_seed
 from .models import LookupItem, Site, SiteCouncil, User
@@ -130,7 +130,7 @@ class LiveIdentityMiddleware(BaseHTTPMiddleware):
         response: Response = await call_next(request)
         if request.url.path.startswith("/api/"):
             try:
-                ident = live_identity()
+                ident = cached_live_identity()
                 response.headers["X-WRU-Revision"] = str(ident["revision"])
                 response.headers["X-WRU-Boot-Id"] = str(ident["boot_id"])
                 response.headers["X-WRU-Asset-Version"] = str(ident["asset_version"])

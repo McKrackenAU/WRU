@@ -25,6 +25,12 @@ def test_sites_notify_after_mutations():
     assert SITES.count("notify_from_request(") >= 6
 
 
+def test_sse_does_not_block_a_thread_per_client():
+    assert "to_thread" not in LIVE
+    assert "get_nowait" in LIVE
+    assert "cached_live_identity" in LIVE
+
+
 def test_common_has_revision_poll_and_coalesced_refresh():
     assert "syncLiveRevision" in COMMON
     assert "markLiveRevision" in COMMON
@@ -43,6 +49,8 @@ def test_common_has_revision_poll_and_coalesced_refresh():
     assert "X-WRU-Boot-Id" in COMMON
     assert "X-WRU-Asset-Version" in COMMON
     assert "bootstrapLiveSync" in COMMON
+    assert "LIVE_POLL_SSE_MS" in COMMON
+    assert "pendingBootHits" in COMMON
     assert "conn_id" not in COMMON  # client uses client_id only
 
 
@@ -66,6 +74,7 @@ def test_api_responses_stamp_live_identity():
     assert "X-WRU-Revision" in MAIN
     assert "X-WRU-Boot-Id" in MAIN
     assert "X-WRU-Asset-Version" in MAIN
+    assert "cached_live_identity" in MAIN
 
 
 def test_register_awaits_chrome_and_syncs_revision():

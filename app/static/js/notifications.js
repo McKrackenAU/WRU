@@ -147,6 +147,7 @@ export function mountNotifications() {
   refreshNotifications({ render: false });
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
+    if (document.visibilityState === "hidden") return;
     refreshNotifications({ render: !$("notifyPanel")?.hidden });
   }, POLL_MS);
 }

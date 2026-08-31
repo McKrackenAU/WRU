@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
+import time
 from typing import AsyncIterator
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from ..live_hub import hub, live_identity
+from ..live_hub import cached_live_identity, hub, live_identity
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 
@@ -21,7 +22,7 @@ HEARTBEAT_SECONDS = 15.0
 def live_revision():
     """Lightweight poll target when SSE is blocked or reconnecting."""
     return JSONResponse(
-        live_identity(),
+        cached_live_identity(),
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
     )
 
@@ -41,6 +42,7 @@ async def live_events(
     conn_id, q = hub.subscribe(cid, user_id=user_id, username=username)
 
     async def gen() -> AsyncIterator[str]:
+        last_ping = time.monotonic()
         try:
             hello = {"type": "hello", "client_id": cid, **live_identity()}
             yield f"data: {json.dumps(hello)}\n\n"
@@ -48,11 +50,18 @@ async def live_events(
                 if await request.is_disconnected():
                     break
                 try:
-                    event = await asyncio.to_thread(q.get, True, HEARTBEAT_SECONDS)
+                    event = q.get_nowait()
                     yield f"data: {json.dumps(event)}\n\n"
+                    continue
                 except queue.Empty:
-                    ping = {"type": "ping", **live_identity()}
+                    pass
+                now = time.monotonic()
+                if now - last_ping >= HEARTBEAT_SECONDS:
+                    last_ping = now
+                    ping = {"type": "ping", **cached_live_identity()}
                     yield f"data: {json.dumps(ping)}\n\n"
+                else:
+                    await asyncio.sleep(0.4)
         finally:
             hub.unsubscribe(conn_id)
 

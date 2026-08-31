@@ -31,8 +31,8 @@ NOTIFY_ADMIN = (ROOT / "app/static/js/notify_admin.js").read_text(encoding="utf-
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_205():
-    assert VERSION == "2.05"
+def test_version_is_206():
+    assert VERSION == "2.06"
 
 
 def test_merge_and_effective_job_tags():

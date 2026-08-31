@@ -22,9 +22,12 @@ STATE_PATH = DATA_DIR / "live_state.json"
 
 _revision = 0
 _revision_lock = threading.Lock()
-_boot_id = secrets.token_urlsafe(12)
+_boot_id = ""
 _started_at = time.time()
 _state_mtime_ns = 0
+_ident_cache_mono = 0.0
+_ident_cache: dict[str, Any] | None = None
+_IDENT_CACHE_SECONDS = 0.75
 
 
 def boot_id() -> str:
@@ -37,20 +40,33 @@ def asset_version() -> str:
     return version_string()
 
 
-def _read_disk_revision() -> tuple[int, int]:
+def _read_disk_state() -> tuple[int, int, str]:
     try:
         st = STATE_PATH.stat()
         data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-        return int(data.get("revision") or 0), int(getattr(st, "st_mtime_ns", 0) or 0)
+        return (
+            int(data.get("revision") or 0),
+            int(getattr(st, "st_mtime_ns", 0) or 0),
+            str(data.get("boot_id") or "").strip(),
+        )
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        return 0, 0
+        return 0, 0, ""
+
+
+def _read_disk_revision() -> tuple[int, int]:
+    rev, mtime_ns, _boot = _read_disk_state()
+    return rev, mtime_ns
 
 
 def _refresh_from_disk_locked() -> None:
-    global _revision, _state_mtime_ns
-    disk_rev, mtime_ns = _read_disk_revision()
+    global _revision, _state_mtime_ns, _boot_id
+    disk_rev, mtime_ns, disk_boot = _read_disk_state()
+    if disk_boot:
+        _boot_id = disk_boot
     if mtime_ns != _state_mtime_ns and disk_rev > _revision:
         _revision = disk_rev
+        _state_mtime_ns = mtime_ns
+    elif mtime_ns != _state_mtime_ns:
         _state_mtime_ns = mtime_ns
 
 
@@ -72,11 +88,13 @@ def _write_state_locked() -> None:
 
 
 def bump_revision() -> int:
-    global _revision
+    global _revision, _ident_cache, _ident_cache_mono
     with _revision_lock:
         _refresh_from_disk_locked()
         _revision += 1
         _write_state_locked()
+        _ident_cache = None
+        _ident_cache_mono = 0.0
         return _revision
 
 
@@ -95,6 +113,19 @@ def live_identity() -> dict[str, Any]:
         "started_at": _started_at,
         "subscribers": hub.subscriber_count(),
     }
+
+
+def cached_live_identity() -> dict[str, Any]:
+    """Same as live_identity, but skip disk/lock on the hot API-header path."""
+    global _ident_cache, _ident_cache_mono
+    now = time.monotonic()
+    cached = _ident_cache
+    if cached is not None and (now - _ident_cache_mono) < _IDENT_CACHE_SECONDS:
+        return cached
+    ident = live_identity()
+    _ident_cache = ident
+    _ident_cache_mono = now
+    return ident
 
 
 class LiveHub:
@@ -166,9 +197,18 @@ class LiveHub:
 
 hub = LiveHub()
 
-# Seed in-memory counter from a previous process if present.
-with _revision_lock:
-    _refresh_from_disk_locked()
+
+def _init_cluster_state() -> None:
+    """Share one boot_id + revision across workers so clients do not flap."""
+    global _boot_id
+    with _revision_lock:
+        _refresh_from_disk_locked()
+        if not _boot_id:
+            _boot_id = secrets.token_urlsafe(12)
+            _write_state_locked()
+
+
+_init_cluster_state()
 
 
 def live_actor_from_request(request: Request | None) -> dict[str, Any]:

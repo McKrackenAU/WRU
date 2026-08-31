@@ -728,13 +728,16 @@ let knownRevision = 0;
 let pageBootId = null;
 let pageAssetVersion = null;
 let serverAssetVersion = null;
+let pendingBootId = null;
+let pendingBootHits = 0;
 let refreshDebounce = null;
 let refreshRunning = false;
 let refreshPending = null;
 
-const LIVE_POLL_MS = 2500;
-const LIVE_POLL_HIDDEN_MS = 12000;
-const LIVE_REFRESH_DEBOUNCE_MS = 250;
+const LIVE_POLL_MS = 8000;
+const LIVE_POLL_SSE_MS = 30000;
+const LIVE_POLL_HIDDEN_MS = 45000;
+const LIVE_REFRESH_DEBOUNCE_MS = 400;
 const LIVE_IDENTITY_KEY = "wru-live-identity";
 
 export function liveClientId() {
@@ -848,9 +851,25 @@ function rememberServerIdentity(data) {
   );
   let restarted = false;
   if (incomingBoot && pageBootId && incomingBoot !== pageBootId) {
-    pageBootId = incomingBoot;
-    knownRevision = 0;
-    restarted = true;
+    // Multiple workers used to advertise different boot ids. Ignore a one-off
+    // flap so the tab does not full-reload on every other request.
+    if (pendingBootId !== incomingBoot) {
+      pendingBootId = incomingBoot;
+      pendingBootHits = 1;
+    } else {
+      pendingBootHits += 1;
+    }
+    if (pendingBootHits >= 2) {
+      pageBootId = incomingBoot;
+      pendingBootId = null;
+      pendingBootHits = 0;
+      knownRevision = 0;
+      restarted = true;
+    }
+  } else if (incomingBoot) {
+    pendingBootId = null;
+    pendingBootHits = 0;
+    if (!pageBootId) pageBootId = incomingBoot;
   }
   if (versionDrift) {
     signalAppUpdateIfNeeded();
@@ -937,17 +956,21 @@ function bootstrapLiveSync() {
 }
 
 function livePollDelay() {
-  return document.visibilityState === "hidden" ? LIVE_POLL_HIDDEN_MS : LIVE_POLL_MS;
+  if (document.visibilityState === "hidden") return LIVE_POLL_HIDDEN_MS;
+  if (liveSource && !liveConnecting) return LIVE_POLL_SSE_MS;
+  return LIVE_POLL_MS;
 }
 
 function startLivePoll() {
   if (livePollTimer) {
-    clearInterval(livePollTimer);
+    clearTimeout(livePollTimer);
     livePollTimer = null;
   }
-  livePollTimer = setInterval(() => {
+  const tick = () => {
     checkLiveRevision().catch(() => {});
-  }, livePollDelay());
+    livePollTimer = setTimeout(tick, livePollDelay());
+  };
+  livePollTimer = setTimeout(tick, livePollDelay());
 }
 
 async function checkLiveRevision() {
@@ -1048,6 +1071,7 @@ export function ensureLiveSync() {
   es.onopen = () => {
     liveConnecting = false;
     liveRetryMs = 1500;
+    startLivePoll();
     checkLiveRevision().catch(() => {});
   };
   es.onmessage = (msg) => {
@@ -1071,6 +1095,7 @@ export function ensureLiveSync() {
       ensureLiveSync();
     }, liveRetryMs);
     liveRetryMs = Math.min(liveRetryMs * 1.7, 8000);
+    startLivePoll();
     checkLiveRevision().catch(() => {});
   };
 }
