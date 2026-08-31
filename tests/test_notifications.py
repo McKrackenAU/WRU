@@ -24,8 +24,8 @@ SITES = (ROOT / "app/routers/sites.py").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_211():
-    assert VERSION == "2.11"
+def test_version_is_212():
+    assert VERSION == "2.12"
 
 
 def test_normalize_tags_dedupes_and_caps():

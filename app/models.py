@@ -233,6 +233,8 @@ class Site(Base):
     linked_generic_moa_id: Mapped[int | None] = mapped_column(
         ForeignKey("sites.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Sites that share one MoA application (client lists collapse to one row).
+    combined_application_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     financial_year: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

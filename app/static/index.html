@@ -255,6 +255,11 @@
               <label class="full">Link generic MoA <span class="hint">(this site only — leave None unless you pick one)</span>
                 <select id="fLinkedGeneric"><option value="">None</option></select>
               </label>
+              <label class="full">Same MoA application as
+                <span class="hint">Client lists and exports show these as one row (site numbers A–Z). Each site keeps its own start date.</span>
+                <input id="combinedSiteFilter" type="search" placeholder="Filter sites…" autocomplete="off" />
+                <div id="combinedSitesPicker" class="combined-picker"></div>
+              </label>
               <label class="full">Markup KML<input id="fKml" type="file" accept=".kml,.xml" /></label>
               <fieldset class="full" id="customFieldsEdit">
                 <legend>Custom fields</legend>

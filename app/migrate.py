@@ -223,6 +223,7 @@ def run_migrations() -> None:
     ensure_column("comms_template_fields", "offset_days", "offset_days INTEGER")
     ensure_column("sites", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
     ensure_column("program_categories", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
+    ensure_column("sites", "combined_application_id", "combined_application_id INTEGER")
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))
@@ -236,6 +237,7 @@ def run_migrations() -> None:
             text("CREATE INDEX IF NOT EXISTS ix_cost_estimates_moa_number ON cost_estimates (moa_number)")
         )
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_is_generic_moa ON sites (is_generic_moa)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_combined_application_id ON sites (combined_application_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lookup_items_kind ON lookup_items (kind)"))
 
     # Seed configurable stages / program categories / settings / lookups

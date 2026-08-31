@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Site
 from ..pdf_brand import GREEN_HEX
-from ..services import lean_sites_query, serialize_sites
+from ..services import group_client_list_applications, lean_sites_query, serialize_sites
 from ..stage_registry import stage_labels_map
 
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -174,9 +174,11 @@ def _client_list_rows(db: Session, *, team: str, view: ClientListView | None = N
                 "client_list": metrics.get("client_list"),
                 "is_generic_moa": "yes" if data.get("is_generic_moa") else "",
                 "comments": (site.comments or "").replace("\n", " "),
+                "combined_application_id": data.get("combined_application_id"),
+                "id": site.id,
             }
         )
-    return apply_client_list_view(rows, view)
+    return apply_client_list_view(group_client_list_applications(rows), view)
 
 
 # Permits / TRIMS client-list export: six columns, matching the printed list.

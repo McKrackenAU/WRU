@@ -4290,6 +4290,36 @@ body.drawer-open {
   color: var(--ventia-muted);
 }
 
+.combined-picker {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 14rem;
+  overflow: auto;
+  margin-top: 0.45rem;
+  padding: 0.35rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.7rem;
+  background: var(--field-bg);
+}
+
+.combined-picker .check-row {
+  padding: 0.45rem 0.6rem;
+  background: var(--panel);
+}
+
+.combined-picker-empty {
+  color: var(--ventia-muted);
+  font-size: 0.82rem;
+  padding: 0.4rem 0.2rem;
+}
+
+.badge-combined {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
 .drawer-foot {
   display: flex;
   align-items: center;
@@ -4441,13 +4471,6 @@ body.drawer-open {
 .login-logo {
   height: 2rem;
   width: auto;
-}
-
-.login-pwa-hint {
-  margin: 0;
-  text-align: center;
-  font-size: 0.82rem;
-  line-height: 1.4;
 }
 
 html.pwa-standalone .topbar {

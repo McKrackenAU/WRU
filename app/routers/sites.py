@@ -30,9 +30,11 @@ from ..schemas import (
     SiteUpdate,
 )
 from ..services import (
+    apply_combined_application,
     apply_generic_moa_link,
     apply_workflow,
     ensure_workflow_steps,
+    group_client_list_applications,
     infer_financial_year,
     indicative_shift_type,
     indicative_shifts_count,
@@ -215,6 +217,8 @@ def list_sites(
         results = [row for row in results if row["metrics"].get("client_list") == client_list]
     if permits_priority or trims_priority or client_list in ("permits", "trims"):
         results.sort(key=lambda r: r["metrics"].get("permits_priority_rank", 999999))
+    if client_list in ("permits", "trims"):
+        results = group_client_list_applications(results)
     return results
 
 
@@ -327,7 +331,7 @@ def reorder_sites(
 
 @router.post("", response_model=SiteOut, status_code=201)
 def create_site(payload: SiteCreate, request: Request, db: Session = Depends(get_db)):
-    data = payload.model_dump(exclude={"councils", "workflow", "geometry", "geometry_name", "linked_generic_moa_id", "custom_fields"})
+    data = payload.model_dump(exclude={"councils", "workflow", "geometry", "geometry_name", "linked_generic_moa_id", "custom_fields", "combined_site_ids"})
     data["tags"] = normalize_tags(data.get("tags"))
     for key in ("road_name", "site_number", "program", "tgs_reference", "moa_number", "extension_flag", "comments"):
         if isinstance(data.get(key), str):
@@ -361,9 +365,14 @@ def create_site(payload: SiteCreate, request: Request, db: Session = Depends(get
     sync_computed_fields(site, db)
     _attach_geometry(db, site, payload.geometry, payload.geometry_name)
     ensure_lookup_value(db, "road", site.road_name)
+    extra_ids: list[int] = []
+    try:
+        extra_ids = apply_combined_application(db, site, payload.combined_site_ids or [])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     db.commit()
     db.refresh(site)
-    notify_from_request(request, site_ids=[site.id], reason="create")
+    notify_from_request(request, site_ids=[site.id, *extra_ids], reason="create")
     return site_to_dict(site, db=db)
 
 
@@ -393,6 +402,7 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     geometry = data.pop("geometry", None)
     geometry_name = data.pop("geometry_name", None)
     linked_id = data.pop("linked_generic_moa_id", None) if "linked_generic_moa_id" in data else ...
+    combined_ids = data.pop("combined_site_ids", None) if "combined_site_ids" in data else ...
     if "tags" in data:
         data["tags"] = normalize_tags(data.get("tags"))
 
@@ -464,6 +474,15 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
     if "indicative_site_start_date" in data:
         dispatch_comms_due_notifications(db, site=site)
 
+    extra_ids: list[int] = []
+    try:
+        if combined_ids is not ...:
+            extra_ids = apply_combined_application(db, site, combined_ids)
+        elif site.combined_application_id:
+            extra_ids = apply_combined_application(db, site, None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     try:
         db.commit()
     except IntegrityError as exc:
@@ -473,7 +492,7 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
             detail="Could not save site (database conflict — check council names are unique).",
         ) from exc
     db.refresh(site)
-    notify_from_request(request, site_ids=[site.id], reason="update")
+    notify_from_request(request, site_ids=[site.id, *extra_ids], reason="update")
     return site_to_dict(site, db=db)
 
 

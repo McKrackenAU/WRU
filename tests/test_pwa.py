@@ -50,5 +50,9 @@ def test_client_registers_service_worker():
     assert "notifyLiveIfBackground" in COMMON
     assert "registerServiceWorker()" in LOGIN_JS
     assert 'id="btnInstallApp"' in LOGIN_HTML
+    assert "login-pwa-hint" not in LOGIN_HTML
+    assert "Chrome or Edge can install" not in LOGIN_HTML
+    assert "beforeinstallprompt" in PWA_JS
+    assert "isStandalonePwa" in PWA_JS
     assert 'id="btnInstallApp"' in COMMON
     assert 'id="btnLiveAlerts"' in COMMON

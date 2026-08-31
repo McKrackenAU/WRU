@@ -462,6 +462,10 @@ function siteRowHtml(site) {
     .filter(Boolean)
     .join("");
   const tagChips = siteTagChipsHtml(site);
+  const combinedNums = (site.combined_site_numbers || []).filter(Boolean);
+  const combinedBadge = combinedNums.length
+    ? `<span class="badge badge-combined" title="Same MoA application">Combined · ${escapeHtml(combinedNums.join(", "))}</span>`
+    : "";
   return `<tr class="register-row ${highlight}" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
     <td class="select-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
@@ -474,6 +478,7 @@ function siteRowHtml(site) {
       </div>
       <div class="register-row-tags">
         ${tagChips}
+        ${combinedBadge}
         <button type="button" class="btn btn-sm" data-job-tags="${site.id}">Tags</button>
       </div>
     </td>
@@ -1131,6 +1136,11 @@ async function loadAll() {
       fillGenericSelect(
         open ? (open.linked_generic_moa_id ?? "") : ($("fLinkedGeneric")?.value || "")
       );
+      const pickerReady = Boolean($("combinedSitesPicker")?.querySelector("[data-combined-id]"));
+      fillCombinedPicker({
+        id: Number(state.detailSiteId),
+        combined_site_ids: pickerReady ? collectCombinedSiteIds() : open?.combined_site_ids || [],
+      });
     } else {
       fillGenericSelect("");
     }
@@ -1389,6 +1399,53 @@ function fillGenericSelect(selected) {
   if (sel.value !== cur) sel.value = "";
 }
 
+function fillCombinedPicker(site) {
+  const host = $("combinedSitesPicker");
+  if (!host) return;
+  const selfId = site?.id ? Number(site.id) : Number($("siteId")?.value || 0);
+  const selected = new Set((site?.combined_site_ids || []).map(Number));
+  const q = ($("combinedSiteFilter")?.value || "").trim().toLowerCase();
+  const options = (state.sites || []).filter((s) => {
+    if (s.is_generic_moa) return false;
+    if (selfId && Number(s.id) === selfId) return false;
+    if (selected.has(Number(s.id))) return true;
+    if (!q) return true;
+    const hay = `${s.site_number || ""} ${s.road_name || ""} ${s.moa_number || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+  if (!options.length) {
+    host.innerHTML = `<div class="combined-picker-empty">${
+      q ? "No matching sites." : "No other sites to combine with yet."
+    }</div>`;
+    return;
+  }
+  host.innerHTML = options
+    .map((s) => {
+      const checked = selected.has(Number(s.id)) ? "checked" : "";
+      return `<label class="check-row">
+        <input type="checkbox" data-combined-id="${s.id}" ${checked} />
+        <span>${escapeHtml(s.site_number || "")} — ${escapeHtml(s.road_name || "")}${
+          s.moa_number ? ` · MoA ${escapeHtml(s.moa_number)}` : ""
+        }</span>
+      </label>`;
+    })
+    .join("");
+}
+
+function collectCombinedSiteIds() {
+  const shown = new Set(
+    [...document.querySelectorAll("[data-combined-id]")].map((el) => Number(el.dataset.combinedId))
+  );
+  const checked = [...document.querySelectorAll("[data-combined-id]:checked")].map((el) =>
+    Number(el.dataset.combinedId)
+  );
+  const openId = Number($("siteId")?.value || 0);
+  const open = (state.sites || []).find((s) => Number(s.id) === openId);
+  const previous = open?.combined_site_ids || [];
+  const keptHidden = previous.filter((id) => !shown.has(Number(id))).map(Number);
+  return [...new Set([...checked, ...keptHidden])];
+}
+
 function renderCouncilRows(rows) {
   const list = rows?.length ? rows : [{ council_name: "", submitted_to_council_date: null, no_objection_date: null }];
   $("councilRows").innerHTML = list
@@ -1548,6 +1605,8 @@ async function openSiteDrawer(site = null) {
   $("fInclude").checked = site ? site.include_in_totals !== false : true;
   $("fGenericMoa").checked = !!site?.is_generic_moa;
   fillGenericSelect(site?.linked_generic_moa_id ?? "");
+  if ($("combinedSiteFilter")) $("combinedSiteFilter").value = "";
+  fillCombinedPicker(site);
   renderCouncilRows(site?.council_details || []);
   $("fComments").value = site?.comments || "";
   $("fKml").value = "";
@@ -1638,6 +1697,7 @@ function collectSitePayload() {
     include_in_totals: $("fInclude").checked,
     is_generic_moa: $("fGenericMoa").checked,
     linked_generic_moa_id: linked ? Number(linked) : null,
+    combined_site_ids: collectCombinedSiteIds(),
     comments: $("fComments").value.trim() || null,
     councils: collectCouncils(),
     custom_fields,
@@ -2143,6 +2203,12 @@ function bindEvents() {
     closeRegisterTagPop();
   });
   on("search", "input", debounce(() => loadAll().catch(showLoadError), 250));
+  on("combinedSiteFilter", "input", () => {
+    fillCombinedPicker({
+      id: Number($("siteId")?.value || 0),
+      combined_site_ids: collectCombinedSiteIds(),
+    });
+  });
   document.addEventListener("change", (ev) => {
     const map = [
       ["filter-pri", "selectedPriorities"],

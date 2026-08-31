@@ -231,6 +231,191 @@ def apply_generic_moa_link(site: Site, generic: Site | None, db: Session | None 
     mark_ready_for_works(site, db)
 
 
+COMBINED_APPLICATION_FIELDS = (
+    "tgs_reference",
+    "moa_number",
+    "moa_submission_date",
+    "moa_received_date",
+    "moa_start_date",
+    "moa_expiry_date",
+    "extension_flag",
+    "extension_submission_date",
+    "extension_received_date",
+    "extension_start_date",
+    "extension_expiry_date",
+)
+# Application pipeline — not ready_for_works (those sites can still start on different days).
+COMBINED_APPLICATION_STAGES = frozenset(
+    {
+        "tgs_markup_completed",
+        "submitted_to_tmd",
+        "ventia_review",
+        "plan_received",
+        "ready_to_submit_moa",
+        "moa_submitted",
+        "moa_with_trims",
+        "revision_needed",
+        "moa_received",
+    }
+)
+
+
+def site_number_sort_key(value: str | None) -> tuple:
+    parts = re.findall(r"\d+|\D+", (value or "").strip())
+    key: list[tuple] = []
+    for part in parts:
+        if part.isdigit():
+            key.append((0, int(part)))
+        else:
+            key.append((1, part.lower()))
+    return tuple(key)
+
+
+def sync_combined_application_from(db: Session, source: Site) -> list[int]:
+    """Copy MoA / TGS application fields + stages onto the other sites in this group."""
+    gid = getattr(source, "combined_application_id", None)
+    if not gid:
+        return []
+    siblings = (
+        db.query(Site)
+        .filter(Site.combined_application_id == gid, Site.id != source.id)
+        .all()
+    )
+    if not siblings:
+        return []
+    src_steps = {step.stage: step for step in (source.workflow_steps or [])}
+    for sib in siblings:
+        for field in COMBINED_APPLICATION_FIELDS:
+            setattr(sib, field, getattr(source, field))
+        ensure_workflow_steps(sib, db)
+        for step in sib.workflow_steps:
+            if step.stage not in COMBINED_APPLICATION_STAGES:
+                continue
+            src = src_steps.get(step.stage)
+            if src is None:
+                continue
+            step.completed = bool(src.completed)
+            step.completed_at = src.completed_at
+    return [int(s.id) for s in siblings]
+
+
+def apply_combined_application(db: Session, site: Site, other_ids: list[int] | None) -> list[int]:
+    """Join / leave a combined MoA application. Returns other site ids now in the group."""
+    if other_ids is None:
+        return sync_combined_application_from(db, site)
+    wanted = sorted({int(i) for i in other_ids if int(i) > 0 and int(i) != int(site.id)})
+    old_gids: set[int] = set()
+    if site.combined_application_id:
+        old_gids.add(int(site.combined_application_id))
+
+    if not wanted:
+        site.combined_application_id = None
+        for gid in old_gids:
+            leftover = db.query(Site).filter(Site.combined_application_id == gid).all()
+            if len(leftover) < 2:
+                for row in leftover:
+                    row.combined_application_id = None
+        return []
+
+    others = db.query(Site).filter(Site.id.in_(wanted), Site.archived.is_(False)).all()
+    if len(others) != len(wanted):
+        raise ValueError("One or more sites to combine were not found")
+    for other in others:
+        if other.combined_application_id:
+            old_gids.add(int(other.combined_application_id))
+
+    new_members = [site, *others]
+    new_ids = {int(s.id) for s in new_members}
+    existing = [s.combined_application_id for s in new_members if s.combined_application_id]
+    gid = int(min(existing)) if existing else int(min(new_ids))
+    for member in new_members:
+        member.combined_application_id = gid
+
+    for old in old_gids:
+        leftover = (
+            db.query(Site)
+            .filter(Site.combined_application_id == old, Site.id.notin_(list(new_ids)))
+            .all()
+        )
+        if len(leftover) < 2:
+            for row in leftover:
+                row.combined_application_id = None
+
+    sync_combined_application_from(db, site)
+    return [int(s.id) for s in others]
+
+
+def group_client_list_applications(rows: list[dict]) -> list[dict]:
+    """Collapse combined-MoA sites into one client-list / export row."""
+    singles: list[dict] = []
+    groups: dict[int, list[dict]] = {}
+    for row in rows:
+        gid = row.get("combined_application_id")
+        if gid:
+            groups.setdefault(int(gid), []).append(row)
+        else:
+            singles.append(row)
+    out = list(singles)
+    for members in groups.values():
+        out.append(members[0] if len(members) == 1 else _merge_application_rows(members))
+    return out
+
+
+def _merge_application_rows(members: list[dict]) -> dict:
+    ordered = sorted(members, key=lambda r: site_number_sort_key(r.get("site_number") or ""))
+    merged = dict(ordered[0])
+    numbers = [str(r.get("site_number") or "").strip() for r in ordered]
+    merged["site_number"] = ", ".join(n for n in numbers if n)
+    roads: list[str] = []
+    seen_roads: set[str] = set()
+    for row in ordered:
+        name = (row.get("road_name") or "").strip()
+        key = name.lower()
+        if name and key not in seen_roads:
+            seen_roads.add(key)
+            roads.append(name)
+    if roads:
+        merged["road_name"] = " / ".join(roads)
+    starts = [r.get("indicative_site_start_date") for r in ordered if r.get("indicative_site_start_date")]
+    export_starts = [r.get("indicative_start") for r in ordered if r.get("indicative_start")]
+    if starts:
+        merged["indicative_site_start_date"] = min(starts)
+    if export_starts:
+        merged["indicative_start"] = min(export_starts)
+    prios = []
+    for row in ordered:
+        raw = row.get("today_priority", row.get("priority"))
+        if raw is None or raw == "":
+            continue
+        try:
+            prios.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if prios:
+        merged["today_priority"] = min(prios)
+        merged["priority"] = min(prios)
+    moas = [str(r.get("moa_number") or "").strip() for r in ordered if str(r.get("moa_number") or "").strip()]
+    if moas:
+        merged["moa_number"] = moas[0]
+    wait_best = None
+    wait_metrics = None
+    for row in ordered:
+        metrics = row.get("metrics") or {}
+        wait = metrics.get("max_council_business_days_waiting")
+        if wait is None:
+            continue
+        if wait_best is None or wait > wait_best:
+            wait_best = wait
+            wait_metrics = metrics
+    if wait_metrics is not None:
+        merged["metrics"] = dict(wait_metrics)
+        if wait_best is not None:
+            merged["business_days_waiting"] = wait_best
+    merged["combined_site_ids"] = [int(r["id"]) for r in ordered if r.get("id")]
+    merged["combined_site_numbers"] = [n for n in numbers if n]
+    return merged
+
+
 def sync_computed_fields(site: Site, db: Session | None = None) -> None:
     """Auto must-have date + archive-on-complete (spreadsheet AI=Yes behaviour)."""
     if db is not None:
@@ -289,6 +474,8 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         else {}
     )
     fy = infer_financial_year(site)
+    site_id = int(site.id) if getattr(site, "id", None) else 0
+    partners = (ctx or {}).get("combined_partners", {}).get(site_id) or {"ids": [], "numbers": []}
     council_details = [
         {
             "id": c.id,
@@ -328,6 +515,9 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "include_in_totals": bool(getattr(site, "include_in_totals", True)),
         "is_generic_moa": bool(getattr(site, "is_generic_moa", False)),
         "linked_generic_moa_id": getattr(site, "linked_generic_moa_id", None),
+        "combined_application_id": getattr(site, "combined_application_id", None),
+        "combined_site_ids": list(partners.get("ids") or []),
+        "combined_site_numbers": list(partners.get("numbers") or []),
         "financial_year": fy,
         "archived": bool(site.archived),
         "archived_at": site.archived_at,
@@ -426,6 +616,26 @@ def build_site_render_context(db: Session | None, site_ids: list[int] | None = N
             latest_costs[int(row.site_id)] = _latest_cost_from_row(
                 row.summary_total, row.results, row.mode
             )
+    combined_partners: dict[int, dict[str, list]] = {}
+    if db is not None:
+        from collections import defaultdict
+
+        grouped: dict[int, list[tuple[int, str]]] = defaultdict(list)
+        for sid, gid, num in (
+            db.query(Site.id, Site.combined_application_id, Site.site_number)
+            .filter(Site.archived.is_(False), Site.combined_application_id.isnot(None))
+            .all()
+        ):
+            grouped[int(gid)].append((int(sid), num or ""))
+        for members in grouped.values():
+            members.sort(key=lambda item: site_number_sort_key(item[1]))
+            ids = [item[0] for item in members]
+            nums = [item[1] for item in members]
+            for sid, _num in members:
+                combined_partners[sid] = {
+                    "ids": [i for i in ids if i != sid],
+                    "numbers": [n for i, n in zip(ids, nums) if i != sid],
+                }
     return {
         "rules": get_rules(db),
         "stage_keys": keys,
@@ -436,6 +646,7 @@ def build_site_render_context(db: Session | None, site_ids: list[int] | None = N
         "tracking_counts": _id_counts(db, TrackingEvent.site_id, ids) if db is not None else {},
         "cost_counts": _id_counts(db, CostEstimate.site_id, ids) if db is not None else {},
         "latest_costs": latest_costs,
+        "combined_partners": combined_partners,
     }
 
 

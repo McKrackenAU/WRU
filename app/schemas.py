@@ -99,6 +99,7 @@ class SiteBase(BaseModel):
     include_in_totals: bool = True
     is_generic_moa: bool = False
     linked_generic_moa_id: int | None = None
+    combined_application_id: int | None = None
     financial_year: str | None = None
     councils: list[str] = Field(default_factory=list)
     council_details: list[CouncilOut] = Field(default_factory=list)
@@ -133,6 +134,7 @@ class SiteCreate(BaseModel):
     include_in_totals: bool = True
     is_generic_moa: bool = False
     linked_generic_moa_id: int | None = None
+    combined_site_ids: list[int] = Field(default_factory=list)
     financial_year: str | None = None
     councils: list[str | CouncilIn] = Field(default_factory=list)
     custom_fields: dict[str, Any] = Field(default_factory=dict)
@@ -173,6 +175,7 @@ class SiteUpdate(BaseModel):
     include_in_totals: bool | None = None
     is_generic_moa: bool | None = None
     linked_generic_moa_id: int | None = None
+    combined_site_ids: list[int] | None = None
     financial_year: str | None = None
     councils: list[str | CouncilIn] | None = None
     custom_fields: dict[str, Any] | None = None
@@ -220,6 +223,10 @@ class SiteOut(SiteBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    road_name: str = Field(min_length=1, max_length=2000)
+    site_number: str = Field(min_length=1, max_length=2000)
+    combined_site_ids: list[int] = Field(default_factory=list)
+    combined_site_numbers: list[str] = Field(default_factory=list)
     register_order: int | None = None
     archived: bool = False
     archived_at: datetime | None = None
