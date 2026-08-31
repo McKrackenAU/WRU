@@ -795,9 +795,18 @@ export function pendingAppUpdate() {
   return null;
 }
 
+let signaledAppUpdate = "";
+
 function signalAppUpdateIfNeeded() {
   const pending = pendingAppUpdate();
-  if (!pending) return;
+  if (!pending) {
+    signaledAppUpdate = "";
+    return;
+  }
+  // Fire once per installed version. Re-dispatching on every API response
+  // made the notify bell refetch /api/notifications in a tight loop (122% CPU).
+  if (signaledAppUpdate === pending.available) return;
+  signaledAppUpdate = pending.available;
   try {
     window.dispatchEvent(new CustomEvent("wru:app-update", { detail: pending }));
   } catch {

@@ -43,6 +43,7 @@ def _stack() -> SessionMiddleware:
     inner = Starlette(
         routes=[
             Route("/api/ping", _ok),
+            Route("/api/notifications", _ok),
             Route("/api/live/events", _sse),
             Route("/api/admin/users", _ok),
             Route("/comms", _ok),
@@ -140,6 +141,15 @@ def test_live_headers_on_authed_api():
     assert headers.get("x-wru-revision")
     assert headers.get("x-wru-boot-id")
     assert headers.get("x-wru-asset-version")
+
+
+def test_inbox_skips_live_headers_so_old_tabs_cannot_spin():
+    status, headers, body = _call(_stack(), "/api/notifications", _authed_cookie())
+    assert status == 200
+    assert json.loads(body)["ok"] is True
+    assert "x-wru-asset-version" not in headers
+    assert "x-wru-revision" not in headers
+    assert "x-wru-boot-id" not in headers
 
 
 def test_sse_streams_with_live_headers():

@@ -69,6 +69,12 @@ class LiveIdentityMiddleware:
         if not path.startswith("/api/"):
             await self.app(scope, receive, send)
             return
+        # Inbox fetches must not carry live-identity headers. After a deploy,
+        # leftover tabs treated X-WRU-Asset-Version drift as "app update",
+        # refetched /api/notifications, saw the same header, and spun at 100%+.
+        if path.startswith("/api/notifications"):
+            await self.app(scope, receive, send)
+            return
 
         async def send_wrapper(message: Message) -> None:
             if message["type"] == "http.response.start":

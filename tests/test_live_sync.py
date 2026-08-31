@@ -59,6 +59,7 @@ def test_common_has_revision_poll_and_coalesced_refresh():
     assert "hardReloadForUpdate" in COMMON
     assert "applyAppUpdate" in COMMON
     assert "pendingAppUpdate" in COMMON
+    assert "signaledAppUpdate" in COMMON
     assert 'ident === "reload"' not in COMMON
     assert "wru:app-update" in COMMON
     assert "ingestLiveHeaders" in COMMON

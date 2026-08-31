@@ -1,9 +1,14 @@
 import { $, api, escapeHtml, applyAppUpdate, pendingAppUpdate, liveStreamConnected } from "./common.js";
 
 const POLL_MS = 120000;
+const MIN_FETCH_MS = 15000;
 const BELL_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-6.2V11a7 7 0 0 0-5-6.7V3.8a2 2 0 1 0-4 0v.5A7 7 0 0 0 5 11v4.8L3.4 17.4A1 1 0 0 0 4.1 19h15.8a1 1 0 0 0 .7-1.6Z"/></svg>`;
 
 let pollTimer = null;
+let lastFetchAt = 0;
+let lastPayload = null;
+let fetchInflight = null;
+let windowListenersBound = false;
 
 function fmtWhen(iso) {
   if (!iso) return "";
@@ -62,15 +67,35 @@ function renderItems(items) {
   list.innerHTML = `${updateHtml}${rows}`;
 }
 
-export async function refreshNotifications({ render = true } = {}) {
-  try {
-    const data = await api("/api/notifications?limit=40", { timeoutMs: 8000 });
+export async function refreshNotifications({ render = true, force = false } = {}) {
+  const apply = (data) => {
+    if (!data) return null;
     setBadge(data.unread_count);
     if (render) renderItems(data.items || []);
     return data;
-  } catch {
-    return null;
+  };
+  const now = Date.now();
+  if (!force && lastPayload && now - lastFetchAt < MIN_FETCH_MS) {
+    return apply(lastPayload);
   }
+  if (fetchInflight) {
+    const data = await fetchInflight;
+    return apply(data);
+  }
+  fetchInflight = (async () => {
+    try {
+      const data = await api("/api/notifications?limit=40", { timeoutMs: 8000 });
+      lastPayload = data;
+      lastFetchAt = Date.now();
+      return data;
+    } catch {
+      return lastPayload;
+    } finally {
+      fetchInflight = null;
+    }
+  })();
+  const data = await fetchInflight;
+  return apply(data);
 }
 
 function closePanel() {
@@ -89,14 +114,14 @@ function togglePanel(ev) {
   const open = panel.hidden;
   panel.hidden = !open;
   btn.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) refreshNotifications({ render: true });
+  if (open) refreshNotifications({ render: true, force: true });
 }
 
 async function markOneRead(id) {
   if (!id) return;
   try {
     await api(`/api/notifications/${id}/read`, { method: "POST", timeoutMs: 8000 });
-    await refreshNotifications({ render: true });
+    await refreshNotifications({ render: true, force: true });
   } catch {
     /* ignore */
   }
@@ -120,7 +145,7 @@ export function mountNotifications() {
     ev.stopPropagation();
     try {
       await api("/api/notifications/read-all", { method: "POST", timeoutMs: 8000 });
-      await refreshNotifications({ render: true });
+      await refreshNotifications({ render: true, force: true });
     } catch {
       /* ignore */
     }
@@ -137,12 +162,18 @@ export function mountNotifications() {
     markOneRead(item.dataset.id);
   });
 
-  window.addEventListener("wru:sites-changed", () => {
-    refreshNotifications({ render: !$("notifyPanel")?.hidden });
-  });
-  window.addEventListener("wru:app-update", () => {
-    refreshNotifications({ render: !$("notifyPanel")?.hidden });
-  });
+  if (!windowListenersBound) {
+    windowListenersBound = true;
+    window.addEventListener("wru:sites-changed", () => {
+      refreshNotifications({ render: !$("notifyPanel")?.hidden });
+    });
+    window.addEventListener("wru:app-update", () => {
+      // Show the update card from local state. Do not refetch — that GET
+      // used to re-read X-WRU-Asset-Version and fire this event again.
+      setBadge(lastPayload?.unread_count || 0);
+      if (!$("notifyPanel")?.hidden) renderItems(lastPayload?.items || []);
+    });
+  }
 
   refreshNotifications({ render: false });
   if (pollTimer) clearInterval(pollTimer);
