@@ -966,8 +966,8 @@ function wireProgramDragDrop() {
       state.pointerDrag = null;
       return;
     }
-    const preview = previewRegisterDrop(root, ev.clientX, ev.clientY);
-    if (preview.create) {
+    const { create, section } = hitFromPoint(root, ev.clientX, ev.clientY);
+    if (create) {
       const ids = [...drag.ids];
       endRegisterDrag(root);
       createProgramFromDrop(ids).catch((err) => {
@@ -976,10 +976,10 @@ function wireProgramDragDrop() {
       });
       return;
     }
-    const section =
-      preview.section || draggedRowEls(root)[0]?.closest("section.register-program");
+    const current =
+      draggedRowEls(root)[0]?.closest("section.register-program") || section;
     endRegisterDrag(root);
-    if (section) commitSectionOrder(section);
+    if (current) commitSectionOrder(current);
   };
 
   root.addEventListener("pointerup", finishPointerDrag);
