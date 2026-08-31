@@ -461,12 +461,12 @@ function siteRowHtml(site) {
     .filter(Boolean)
     .join("");
   const tagChips = siteTagChipsHtml(site);
-  return `<tr class="register-row ${highlight}" draggable="${state.sortKey ? "false" : "true"}" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
+  return `<tr class="register-row ${highlight}" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
     <td class="select-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
     <td>
-      <div class="site-title" title="${escapeHtml(site.comments || "")}"><span class="drag-grip" title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
+      <div class="site-title" title="${escapeHtml(site.comments || "")}"><span class="drag-grip" draggable="${state.sortKey ? "false" : "true"}" data-drag-grip title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
       <div class="site-meta">
         ${metaBits}
         ${commentSnippet(site.comments)}
@@ -818,6 +818,20 @@ function clearDragMarks(root) {
   });
 }
 
+function dropAnchorRow(section, clientY, overRow) {
+  if (overRow && section.contains(overRow) && !overRow.classList.contains("is-dragging")) {
+    const rect = overRow.getBoundingClientRect();
+    const before = clientY < rect.top + rect.height / 2;
+    const tbody = overRow.parentElement;
+    const rows = [...tbody.querySelectorAll("tr.register-row")].filter(
+      (r) => !r.classList.contains("is-dragging")
+    );
+    const idx = rows.indexOf(overRow);
+    return before ? overRow : rows[idx + 1] || null;
+  }
+  return null;
+}
+
 function wireProgramDragDrop() {
   const root = $("registerList");
   if (!root || root.dataset.programDndWired) return;
@@ -828,9 +842,9 @@ function wireProgramDragDrop() {
       ev.preventDefault();
       return;
     }
-    const row = ev.target.closest("tr.register-row");
-    if (!row || !root.contains(row)) return;
-    if (ev.target.closest("input, select, button, a, .actions-col, .status-col, .select-col")) {
+    const grip = ev.target.closest("[data-drag-grip]");
+    const row = grip?.closest("tr.register-row");
+    if (!grip || !row || !root.contains(row)) {
       ev.preventDefault();
       return;
     }
@@ -851,6 +865,11 @@ function wireProgramDragDrop() {
     ev.dataTransfer.effectAllowed = "move";
     ev.dataTransfer.setData("text/plain", ids.join(","));
     try {
+      ev.dataTransfer.setDragImage(row, 24, 16);
+    } catch {
+      /* optional */
+    }
+    try {
       ev.dataTransfer.setData("application/x-wru-site-ids", JSON.stringify(ids));
     } catch {
       /* some browsers are picky about custom types */
@@ -858,20 +877,16 @@ function wireProgramDragDrop() {
   });
 
   root.addEventListener("dragend", () => {
-    const hadDrag = state.dragSiteIds.length > 0;
-    const committed = state.dndCommitted;
     state.dragSiteIds = [];
     root.classList.remove("is-dnd-active");
     clearDragMarks(root);
     window.setTimeout(() => {
       state.suppressRowOpen = false;
     }, 120);
-    if (hadDrag && !committed) {
-      loadAll().catch(() => {});
-    }
   });
 
   root.addEventListener("dragover", (ev) => {
+    if (!state.dragSiteIds.length) return;
     const createZone = ev.target.closest("[data-create-program]");
     if (createZone && root.contains(createZone)) {
       ev.preventDefault();
@@ -898,20 +913,8 @@ function wireProgramDragDrop() {
 
     const overRow = ev.target.closest("tr.register-row");
     root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
-    if (overRow && section.contains(overRow) && !overRow.classList.contains("is-dragging")) {
-      const rect = overRow.getBoundingClientRect();
-      const before = ev.clientY < rect.top + rect.height / 2;
-      const tbody = overRow.parentElement;
-      const rows = [...tbody.querySelectorAll("tr.register-row")].filter(
-        (r) => !r.classList.contains("is-dragging")
-      );
-      const idx = rows.indexOf(overRow);
-      const beforeRow = before ? overRow : rows[idx + 1] || null;
-      if (beforeRow) beforeRow.classList.add("drop-before");
-      placeDraggedRows(section, beforeRow);
-    } else if (!overRow) {
-      placeDraggedRows(section, null);
-    }
+    const beforeRow = dropAnchorRow(section, ev.clientY, overRow);
+    if (beforeRow) beforeRow.classList.add("drop-before");
   });
 
   root.addEventListener("dragleave", (ev) => {
@@ -943,14 +946,17 @@ function wireProgramDragDrop() {
     if (!section || !root.contains(section)) return;
     ev.preventDefault();
     section.classList.remove("drag-over");
+    const overRow = ev.target.closest("tr.register-row");
+    const beforeRow = dropAnchorRow(section, ev.clientY, overRow);
     root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
+    placeDraggedRows(section, beforeRow);
 
     const program = section.getAttribute("data-program") || "";
     const ids = [...section.querySelectorAll("tr.register-row")]
       .map((row) => Number(row.dataset.siteId))
       .filter((id) => id > 0);
     persistRegisterOrder(program, ids).catch((err) => {
-        alertDialog(errorMessage(err, "Could not update site order"));
+      alertDialog(errorMessage(err, "Could not update site order"));
       loadAll().catch(() => {});
     });
   });
@@ -2422,17 +2428,93 @@ function showLiveToast(detail) {
   showLiveToast._t = setTimeout(() => el.classList.remove("is-visible"), 2800);
 }
 
+function liveSiteIds(detail) {
+  if (!Array.isArray(detail?.site_ids)) return [];
+  return [...new Set(detail.site_ids.map(Number).filter((id) => id > 0))];
+}
+
+function shouldFullReload(detail) {
+  const reason = String(detail?.reason || "");
+  if (["reorder", "restart", "poll"].includes(reason)) return true;
+  if ($("search")?.value?.trim()) return true;
+  return liveSiteIds(detail).length === 0;
+}
+
+async function fetchSiteQuiet(id) {
+  try {
+    return await api(`/api/sites/${id}`, { timeoutMs: 8000 });
+  } catch {
+    return null;
+  }
+}
+
+function upsertLocalSite(site) {
+  if (!site?.id) return;
+  const idx = state.sites.findIndex((s) => s.id === Number(site.id));
+  if (site.archived) {
+    if (idx >= 0) state.sites.splice(idx, 1);
+    return;
+  }
+  if (idx >= 0) state.sites[idx] = site;
+  else state.sites.push(site);
+}
+
+function removeLocalSites(ids) {
+  const idSet = new Set(ids.map(Number));
+  state.sites = state.sites.filter((s) => !idSet.has(Number(s.id)));
+}
+
+function refreshRegisterStatus() {
+  const pri = state.sites.filter((s) => s.metrics?.on_permits_priority_list).length;
+  const trims = state.sites.filter((s) => s.metrics?.on_trims_priority_list).length;
+  setStatus(`${state.sites.length} active · ${pri} Permits · ${trims} TRIMS`);
+}
+
+async function patchSitesInPlace(ids, reason) {
+  const unique = [...new Set(ids.map(Number).filter((id) => id > 0))];
+  if (!unique.length) {
+    await loadAll();
+    return;
+  }
+  if (reason === "archive" || reason === "purge") {
+    removeLocalSites(unique);
+    renderRegister();
+    refreshRegisterStatus();
+    return;
+  }
+  const rows = await Promise.all(unique.map(fetchSiteQuiet));
+  if (rows.every((site) => !site)) {
+    await loadAll();
+    return;
+  }
+  for (let i = 0; i < unique.length; i++) {
+    const site = rows[i];
+    if (!site) {
+      if (reason === "archive" || reason === "purge") removeLocalSites([unique[i]]);
+      else {
+        await loadAll();
+        return;
+      }
+    } else {
+      upsertLocalSite(site);
+    }
+  }
+  renderRegister();
+  refreshRegisterStatus();
+}
+
 async function applyRemoteRefresh(detail) {
   const drawer = $("siteDrawer");
   const drawerOpen = Boolean(drawer && !drawer.hidden);
   const editingId = Number($("siteId")?.value || 0);
-  const ids = detail?.site_ids;
+  const ids = liveSiteIds(detail);
   const touchesOpen =
     drawerOpen &&
     editingId &&
-    (ids == null || (Array.isArray(ids) && ids.map(Number).includes(editingId)));
+    (ids.length === 0 || ids.includes(editingId));
 
-  await loadAll();
+  if (shouldFullReload(detail)) await loadAll();
+  else await patchSitesInPlace(ids, String(detail?.reason || "update"));
   showLiveToast(detail);
   if (touchesOpen) showRemoteBanner(detail);
   else clearRemoteBanner();

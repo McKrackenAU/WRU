@@ -3622,13 +3622,20 @@ html.dark .leaflet-control-scale-line {
 }
 
 .drag-grip {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   margin-right: 0.4rem;
+  padding: 0.12rem 0.28rem 0.12rem 0;
   color: var(--ventia-muted);
   letter-spacing: -0.08em;
   font-size: 0.8rem;
   cursor: grab;
   user-select: none;
+  -webkit-user-drag: element;
+}
+
+.drag-grip:active {
+  cursor: grabbing;
 }
 
 #stageBody tr[draggable="true"] .drag-grip {
@@ -3876,7 +3883,7 @@ html.dark .leaflet-control-scale-line {
 }
 
 .register-row {
-  cursor: grab;
+  cursor: pointer;
   transition: background 0.12s ease;
 }
 

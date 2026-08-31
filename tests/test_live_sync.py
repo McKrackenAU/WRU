@@ -81,3 +81,23 @@ def test_register_awaits_chrome_and_syncs_revision():
     assert "await injectChrome" in APP
     assert "await syncLiveRevision()" in APP
     assert "onLiveSitesChanged(applyRemoteRefresh)" in APP
+
+
+def test_register_patches_changed_sites_in_place():
+    assert "async function patchSitesInPlace" in APP
+    assert "function shouldFullReload" in APP
+    fn = APP[APP.find("async function applyRemoteRefresh") : APP.find("async function openArchivedOrActiveSite")]
+    assert "patchSitesInPlace" in fn
+    assert "shouldFullReload" in fn
+    assert "await loadAll();" in fn
+
+
+def test_register_drag_uses_grip_and_commits_on_drop():
+    assert "data-drag-grip" in APP
+    assert "function dropAnchorRow" in APP
+    wire = APP[APP.find("function wireProgramDragDrop") : APP.find("function renderRegister")]
+    over = wire[wire.find('root.addEventListener("dragover"') : wire.find('root.addEventListener("dragleave"')]
+    drop = wire[wire.find('root.addEventListener("drop"') :]
+    assert "placeDraggedRows" not in over
+    assert "placeDraggedRows" in drop
+    assert 'ev.target.closest("[data-drag-grip]")' in wire
