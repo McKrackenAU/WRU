@@ -42,7 +42,7 @@ from ..routers.documents import (
     store_document_bytes,
 )
 from ..routers.import_tracker import CHUNK_SIZE, TrackerChunkBody, unwrap_chunk_payload
-from ..services import slugify_field_key
+from ..services import slugify_field_key, lean_sites_query
 
 router = APIRouter(prefix="/api/comms", tags=["comms"], dependencies=[Depends(require_comms)])
 
@@ -728,7 +728,7 @@ def lookup_sites(
     program: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Site).filter(Site.archived.is_(False))
+    query = lean_sites_query(db).filter(Site.archived.is_(False))
     if program == "(Unassigned)":
         query = query.filter((Site.program.is_(None)) | (Site.program == ""))
     elif program and program.strip():

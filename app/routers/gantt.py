@@ -14,7 +14,7 @@ from ..live_hub import notify_from_request
 from ..gantt_engine import normalize_shift_type, recompute_board_dates
 from ..gantt_export import build_gantt_pdf
 from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site, TrafficContractor
-from ..services import indicative_shifts_count, indicative_shift_type, sync_computed_fields
+from ..services import indicative_shifts_count, indicative_shift_type, lean_sites_query, sync_computed_fields
 
 router = APIRouter(prefix="/api/gantt", tags=["gantt"])
 
@@ -141,7 +141,7 @@ def _auto_populate_board(db: Session, board: GanttBoard, *, unlock: bool = False
     )
     by_site = {i.site_id: i for i in existing_items}
     sites = (
-        db.query(Site)
+        lean_sites_query(db)
         .filter(Site.archived.is_(False), Site.program == board.program)
         .order_by(Site.indicative_site_start_date.asc().nullslast(), Site.id.asc())
         .all()

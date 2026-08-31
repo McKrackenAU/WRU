@@ -5,11 +5,11 @@ from collections import Counter
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..calculations import compute_today_priority, must_have_status
+from ..calculations import must_have_status
 from ..database import get_db
 from ..models import Site, TrackingEvent
 from ..schemas import DashboardOut
-from ..services import site_to_dict
+from ..services import lean_sites_query, serialize_sites
 from ..stage_registry import active_stages
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -17,7 +17,8 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("", response_model=DashboardOut)
 def dashboard(db: Session = Depends(get_db)):
-    sites = db.query(Site).filter(Site.archived.is_(False)).all()
+    sites = lean_sites_query(db).filter(Site.archived.is_(False)).all()
+    rows = serialize_sites(db, sites)
     archived_count = db.query(Site).filter(Site.archived.is_(True)).count()
     stages = active_stages(db)
 
@@ -29,8 +30,7 @@ def dashboard(db: Session = Depends(get_db)):
     permits = 0
     trims = 0
 
-    for site in sites:
-        data = site_to_dict(site, db=db)
+    for site, data in zip(sites, rows):
         metrics_stage = data["metrics"].get("current_stage") or "not_started"
         stage_counts[metrics_stage] += 1
 
@@ -39,7 +39,7 @@ def dashboard(db: Session = Depends(get_db)):
             council_counts[c] += 1
 
         program_counts[site.program or "(no program)"] += 1
-        priority_counts[compute_today_priority(site)] += 1
+        priority_counts[data["today_priority"]] += 1
         must_counts[must_have_status(site)["band"]] += 1
         if data["metrics"].get("on_permits_priority_list"):
             permits += 1
@@ -86,8 +86,8 @@ def dashboard(db: Session = Depends(get_db)):
         "totals": {
             "active_sites": len(sites),
             "archived_sites": archived_count,
-            "documents": sum(len(s.documents or []) for s in sites),
-            "tracking_events": sum(len(s.tracking_events or []) for s in sites),
+            "documents": sum(int(r.get("document_count") or 0) for r in rows),
+            "tracking_events": sum(int(r.get("tracking_count") or 0) for r in rows),
         },
         "by_stage": by_stage,
         "by_council": [

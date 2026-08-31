@@ -16,6 +16,7 @@ from ..kml_parse import parse_kml_features
 from ..map_config import get_nearmap_api_key, map_config_public, set_nearmap_api_key
 from ..models import MapFeature, MapLayer, Site, User
 from ..schemas import MapFeatureLink, MapFeatureOut, MapLayerOut
+from ..services import lean_sites_query
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 
@@ -156,7 +157,7 @@ async def upload_kml(
     db.flush()
 
     # Auto-link by exact MoA / site-number tokens (avoid short substring false positives)
-    sites = db.query(Site).filter(Site.archived.is_(False)).all()
+    sites = lean_sites_query(db).filter(Site.archived.is_(False)).all()
     by_moa = {(s.moa_number or "").strip().upper(): s for s in sites if (s.moa_number or "").strip()}
     by_site_no = {
         (s.site_number or "").strip().upper(): s

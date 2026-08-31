@@ -31,13 +31,16 @@ def build_database_url() -> str:
 
 DATABASE_URL = build_database_url()
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine_kwargs = {"pool_pre_ping": True}
+if DATABASE_URL.startswith("postgresql"):
+    engine_kwargs.update(
+        pool_size=20,
+        max_overflow=40,
+        pool_recycle=1800,
+        pool_use_lifo=True,
+    )
+engine = create_engine(DATABASE_URL, **engine_kwargs)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
 
 class Base(DeclarativeBase):

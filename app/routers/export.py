@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Site
 from ..pdf_brand import GREEN_HEX
-from ..services import site_to_dict
+from ..services import lean_sites_query, serialize_sites
 from ..stage_registry import stage_labels_map
 
 router = APIRouter(prefix="/api/export", tags=["export"])
@@ -122,10 +122,9 @@ def _view_caption(view: ClientListView | None, team_label: str, count: int) -> s
 def _client_list_rows(db: Session, *, team: str, view: ClientListView | None = None) -> list[dict]:
     """team: permits | trims"""
     labels = stage_labels_map(db)
-    sites = db.query(Site).filter(Site.archived.is_(False)).all()
+    sites = lean_sites_query(db).filter(Site.archived.is_(False)).all()
     rows = []
-    for site in sites:
-        data = site_to_dict(site, db=db)
+    for site, data in zip(sites, serialize_sites(db, sites)):
         metrics = data["metrics"]
         flag = (
             metrics.get("on_permits_priority_list")
@@ -501,7 +500,7 @@ def export_permits_priority_pdf(
 @router.get("/sites.csv")
 def export_sites_csv(archived: bool = False, db: Session = Depends(get_db)):
     labels = stage_labels_map(db)
-    sites = db.query(Site).filter(Site.archived.is_(archived)).all()
+    sites = lean_sites_query(db).filter(Site.archived.is_(archived)).all()
     buf = io.StringIO()
     fieldnames = [
         "id",
@@ -528,8 +527,7 @@ def export_sites_csv(archived: bool = False, db: Session = Depends(get_db)):
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
-    for site in sites:
-        data = site_to_dict(site, db=db)
+    for site, data in zip(sites, serialize_sites(db, sites)):
         m = data["metrics"]
         council_bits = [f"{c['council_name']}: {c.get('status_label')}" for c in (m.get("councils") or [])]
         writer.writerow(

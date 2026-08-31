@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import CustomColumn, Site
 from ..schemas import CustomColumnCreate, CustomColumnOut, CustomColumnUpdate
-from ..services import slugify_field_key
+from ..services import lean_sites_query, slugify_field_key
 
 router = APIRouter(prefix="/api/columns", tags=["columns"])
 
@@ -87,7 +87,7 @@ def delete_column(column_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Column not found")
 
     field_key = column.field_key
-    sites = db.query(Site).all()
+    sites = lean_sites_query(db).all()
     for site in sites:
         fields = dict(site.custom_fields or {})
         if field_key in fields:

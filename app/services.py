@@ -4,7 +4,7 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload, selectinload
 
 from .calculations import compute_must_have_date, compute_today_priority, expand_workflow_prefix, site_metrics
 from .financial_year import australian_financial_year
@@ -126,11 +126,13 @@ def mark_ready_for_works(site: Site, db: Session | None = None) -> None:
                 step.completed_at = now
 
 
-def ordered_workflow(site: Site, db: Session | None = None) -> list[WorkflowStep]:
-    ensure_workflow_steps(site, db)
-    keys, _, _ = _stage_context(db)
+def ordered_workflow(site: Site, db: Session | None = None, *, keys: list[str] | None = None, ensure: bool = True) -> list[WorkflowStep]:
+    if ensure:
+        ensure_workflow_steps(site, db)
+    if keys is None:
+        keys, _, _ = _stage_context(db)
     order = {stage: idx for idx, stage in enumerate(keys)}
-    return sorted(site.workflow_steps, key=lambda s: order.get(s.stage, 999))
+    return sorted(site.workflow_steps or [], key=lambda s: order.get(s.stage, 999))
 
 
 def set_councils(site: Site, councils: list[Any] | None) -> None:
@@ -250,10 +252,31 @@ def sync_computed_fields(site: Site, db: Session | None = None) -> None:
         site.financial_year = site.financial_year or site.archived_fy
 
 
-def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None = None) -> dict:
-    workflow = ordered_workflow(site, db)
-    keys, roles, progress = _stage_context(db)
-    rules = get_rules(db)
+def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None = None, ctx: dict[str, Any] | None = None) -> dict:
+    if ctx is None and db is not None:
+        ctx = build_site_render_context(db, [site.id] if getattr(site, "id", None) else [])
+    if ctx:
+        keys = ctx["stage_keys"]
+        roles = ctx["list_roles"]
+        progress = ctx["progress_keys"]
+        rules = ctx["rules"]
+        workflow = ordered_workflow(site, db, keys=keys, ensure=False)
+        prog = (getattr(site, "program", None) or "").strip().lower()
+        cat_tags = list(ctx["program_tags"].get(prog) or [])
+        site_id = int(site.id) if getattr(site, "id", None) else 0
+        document_count = int(ctx["document_counts"].get(site_id, 0))
+        tracking_count = int(ctx["tracking_counts"].get(site_id, 0))
+        cost_count = int(ctx["cost_counts"].get(site_id, 0))
+        latest_cost = ctx["latest_costs"].get(site_id)
+    else:
+        workflow = ordered_workflow(site, db)
+        keys, roles, progress = _stage_context(db)
+        rules = get_rules(db)
+        cat_tags = category_tags_for_program(db, getattr(site, "program", None))
+        document_count = len(site.documents or [])
+        tracking_count = len(site.tracking_events or [])
+        cost_count = len(site.cost_estimates or [])
+        latest_cost = _latest_cost_total(site)
     metrics = (
         site_metrics(
             site,
@@ -266,7 +289,6 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         else {}
     )
     fy = infer_financial_year(site)
-    cat_tags = category_tags_for_program(db, getattr(site, "program", None))
     council_details = [
         {
             "id": c.id,
@@ -324,10 +346,10 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
             }
             for step in workflow
         ],
-        "document_count": len(site.documents or []),
-        "tracking_count": len(site.tracking_events or []),
-        "cost_estimate_count": len(site.cost_estimates or []),
-        "latest_cost_total": _latest_cost_total(site),
+        "document_count": document_count,
+        "tracking_count": tracking_count,
+        "cost_estimate_count": cost_count,
+        "latest_cost_total": latest_cost,
         "tags": normalize_tags(getattr(site, "tags", None)),
         "category_tags": cat_tags,
         "effective_tags": effective_job_tags(site, cat_tags),
@@ -336,21 +358,102 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
     }
 
 
+def _latest_cost_from_row(summary_total, results, mode) -> float | None:
+    if summary_total is not None:
+        return float(summary_total)
+    results = results or {}
+    if mode == "standard":
+        total = results.get("site_traffic_total")
+        return float(total) if total is not None else None
+    a = (results.get("option_3x8") or {}).get("grand_total")
+    b = (results.get("option_2x12") or {}).get("grand_total")
+    vals = [v for v in (a, b) if v is not None]
+    return min(vals) if vals else None
+
+
 def _latest_cost_total(site: Site) -> float | None:
     estimates = list(site.cost_estimates or [])
     if not estimates:
         return None
     estimates.sort(key=lambda e: e.created_at or e.id, reverse=True)
     latest = estimates[0]
-    if latest.summary_total is not None:
-        return float(latest.summary_total)
-    results = latest.results or {}
-    if latest.mode == "standard":
-        return results.get("site_traffic_total")
-    a = (results.get("option_3x8") or {}).get("grand_total")
-    b = (results.get("option_2x12") or {}).get("grand_total")
-    vals = [v for v in (a, b) if v is not None]
-    return min(vals) if vals else None
+    return _latest_cost_from_row(latest.summary_total, latest.results, latest.mode)
+
+
+def _id_counts(db: Session, column, ids: list[int]) -> dict[int, int]:
+    from sqlalchemy import func
+
+    if not ids:
+        return {}
+    rows = db.query(column, func.count()).filter(column.in_(ids)).group_by(column).all()
+    return {int(i): int(c) for i, c in rows if i is not None}
+
+
+def build_site_render_context(db: Session | None, site_ids: list[int] | None = None) -> dict[str, Any]:
+    """Load rules / stages / counts once per request instead of once per job."""
+    from sqlalchemy import func
+    from .models import CostEstimate, Document, ProgramCategory, TrackingEvent
+
+    ids = [int(i) for i in (site_ids or []) if i]
+    keys, roles, progress = _stage_context(db)
+    program_tags: dict[str, list[str]] = {}
+    if db is not None:
+        for row in db.query(ProgramCategory).all():
+            name = (row.name or "").strip().lower()
+            if name:
+                program_tags[name] = normalize_tags(getattr(row, "tags", None))
+    latest_costs: dict[int, float | None] = {}
+    if db is not None and ids:
+        ranked = (
+            db.query(
+                CostEstimate.site_id,
+                CostEstimate.summary_total,
+                CostEstimate.results,
+                CostEstimate.mode,
+                func.row_number()
+                .over(
+                    partition_by=CostEstimate.site_id,
+                    order_by=(CostEstimate.created_at.desc(), CostEstimate.id.desc()),
+                )
+                .label("rn"),
+            )
+            .filter(CostEstimate.site_id.in_(ids))
+            .subquery()
+        )
+        for row in db.query(ranked).filter(ranked.c.rn == 1):
+            if row.site_id is None:
+                continue
+            latest_costs[int(row.site_id)] = _latest_cost_from_row(
+                row.summary_total, row.results, row.mode
+            )
+    return {
+        "rules": get_rules(db),
+        "stage_keys": keys,
+        "list_roles": roles,
+        "progress_keys": progress,
+        "program_tags": program_tags,
+        "document_counts": _id_counts(db, Document.site_id, ids) if db is not None else {},
+        "tracking_counts": _id_counts(db, TrackingEvent.site_id, ids) if db is not None else {},
+        "cost_counts": _id_counts(db, CostEstimate.site_id, ids) if db is not None else {},
+        "latest_costs": latest_costs,
+    }
+
+
+def serialize_sites(db: Session, sites: list[Site]) -> list[dict]:
+    ctx = build_site_render_context(db, [s.id for s in sites])
+    return [site_to_dict(site, db=db, ctx=ctx) for site in sites]
+
+
+def lean_sites_query(db: Session):
+    """Register-style Site query: councils + workflow only, no document/map blobs."""
+    return db.query(Site).options(
+        selectinload(Site.councils),
+        selectinload(Site.workflow_steps),
+        noload(Site.documents),
+        noload(Site.tracking_events),
+        noload(Site.cost_estimates),
+        noload(Site.map_features),
+    )
 
 
 def get_site_or_none(db: Session, site_id: int) -> Site | None:

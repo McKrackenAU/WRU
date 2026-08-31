@@ -36,6 +36,8 @@ from ..services import (
     infer_financial_year,
     indicative_shift_type,
     indicative_shifts_count,
+    lean_sites_query,
+    serialize_sites,
     set_councils,
     site_to_dict,
     sync_computed_fields,
@@ -45,16 +47,7 @@ router = APIRouter(prefix="/api/sites", tags=["sites"])
 
 
 def _base_query(db: Session, *, archived: bool | None):
-    query = (
-        db.query(Site)
-        .options(
-            selectinload(Site.councils),
-            selectinload(Site.workflow_steps),
-            selectinload(Site.documents),
-            selectinload(Site.tracking_events),
-            selectinload(Site.cost_estimates),
-        )
-    )
+    query = lean_sites_query(db)
     if archived is None:
         return query
     return query.filter(Site.archived.is_(archived))
@@ -195,7 +188,7 @@ def list_sites(
         Site.indicative_site_start_date.asc().nullslast(),
         Site.id.asc(),
     ).all()
-    results = [site_to_dict(site, db=db) for site in sites]
+    results = serialize_sites(db, sites)
 
     if priority is not None:
         results = [row for row in results if row["today_priority"] == priority]
@@ -228,12 +221,12 @@ def list_sites(
 @router.get("/generic-moas", response_model=list[SiteOut])
 def list_generic_moas(db: Session = Depends(get_db)):
     sites = (
-        db.query(Site)
+        lean_sites_query(db)
         .filter(Site.archived.is_(False), Site.is_generic_moa.is_(True))
         .order_by(Site.moa_number.asc().nullslast(), Site.id.asc())
         .all()
     )
-    return [site_to_dict(s, db=db) for s in sites]
+    return serialize_sites(db, sites)
 
 
 @router.post("/bulk-archive", response_model=SiteBulkArchiveOut)
@@ -376,10 +369,10 @@ def create_site(payload: SiteCreate, request: Request, db: Session = Depends(get
 
 @router.get("/{site_id}", response_model=SiteOut)
 def get_site(site_id: int, db: Session = Depends(get_db)):
-    site = db.get(Site, site_id)
+    site = _base_query(db, archived=None).filter(Site.id == site_id).first()
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
-    return site_to_dict(site, db=db)
+    return serialize_sites(db, [site])[0]
 
 
 @router.patch("/{site_id}", response_model=SiteOut)
