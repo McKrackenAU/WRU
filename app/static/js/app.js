@@ -40,6 +40,7 @@ const state = {
   activeTab: "overview",
   selectedIds: new Set(),
   dragSiteIds: [],
+  pointerDrag: null,
   suppressRowOpen: false,
   dndCommitted: false,
   compact: true,
@@ -466,7 +467,7 @@ function siteRowHtml(site) {
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
     <td>
-      <div class="site-title" title="${escapeHtml(site.comments || "")}"><span class="drag-grip" draggable="${state.sortKey ? "false" : "true"}" data-drag-grip title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
+      <div class="site-title" title="${escapeHtml(site.comments || "")}"><span class="drag-grip" draggable="false" data-drag-grip title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
       <div class="site-meta">
         ${metaBits}
         ${commentSnippet(site.comments)}
@@ -832,134 +833,136 @@ function dropAnchorRow(section, clientY, overRow) {
   return null;
 }
 
+function hitFromPoint(root, x, y) {
+  const dragging = draggedRowEls(root);
+  for (const row of dragging) row.style.pointerEvents = "none";
+  const el = document.elementFromPoint(x, y);
+  for (const row of dragging) row.style.pointerEvents = "";
+  if (!el || !root.contains(el)) return { create: null, section: null, overRow: null };
+  const create = el.closest("[data-create-program]");
+  if (create && root.contains(create)) return { create, section: null, overRow: null };
+  const section = el.closest("section.register-program[data-program]");
+  if (!section || !root.contains(section)) return { create: null, section: null, overRow: null };
+  return { create: null, section, overRow: el.closest("tr.register-row") };
+}
+
+function beginRegisterDrag(ids, root) {
+  state.dragSiteIds = ids;
+  state.dndCommitted = false;
+  state.suppressRowOpen = true;
+  root.classList.add("is-dnd-active");
+  for (const el of draggedRowEls(root)) el.classList.add("is-dragging");
+}
+
+function endRegisterDrag(root) {
+  state.dragSiteIds = [];
+  state.pointerDrag = null;
+  root.classList.remove("is-dnd-active");
+  clearDragMarks(root);
+  window.setTimeout(() => {
+    state.suppressRowOpen = false;
+  }, 120);
+}
+
+function previewRegisterDrop(root, x, y) {
+  const { create, section, overRow } = hitFromPoint(root, x, y);
+  root.querySelectorAll(".register-program.drag-over, .register-create-program.drag-over").forEach((el) => {
+    el.classList.remove("drag-over");
+  });
+  root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
+  if (create) {
+    create.classList.add("drag-over");
+    return { create: true, section: null, beforeRow: null };
+  }
+  if (!section) return { create: false, section: null, beforeRow: null };
+  if (section.classList.contains("is-collapsed")) applyProgramCollapsed(section, false);
+  section.classList.add("drag-over");
+  const beforeRow = dropAnchorRow(section, y, overRow);
+  if (beforeRow) beforeRow.classList.add("drop-before");
+  placeDraggedRows(section, beforeRow);
+  return { create: false, section, beforeRow };
+}
+
+function commitSectionOrder(section) {
+  if (!section) return;
+  const program = section.getAttribute("data-program") || "";
+  const ids = [...section.querySelectorAll("tr.register-row")]
+    .map((row) => Number(row.dataset.siteId))
+    .filter((id) => id > 0);
+  persistRegisterOrder(program, ids).catch((err) => {
+    alertDialog(errorMessage(err, "Could not update site order"));
+    loadAll().catch(() => {});
+  });
+}
+
 function wireProgramDragDrop() {
   const root = $("registerList");
   if (!root || root.dataset.programDndWired) return;
   root.dataset.programDndWired = "1";
 
-  root.addEventListener("dragstart", (ev) => {
-    if (state.sortKey) {
-      ev.preventDefault();
-      return;
-    }
+  root.addEventListener("pointerdown", (ev) => {
+    if (state.sortKey || ev.button !== 0) return;
     const grip = ev.target.closest("[data-drag-grip]");
     const row = grip?.closest("tr.register-row");
-    if (!grip || !row || !root.contains(row)) {
-      ev.preventDefault();
-      return;
-    }
+    if (!grip || !row || !root.contains(row)) return;
     const id = Number(row.dataset.siteId);
-    if (!id) {
-      ev.preventDefault();
-      return;
-    }
+    if (!id) return;
+    ev.preventDefault();
     const ids =
       state.selectedIds.has(id) && state.selectedIds.size > 1
         ? [...state.selectedIds]
         : [id];
-    state.dragSiteIds = ids;
-    state.dndCommitted = false;
-    state.suppressRowOpen = true;
-    root.classList.add("is-dnd-active");
-    for (const el of draggedRowEls(root)) el.classList.add("is-dragging");
-    ev.dataTransfer.effectAllowed = "move";
-    ev.dataTransfer.setData("text/plain", ids.join(","));
+    state.pointerDrag = {
+      ids,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      active: false,
+    };
     try {
-      ev.dataTransfer.setDragImage(row, 24, 16);
+      grip.setPointerCapture(ev.pointerId);
     } catch {
       /* optional */
     }
-    try {
-      ev.dataTransfer.setData("application/x-wru-site-ids", JSON.stringify(ids));
-    } catch {
-      /* some browsers are picky about custom types */
+  });
+
+  root.addEventListener("pointermove", (ev) => {
+    const drag = state.pointerDrag;
+    if (!drag) return;
+    const dist = Math.hypot(ev.clientX - drag.startX, ev.clientY - drag.startY);
+    if (!drag.active) {
+      if (dist < 5) return;
+      drag.active = true;
+      beginRegisterDrag(drag.ids, root);
     }
+    ev.preventDefault();
+    previewRegisterDrop(root, ev.clientX, ev.clientY);
   });
 
-  root.addEventListener("dragend", () => {
-    state.dragSiteIds = [];
-    root.classList.remove("is-dnd-active");
-    clearDragMarks(root);
-    window.setTimeout(() => {
-      state.suppressRowOpen = false;
-    }, 120);
-  });
-
-  root.addEventListener("dragover", (ev) => {
-    if (!state.dragSiteIds.length) return;
-    const createZone = ev.target.closest("[data-create-program]");
-    if (createZone && root.contains(createZone)) {
-      ev.preventDefault();
-      ev.dataTransfer.dropEffect = "move";
-      root.querySelectorAll(".register-program.drag-over, .register-create-program.drag-over").forEach((el) => {
-        if (el !== createZone) el.classList.remove("drag-over");
-      });
-      createZone.classList.add("drag-over");
-      root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
+  const finishPointerDrag = (ev) => {
+    const drag = state.pointerDrag;
+    if (!drag) return;
+    if (!drag.active) {
+      state.pointerDrag = null;
       return;
     }
-
-    const section = ev.target.closest("section.register-program[data-program]");
-    if (!section || !root.contains(section)) return;
-    ev.preventDefault();
-    ev.dataTransfer.dropEffect = "move";
-    if (section.classList.contains("is-collapsed")) {
-      applyProgramCollapsed(section, false);
-    }
-    root.querySelectorAll(".register-program.drag-over, .register-create-program.drag-over").forEach((el) => {
-      if (el !== section) el.classList.remove("drag-over");
-    });
-    section.classList.add("drag-over");
-
-    const overRow = ev.target.closest("tr.register-row");
-    root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
-    const beforeRow = dropAnchorRow(section, ev.clientY, overRow);
-    if (beforeRow) beforeRow.classList.add("drop-before");
-  });
-
-  root.addEventListener("dragleave", (ev) => {
-    const zone = ev.target.closest("section.register-program, .register-create-program");
-    if (!zone) return;
-    if (zone.contains(ev.relatedTarget)) return;
-    zone.classList.remove("drag-over");
-  });
-
-  root.addEventListener("drop", (ev) => {
-    const createZone = ev.target.closest("[data-create-program]");
-    if (createZone && root.contains(createZone)) {
-      ev.preventDefault();
-      createZone.classList.remove("drag-over");
-      const ids = state.dragSiteIds.length
-        ? [...state.dragSiteIds]
-        : (ev.dataTransfer.getData("text/plain") || "")
-            .split(",")
-            .map((s) => Number(s.trim()))
-            .filter((n) => n > 0);
+    const preview = previewRegisterDrop(root, ev.clientX, ev.clientY);
+    if (preview.create) {
+      const ids = [...drag.ids];
+      endRegisterDrag(root);
       createProgramFromDrop(ids).catch((err) => {
         alertDialog(errorMessage(err, "Could not create program"));
         loadAll().catch(() => {});
       });
       return;
     }
+    const section =
+      preview.section || draggedRowEls(root)[0]?.closest("section.register-program");
+    endRegisterDrag(root);
+    if (section) commitSectionOrder(section);
+  };
 
-    const section = ev.target.closest("section.register-program[data-program]");
-    if (!section || !root.contains(section)) return;
-    ev.preventDefault();
-    section.classList.remove("drag-over");
-    const overRow = ev.target.closest("tr.register-row");
-    const beforeRow = dropAnchorRow(section, ev.clientY, overRow);
-    root.querySelectorAll("tr.drop-before").forEach((el) => el.classList.remove("drop-before"));
-    placeDraggedRows(section, beforeRow);
-
-    const program = section.getAttribute("data-program") || "";
-    const ids = [...section.querySelectorAll("tr.register-row")]
-      .map((row) => Number(row.dataset.siteId))
-      .filter((id) => id > 0);
-    persistRegisterOrder(program, ids).catch((err) => {
-      alertDialog(errorMessage(err, "Could not update site order"));
-      loadAll().catch(() => {});
-    });
-  });
+  root.addEventListener("pointerup", finishPointerDrag);
+  root.addEventListener("pointercancel", finishPointerDrag);
 }
 
 function renderRegister() {

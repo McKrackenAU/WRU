@@ -92,12 +92,11 @@ def test_register_patches_changed_sites_in_place():
     assert "await loadAll();" in fn
 
 
-def test_register_drag_uses_grip_and_commits_on_drop():
+def test_register_drag_uses_grip_pointer_and_commits():
     assert "data-drag-grip" in APP
     assert "function dropAnchorRow" in APP
-    wire = APP[APP.find("function wireProgramDragDrop") : APP.find("function renderRegister")]
-    over = wire[wire.find('root.addEventListener("dragover"') : wire.find('root.addEventListener("dragleave"')]
-    drop = wire[wire.find('root.addEventListener("drop"') :]
-    assert "placeDraggedRows" not in over
-    assert "placeDraggedRows" in drop
-    assert 'ev.target.closest("[data-drag-grip]")' in wire
+    assert "function beginRegisterDrag" in APP
+    assert "pointerdown" in APP
+    assert "pointerup" in APP
+    assert "commitSectionOrder" in APP
+    assert 'ev.target.closest("[data-drag-grip]")' in APP

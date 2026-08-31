@@ -3631,10 +3631,16 @@ html.dark .leaflet-control-scale-line {
   font-size: 0.8rem;
   cursor: grab;
   user-select: none;
-  -webkit-user-drag: element;
+  touch-action: none;
+  -webkit-user-drag: none;
 }
 
 .drag-grip:active {
+  cursor: grabbing;
+}
+
+#registerList.is-dnd-active {
+  user-select: none;
   cursor: grabbing;
 }
 
