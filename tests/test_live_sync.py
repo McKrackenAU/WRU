@@ -80,4 +80,56 @@ def test_api_responses_stamp_live_identity():
 def test_register_awaits_chrome_and_syncs_revision():
     assert "await injectChrome" in APP
     assert "await syncLiveRevision()" in APP
-    assert "onLiveSitesChanged(applyRemoteRefresh)" in APP
+    assert "onLiveSitesChanged(applyRemoteRefresh)" not in APP
+    assert "hydrateFromCache" in APP
+    assert "wru-register-cache-v1" in APP
+    assert "writeRegisterCache" in APP
+
+
+def test_live_data_changes_flag_stale_instead_of_full_reload():
+    ingest = COMMON[COMMON.find("function ingestLivePayload") :]
+    ingest = ingest[: ingest.find("export function ensureLiveSync")]
+    assert "markDataStale" in ingest
+    assert "signalInboxIfForMe" in ingest
+    assert "queueLiveRefresh" not in ingest
+    assert "wru:data-stale" in COMMON
+    assert "wru:notifications" in COMMON
+    assert "liveStreamConnected" in COMMON
+    assert "isRegisterStale" in COMMON
+
+
+def test_inbox_publish_does_not_bump_revision():
+    from app.live_hub import current_revision, hub, publish_inbox_event
+
+    before = current_revision()
+    conn_id, q = hub.subscribe("inbox-test", user_id=7, username="t")
+    try:
+        sent = publish_inbox_event([7, 8])
+        ev = q.get(timeout=1)
+        assert ev["type"] == "notification"
+        assert ev["user_ids"] == [7, 8]
+        assert sent >= 1
+        assert current_revision() == before
+    finally:
+        hub.unsubscribe(conn_id)
+
+
+def test_inbox_publish_skips_other_users():
+    from queue import Empty
+
+    from app.live_hub import hub, publish_inbox_event
+
+    conn_a, qa = hub.subscribe("inbox-a", user_id=1, username="a")
+    conn_b, qb = hub.subscribe("inbox-b", user_id=2, username="b")
+    try:
+        publish_inbox_event([1])
+        ev = qa.get(timeout=1)
+        assert ev["type"] == "notification"
+        try:
+            qb.get(timeout=0.05)
+            raise AssertionError("other user should not receive inbox ping")
+        except Empty:
+            pass
+    finally:
+        hub.unsubscribe(conn_a)
+        hub.unsubscribe(conn_b)

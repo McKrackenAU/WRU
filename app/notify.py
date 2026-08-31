@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from .activity import site_label, stage_label_for
@@ -23,6 +24,35 @@ CALENDAR_NOTE_RULE_NAME = "Calendar note"
 DEFAULT_LIBRARY_TAGS = (("structures", "Structures"), ("comms", "Comms"))
 STAGELESS_TRIGGERS = {TRIGGER_COMMS_DUE, TRIGGER_CALENDAR_NOTE}
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}", re.IGNORECASE)
+INBOX_USER_IDS_KEY = "wru_inbox_user_ids"
+
+
+def queue_inbox_ping(db: Session, user_ids) -> None:
+    """Remember who should get an SSE bell ping after this session commits."""
+    ids = {int(x) for x in (user_ids or []) if x}
+    if not ids:
+        return
+    existing = db.info.setdefault(INBOX_USER_IDS_KEY, set())
+    existing.update(ids)
+
+
+def publish_queued_inbox(session: Session) -> None:
+    ids = session.info.pop(INBOX_USER_IDS_KEY, None)
+    if not ids:
+        return
+    from .live_hub import publish_inbox_event
+
+    publish_inbox_event(sorted(int(x) for x in ids))
+
+
+@event.listens_for(Session, "after_commit")
+def _publish_inbox_after_commit(session: Session) -> None:
+    publish_queued_inbox(session)
+
+
+@event.listens_for(Session, "after_rollback")
+def _clear_inbox_after_rollback(session: Session) -> None:
+    session.info.pop(INBOX_USER_IDS_KEY, None)
 
 
 def normalize_tags(raw) -> list[str]:
@@ -396,6 +426,8 @@ def dispatch_calendar_note_notifications(
             )
         )
         created += 1
+    if created:
+        queue_inbox_ping(db, [user.id for user, _ in pairs])
     return created
 
 
@@ -512,6 +544,7 @@ def dispatch_comms_due_notifications(db: Session, *, row=None, site=None) -> int
                         )
                     )
                     created += 1
+                    queue_inbox_ping(db, [user.id])
     return created
 
 
@@ -565,6 +598,7 @@ def dispatch_stage_notifications(db: Session, site, before: str | None, after: s
             )
         )
         created += 1
+        queue_inbox_ping(db, [user.id])
     return created
 
 

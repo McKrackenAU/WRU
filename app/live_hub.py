@@ -168,16 +168,26 @@ class LiveHub:
         event: dict[str, Any],
         *,
         skip_client_id: str | None = None,
+        only_user_ids: list[int] | None = None,
     ) -> int:
         """Fan out to all subscribers. Returns how many queues accepted the event."""
+        wanted = None
+        if only_user_ids:
+            wanted = {int(x) for x in only_user_ids if x}
         with self._lock:
             items = list(self._subs.items())
             meta_by_conn = dict(self._meta)
         sent = 0
         for conn_id, q in items:
-            if skip_client_id:
-                meta = meta_by_conn.get(conn_id) or {}
-                if meta.get("client_id") == skip_client_id:
+            meta = meta_by_conn.get(conn_id) or {}
+            if skip_client_id and meta.get("client_id") == skip_client_id:
+                continue
+            if wanted is not None:
+                try:
+                    uid = int(meta.get("user_id") or 0)
+                except (TypeError, ValueError):
+                    uid = 0
+                if uid not in wanted:
                     continue
             try:
                 q.put_nowait(event)
@@ -262,3 +272,27 @@ def notify_from_request(
         reason=reason,
         **live_actor_from_request(request),
     )
+
+
+def publish_inbox_event(user_ids: list[int] | None = None) -> int:
+    """Push a bell refresh to matching SSE clients. Does not bump revision."""
+    ids = []
+    seen: set[int] = set()
+    for raw in user_ids or []:
+        try:
+            uid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if uid <= 0 or uid in seen:
+            continue
+        seen.add(uid)
+        ids.append(uid)
+    event = {
+        "type": "notification",
+        "user_ids": ids,
+        "revision": current_revision(),
+        "boot_id": _boot_id,
+        "asset_version": asset_version(),
+        "ts": time.time(),
+    }
+    return hub.publish(event, only_user_ids=ids or None)

@@ -763,6 +763,37 @@ export function markLiveRevision(revision) {
   }
 }
 
+export function liveStreamConnected() {
+  return Boolean(liveSource && !liveConnecting);
+}
+
+export function isRegisterStale() {
+  return Boolean(typeof window !== "undefined" && window.__wruRegisterStale);
+}
+
+function markDataStale(detail) {
+  if (typeof window === "undefined") return;
+  const first = !window.__wruRegisterStale;
+  window.__wruRegisterStale = true;
+  if (!first) return;
+  try {
+    window.dispatchEvent(new CustomEvent("wru:data-stale", { detail: detail || {} }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function signalInboxIfForMe(data) {
+  const ids = Array.isArray(data?.user_ids) ? data.user_ids.map(Number) : [];
+  const me = Number(currentUser()?.id || 0);
+  if (ids.length && me && !ids.includes(me)) return;
+  try {
+    window.dispatchEvent(new CustomEvent("wru:notifications", { detail: data || {} }));
+  } catch {
+    /* ignore */
+  }
+}
+
 function htmlAssetVersion() {
   try {
     const raw =
@@ -891,11 +922,7 @@ function ingestLiveHeaders(res, method) {
     boot_id: boot || undefined,
     asset_version: version || undefined,
   };
-  const ident = rememberServerIdentity(data);
-  if (ident === "restart" || ident === "update_restart") {
-    knownRevision = 0;
-    queueLiveRefresh({ type: "sites_changed", reason: "restart", ...data });
-  }
+  rememberServerIdentity(data);
   const verb = String(method || "GET").toUpperCase();
   if (verb !== "GET" && verb !== "HEAD" && verb !== "OPTIONS" && typeof data.revision === "number") {
     markLiveRevision(data.revision);
@@ -906,15 +933,9 @@ function ingestLiveHeaders(res, method) {
 export async function syncLiveRevision() {
   try {
     const data = await api("/api/live/revision");
-    const ident = rememberServerIdentity(data);
-    if (ident === "restart" || ident === "update_restart") {
-      queueLiveRefresh({ type: "sites_changed", reason: "restart", revision: data?.revision });
-    }
+    rememberServerIdentity(data);
     if (typeof data?.revision === "number") {
       markLiveRevision(data.revision);
-    }
-    if (ident === "restart") {
-      queueLiveRefresh({ type: "sites_changed", reason: "restart", revision: data?.revision });
     }
     return data?.revision ?? knownRevision;
   } catch {
@@ -924,7 +945,8 @@ export async function syncLiveRevision() {
 
 /**
  * Subscribe to coalesced live refresh events (SSE + revision polling).
- * Handler receives { type, site_ids, reason, actor_name, client_id, revision, ts }.
+ * Register/data pages should not full-reload from this — job edits flag the
+ * bell via markDataStale instead. Inbox items arrive as type=notification.
  */
 export function onLiveSitesChanged(handler) {
   if (typeof handler !== "function") return () => {};
@@ -975,16 +997,11 @@ function startLivePoll() {
 
 async function checkLiveRevision() {
   const data = await api("/api/live/revision");
-  const ident = rememberServerIdentity(data);
+  rememberServerIdentity(data);
   const rev = data?.revision;
-  if (ident === "restart" || ident === "update_restart") {
-    knownRevision = typeof rev === "number" ? rev : 0;
-    queueLiveRefresh({ type: "sites_changed", reason: "restart", revision: rev, ...data });
-    return;
-  }
   if (typeof rev !== "number" || rev <= knownRevision) return;
   knownRevision = rev;
-  queueLiveRefresh({ type: "sites_changed", reason: "poll", revision: rev, ...data });
+  markDataStale({ type: "sites_changed", reason: "poll", revision: rev, ...data });
 }
 
 function queueLiveRefresh(event) {
@@ -1024,23 +1041,19 @@ async function flushLiveRefresh() {
 
 function ingestLivePayload(data) {
   if (!data || typeof data !== "object") return;
-  const ident = rememberServerIdentity(data);
+  rememberServerIdentity(data);
+  if (data.type === "notification") {
+    signalInboxIfForMe(data);
+    return;
+  }
   if (data.type === "hello") {
     if (typeof data.revision === "number") markLiveRevision(data.revision);
-    if (ident === "restart" || ident === "update_restart") {
-      queueLiveRefresh({ type: "sites_changed", reason: "restart", ...data });
-    }
     return;
   }
   if (data.type === "ping") {
-    if (ident === "restart" || ident === "update_restart") {
-      knownRevision = 0;
-      queueLiveRefresh({ type: "sites_changed", reason: "restart", ...data });
-      return;
-    }
     if (typeof data.revision === "number" && data.revision > knownRevision) {
       knownRevision = data.revision;
-      queueLiveRefresh({ type: "sites_changed", reason: "poll", ...data });
+      markDataStale(data);
     }
     return;
   }
@@ -1050,12 +1063,15 @@ function ingestLivePayload(data) {
   } catch {
     /* ignore */
   }
-  if (data.client_id && data.client_id === liveClientId() && data.reason !== "restart") return;
+  if (data.client_id && data.client_id === liveClientId() && data.reason !== "restart") {
+    if (typeof data.revision === "number") markLiveRevision(data.revision);
+    return;
+  }
   if (typeof data.revision === "number") {
-    if (data.revision <= knownRevision && ident !== "restart" && ident !== "update_restart") return;
+    if (data.revision <= knownRevision) return;
     knownRevision = data.revision;
   }
-  queueLiveRefresh(data);
+  markDataStale(data);
 }
 
 export function ensureLiveSync() {

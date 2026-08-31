@@ -14,7 +14,6 @@ import {
   showPageError,
   stageLabel,
   userName,
-  onLiveSitesChanged,
   syncLiveRevision,
   uploadFileChunked,
   applyDocCategories,
@@ -1059,6 +1058,61 @@ function renderRegister() {
   syncBulkBar();
   wireProgramDragDrop();
   syncRegisterSticky();
+  writeRegisterCache();
+}
+
+const REGISTER_CACHE_KEY = "wru-register-cache-v1";
+
+function registerSearchQuery() {
+  return $("search")?.value?.trim() || "";
+}
+
+function writeRegisterCache() {
+  if (registerSearchQuery()) return;
+  try {
+    sessionStorage.setItem(
+      REGISTER_CACHE_KEY,
+      JSON.stringify({
+        sites: state.sites,
+        meta: state.meta,
+        columns: state.columns,
+        genericMoas: state.genericMoas,
+        tagLibrary: state.tagLibrary,
+        programTags: state.programTags,
+        programs: state.programs,
+        ts: Date.now(),
+      })
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function hydrateFromCache() {
+  if (registerSearchQuery()) return false;
+  try {
+    const raw = sessionStorage.getItem(REGISTER_CACHE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.sites) || !data.sites.length) return false;
+    state.sites = data.sites;
+    state.meta = data.meta || state.meta;
+    state.columns = data.columns || [];
+    state.genericMoas = data.genericMoas || [];
+    state.tagLibrary = data.tagLibrary || [];
+    state.programTags = data.programTags || {};
+    if (Array.isArray(data.programs)) state.programs = data.programs;
+    applyDocCategories(state.meta.doc_category_defs || state.meta.doc_categories);
+    fillDocCategorySelect($("docCategory"), $("docCategory")?.value);
+    fillFilterOptions();
+    fillProgramSelect();
+    fillRoadList();
+    renderRegister();
+    setStatus(`${state.sites.length} active (cached) — refreshing…`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function loadAll() {
@@ -2462,7 +2516,7 @@ async function init() {
     const viewId = params.get("view");
     if (hl && Number(hl)) state.highlightId = Number(hl);
     bindEvents();
-    onLiveSitesChanged(applyRemoteRefresh);
+    hydrateFromCache();
     await loadAll();
     await syncLiveRevision();
     if (viewId && Number(viewId)) {

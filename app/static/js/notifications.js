@@ -1,6 +1,14 @@
-import { $, api, escapeHtml, applyAppUpdate, pendingAppUpdate } from "./common.js";
+import {
+  $,
+  api,
+  escapeHtml,
+  applyAppUpdate,
+  pendingAppUpdate,
+  isRegisterStale,
+  liveStreamConnected,
+} from "./common.js";
 
-const POLL_MS = 45000;
+const FALLBACK_POLL_MS = 120000;
 const BELL_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-6.2V11a7 7 0 0 0-5-6.7V3.8a2 2 0 1 0-4 0v.5A7 7 0 0 0 5 11v4.8L3.4 17.4A1 1 0 0 0 4.1 19h15.8a1 1 0 0 0 .7-1.6Z"/></svg>`;
 
 let pollTimer = null;
@@ -16,18 +24,21 @@ function fmtWhen(iso) {
   }
 }
 
+function extraBadgeCount() {
+  return (pendingAppUpdate() ? 1 : 0) + (isRegisterStale() ? 1 : 0);
+}
+
 function setBadge(count) {
   const badge = $("notifyBadge");
   if (!badge) return;
-  const extra = pendingAppUpdate() ? 1 : 0;
-  const n = (Number(count) || 0) + extra;
+  const n = (Number(count) || 0) + extraBadgeCount();
   badge.hidden = n <= 0;
   badge.textContent = n > 99 ? "99+" : String(n);
   const btn = $("notifyBellBtn");
   if (btn) {
     btn.setAttribute("aria-label", n ? `Notifications, ${n} unread` : "Notifications");
   }
-  $("notifyBellWrap")?.classList.toggle("has-app-update", Boolean(pendingAppUpdate()));
+  $("notifyBellWrap")?.classList.toggle("has-app-update", extraBadgeCount() > 0);
 }
 
 function updateCardHtml() {
@@ -40,10 +51,19 @@ function updateCardHtml() {
   </div>`;
 }
 
+function staleCardHtml() {
+  if (!isRegisterStale()) return "";
+  return `<div class="notify-item notify-update is-unread" data-register-stale>
+    <strong>Jobs updated</strong>
+    <span>Someone saved while this page was open. Reload to see the latest register — this tab keeps using its cached copy until then.</span>
+    <button type="button" class="btn btn-primary btn-sm" id="notifyReloadRegister">Reload</button>
+  </div>`;
+}
+
 function renderItems(items) {
   const list = $("notifyList");
   if (!list) return;
-  const updateHtml = updateCardHtml();
+  const banners = `${updateCardHtml()}${staleCardHtml()}`;
   const rows = (items || [])
     .map((n) => {
       const unread = n.read ? "" : " is-unread";
@@ -55,11 +75,11 @@ function renderItems(items) {
       </a>`;
     })
     .join("");
-  if (!updateHtml && !rows) {
+  if (!banners && !rows) {
     list.innerHTML = `<p class="notify-empty">No notifications yet.</p>`;
     return;
   }
-  list.innerHTML = `${updateHtml}${rows}`;
+  list.innerHTML = `${banners}${rows}`;
 }
 
 export async function refreshNotifications({ render = true } = {}) {
@@ -67,8 +87,10 @@ export async function refreshNotifications({ render = true } = {}) {
     const data = await api("/api/notifications?limit=40", { timeoutMs: 8000 });
     setBadge(data.unread_count);
     if (render) renderItems(data.items || []);
+    else if (extraBadgeCount()) renderItems(data.items || []);
     return data;
   } catch {
+    if (render || extraBadgeCount()) renderItems([]);
     return null;
   }
 }
@@ -102,6 +124,10 @@ async function markOneRead(id) {
   }
 }
 
+function inboxShouldRender() {
+  return !$("notifyPanel")?.hidden || extraBadgeCount() > 0;
+}
+
 export function mountNotifications() {
   const wrap = $("notifyBellWrap");
   if (!wrap || wrap.dataset.bound) return;
@@ -132,31 +158,41 @@ export function mountNotifications() {
       applyAppUpdate();
       return;
     }
+    if (ev.target.closest("#notifyReloadRegister")) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      location.reload();
+      return;
+    }
     const item = ev.target.closest(".notify-item[data-id]");
     if (!item) return;
     markOneRead(item.dataset.id);
   });
 
-  window.addEventListener("wru:sites-changed", () => {
-    refreshNotifications({ render: !$("notifyPanel")?.hidden });
+  window.addEventListener("wru:notifications", () => {
+    refreshNotifications({ render: inboxShouldRender() });
+  });
+  window.addEventListener("wru:data-stale", () => {
+    refreshNotifications({ render: inboxShouldRender() });
   });
   window.addEventListener("wru:app-update", () => {
-    refreshNotifications({ render: !$("notifyPanel")?.hidden });
+    refreshNotifications({ render: inboxShouldRender() });
   });
 
   refreshNotifications({ render: false });
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(() => {
+    if (liveStreamConnected()) return;
     if (document.visibilityState === "hidden") return;
     refreshNotifications({ render: !$("notifyPanel")?.hidden });
-  }, POLL_MS);
+  }, FALLBACK_POLL_MS);
 }
 
 export function notifyBellHtml() {
   return `<div class="notify-bell-wrap" id="notifyBellWrap">
     <button type="button" class="notify-bell-btn" id="notifyBellBtn" aria-expanded="false" aria-controls="notifyPanel" aria-label="Notifications">
       ${BELL_SVG}
-      <span class="notify-badge" id="notifyBadge" hidden>0</span>
+    <span class="notify-badge" id="notifyBadge" hidden>0</span>
     </button>
     <div class="notify-panel" id="notifyPanel" hidden role="dialog" aria-label="Notifications">
       <div class="notify-panel-head">

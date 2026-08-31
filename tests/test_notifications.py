@@ -24,8 +24,8 @@ SITES = (ROOT / "app/routers/sites.py").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_206():
-    assert VERSION == "2.06"
+def test_version_is_207():
+    assert VERSION == "2.07"
 
 
 def test_normalize_tags_dedupes_and_caps():
@@ -118,8 +118,22 @@ def test_bell_and_admin_wired():
     assert "/api/admin/notification-rules" in NOTIFY_ADMIN
     assert "wru:sites-changed" in COMMON
     assert "wru:app-update" in COMMON
+    assert "wru:notifications" in NOTIFY_JS
+    assert "wru:data-stale" in NOTIFY_JS
+    assert "notifyReloadRegister" in NOTIFY_JS
+    assert "liveStreamConnected" in NOTIFY_JS
+    assert "FALLBACK_POLL_MS" in NOTIFY_JS
+    assert "45000" not in NOTIFY_JS
     assert "pendingAppUpdate" in COMMON
     assert "applyAppUpdate" in COMMON
     assert "notifyApplyUpdate" in NOTIFY_JS
     assert "X-WRU-Client-Version" in COMMON
     assert 'ident === "reload"' not in COMMON
+
+
+def test_queue_inbox_ping_collects_ids():
+    from app.notify import INBOX_USER_IDS_KEY, queue_inbox_ping
+
+    db = SimpleNamespace(info={})
+    queue_inbox_ping(db, [3, 3, 0, 9])
+    assert db.info[INBOX_USER_IDS_KEY] == {3, 9}
