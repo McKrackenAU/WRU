@@ -4,30 +4,18 @@ import json
 import os
 import re
 from pathlib import Path
-from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi import Depends, FastAPI
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct
 from sqlalchemy.orm import Session
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from .auth import (
-    ADMIN_ROLE,
-    COMMS_ROLE,
-    is_admin_path,
-    is_comms_path,
-    is_password_change_allowed_path,
-    is_public_path,
-    require_admin,
-    require_comms,
-    secret_key,
-)
+from .auth import require_admin, require_comms, secret_key
 from .database import get_db
 from .financial_year import fy_choices
-from .live_hub import cached_live_identity
+from .http_middleware import AuthGateMiddleware, LiveIdentityMiddleware, NoCacheStaticMiddleware
 from .migrate import run_migrations
 from .doc_categories import category_meta, ensure_doc_category_seed
 from .models import LookupItem, Site, SiteCouncil, User
@@ -107,75 +95,9 @@ app.include_router(system.router)
 app.include_router(backup.router)
 
 
-class NoCacheStaticMiddleware(BaseHTTPMiddleware):
-    """Prevent stale JS/CSS after deploys (ES module imports ignore HTML ?v= busting)."""
-
-    async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
-        path = request.url.path
-        if (
-            path.startswith("/static/js/")
-            or path.startswith("/static/css/")
-            or path.startswith("/static/vendor/")
-        ):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-        return response
-
-
-class LiveIdentityMiddleware(BaseHTTPMiddleware):
-    """Stamp revision / boot / version on API responses so every screen can stay live."""
-
-    async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
-        if request.url.path.startswith("/api/"):
-            try:
-                ident = cached_live_identity()
-                response.headers["X-WRU-Revision"] = str(ident["revision"])
-                response.headers["X-WRU-Boot-Id"] = str(ident["boot_id"])
-                response.headers["X-WRU-Asset-Version"] = str(ident["asset_version"])
-            except Exception:
-                pass
-        return response
-
-
-class AuthGateMiddleware(BaseHTTPMiddleware):
-    """Require a login session for app pages and APIs; admins for admin surfaces."""
-
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        method = request.method.upper()
-
-        if method == "OPTIONS" or is_public_path(path):
-            return await call_next(request)
-
-        user_id = request.session.get("user_id")
-        if not user_id:
-            if path.startswith("/api/"):
-                return JSONResponse({"detail": "Not authenticated"}, status_code=401)
-            next_q = quote(path + (("?" + request.url.query) if request.url.query else ""))
-            return RedirectResponse(f"/login?next={next_q}", status_code=302)
-
-        if is_admin_path(path, method) and request.session.get("role") != "admin":
-            if path.startswith("/api/"):
-                return JSONResponse({"detail": "Admin access required"}, status_code=403)
-            return RedirectResponse("/", status_code=302)
-
-        if is_comms_path(path) and request.session.get("role") not in {ADMIN_ROLE, COMMS_ROLE}:
-            if path.startswith("/api/"):
-                return JSONResponse({"detail": "Comms access required"}, status_code=403)
-            return RedirectResponse("/", status_code=302)
-
-        if request.session.get("must_change_password") and not is_password_change_allowed_path(path):
-            if path.startswith("/api/"):
-                return JSONResponse({"detail": "Password change required"}, status_code=403)
-            next_q = quote(path + (("?" + request.url.query) if request.url.query else ""))
-            return RedirectResponse(f"/password?next={next_q}", status_code=302)
-
-        return await call_next(request)
-
-
 # Starlette runs last-added middleware first on the request.
+# These are pure ASGI (not BaseHTTPMiddleware) so SSE is not pumped
+# through in-memory streams — that wrapper was pinning uvicorn at 100%+.
 app.add_middleware(LiveIdentityMiddleware)
 app.add_middleware(NoCacheStaticMiddleware)
 app.add_middleware(AuthGateMiddleware)

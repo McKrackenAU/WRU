@@ -23,6 +23,7 @@ COMMS_JS = (ROOT / "app/static/js/comms.js").read_text(encoding="utf-8")
 COMMS_PY = (ROOT / "app/routers/comms.py").read_text(encoding="utf-8")
 AUTH_PY = (ROOT / "app/auth.py").read_text(encoding="utf-8")
 MAIN = (ROOT / "app/main.py").read_text(encoding="utf-8")
+HTTP_MW = (ROOT / "app/http_middleware.py").read_text(encoding="utf-8")
 SEED = ROOT / "app/comms_seed_data.json"
 
 
@@ -129,7 +130,8 @@ def test_comms_router_and_page_wired():
     assert 'visibility=vis' in COMMS_PY
     assert 'source="comms"' in COMMS_PY
     assert 'def comms_page' in MAIN
-    assert "is_comms_path" in MAIN
+    assert "is_comms_path" in HTTP_MW
+    assert "AuthGateMiddleware" in MAIN
     assert "COMMS_ROLE" in AUTH_PY
 
 

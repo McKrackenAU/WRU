@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 COMMON = (ROOT / "app/static/js/common.js").read_text(encoding="utf-8")
 APP = (ROOT / "app/static/js/app.js").read_text(encoding="utf-8")
 MAIN = (ROOT / "app/main.py").read_text(encoding="utf-8")
+HTTP_MW = (ROOT / "app/http_middleware.py").read_text(encoding="utf-8")
 LIVE = (ROOT / "app/routers/live.py").read_text(encoding="utf-8")
 SITES = (ROOT / "app/routers/sites.py").read_text(encoding="utf-8")
 
@@ -32,6 +33,7 @@ def test_sse_does_not_block_a_thread_per_client():
     assert "wait_for" in LIVE
     assert "wake.wait" in LIVE
     assert "asyncio.sleep(0.4)" not in LIVE
+    assert "await request.is_disconnected" not in LIVE
 
 
 def test_hidden_tab_closes_sse_and_slows_polls():
@@ -85,11 +87,15 @@ def test_linked_generic_select_does_not_reuse_previous_site():
 
 
 def test_api_responses_stamp_live_identity():
-    assert "class LiveIdentityMiddleware" in MAIN
-    assert "X-WRU-Revision" in MAIN
-    assert "X-WRU-Boot-Id" in MAIN
-    assert "X-WRU-Asset-Version" in MAIN
-    assert "cached_live_identity" in MAIN
+    assert "LiveIdentityMiddleware" in MAIN
+    assert "class LiveIdentityMiddleware" in HTTP_MW
+    assert "X-WRU-Revision" in HTTP_MW
+    assert "X-WRU-Boot-Id" in HTTP_MW
+    assert "X-WRU-Asset-Version" in HTTP_MW
+    assert "cached_live_identity" in HTTP_MW
+    assert "from starlette.middleware.base" not in MAIN
+    assert "from starlette.middleware.base" not in HTTP_MW
+    assert "http.response.start" in HTTP_MW
 
 
 def test_register_awaits_chrome_and_syncs_revision():

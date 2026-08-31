@@ -32,7 +32,7 @@ async def live_events(
     request: Request,
     client_id: str | None = Query(default=None, max_length=64),
 ):
-    """SSE stream. Auth is enforced by AuthGateMiddleware (session cookie)."""
+    """SSE stream. Auth is enforced by the ASGI AuthGateMiddleware (session cookie)."""
     cid = (client_id or "").strip()
     if not cid:
         return JSONResponse({"detail": "client_id required"}, status_code=400)
@@ -59,8 +59,9 @@ async def live_events(
                     drained = True
                 if drained:
                     continue
-                if await request.is_disconnected():
-                    break
+                # Do not probe client drop via a cancelled receive — under
+                # uvloop that helper can busy-spin and skip the wait below.
+                # StreamingResponse cancels this generator when the client goes.
                 now = time.monotonic()
                 wait_for = HEARTBEAT_SECONDS - (now - last_ping)
                 if wait_for <= 0:
@@ -79,7 +80,7 @@ async def live_events(
                 except queue.Empty:
                     pass
                 try:
-                    await asyncio.wait_for(wake.wait(), timeout=wait_for)
+                    await asyncio.wait_for(wake.wait(), timeout=max(0.05, wait_for))
                 except asyncio.TimeoutError:
                     pass
         finally:
