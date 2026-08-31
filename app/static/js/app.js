@@ -806,7 +806,13 @@ async function persistRegisterOrder(program, siteIds) {
     }),
   });
   state.dndCommitted = true;
-  await loadAll();
+  const programValue = target === "Unassigned" ? "" : target;
+  ids.forEach((id, idx) => {
+    const site = state.sites.find((s) => s.id === Number(id));
+    if (!site) return;
+    site.register_order = (idx + 1) * 10;
+    site.program = programValue;
+  });
   await syncLiveRevision();
   setStatus(`Updated ${target}`);
 }
