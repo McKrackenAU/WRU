@@ -29,6 +29,21 @@ def test_sse_does_not_block_a_thread_per_client():
     assert "to_thread" not in LIVE
     assert "get_nowait" in LIVE
     assert "cached_live_identity" in LIVE
+    assert "wait_for" in LIVE
+    assert "wake.wait" in LIVE
+    assert "asyncio.sleep(0.4)" not in LIVE
+
+
+def test_hidden_tab_closes_sse_and_slows_polls():
+    assert "function stopLiveSync" in COMMON
+    assert "liveStreamConnected" in COMMON
+    assert "liveIntentionalClose" in COMMON
+    assert "LIVE_POLL_SSE_MS = 120000" in COMMON
+    assert "LIVE_POLL_HIDDEN_MS = 180000" in COMMON
+    hidden = COMMON[COMMON.find('document.addEventListener("visibilitychange"') :]
+    hidden = hidden[: hidden.find("window.addEventListener(\"online\"")]
+    assert "stopLiveSync()" in hidden
+    assert 'document.visibilityState === "hidden"' in hidden
 
 
 def test_common_has_revision_poll_and_coalesced_refresh():

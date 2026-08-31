@@ -7,6 +7,7 @@ this process; clients also poll ``/api/live/revision`` as a backup.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import queue
 import secrets
@@ -132,6 +133,8 @@ class LiveHub:
     def __init__(self) -> None:
         self._subs: dict[str, queue.Queue] = {}
         self._meta: dict[str, dict[str, Any]] = {}
+        self._wakes: dict[str, asyncio.Event] = {}
+        self._loops: dict[str, asyncio.AbstractEventLoop] = {}
         self._lock = threading.Lock()
 
     def subscribe(
@@ -140,10 +143,12 @@ class LiveHub:
         *,
         user_id: int | None = None,
         username: str | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
     ) -> tuple[str, queue.Queue]:
         """Return (connection_id, queue). Each SSE connection gets its own conn id."""
         conn_id = secrets.token_urlsafe(16)
         q: queue.Queue = queue.Queue(maxsize=64)
+        wake = asyncio.Event() if loop is not None else None
         with self._lock:
             self._subs[conn_id] = q
             self._meta[conn_id] = {
@@ -152,12 +157,26 @@ class LiveHub:
                 "username": username,
                 "connected_at": time.time(),
             }
+            if wake is not None and loop is not None:
+                self._wakes[conn_id] = wake
+                self._loops[conn_id] = loop
         return conn_id, q
+
+    def wake_for(self, conn_id: str) -> asyncio.Event | None:
+        with self._lock:
+            return self._wakes.get(conn_id)
 
     def unsubscribe(self, conn_id: str) -> None:
         with self._lock:
             self._subs.pop(conn_id, None)
             self._meta.pop(conn_id, None)
+            wake = self._wakes.pop(conn_id, None)
+            loop = self._loops.pop(conn_id, None)
+        if wake is not None and loop is not None:
+            try:
+                loop.call_soon_threadsafe(wake.set)
+            except RuntimeError:
+                pass
 
     def subscriber_count(self) -> int:
         with self._lock:
@@ -173,14 +192,19 @@ class LiveHub:
         with self._lock:
             items = list(self._subs.items())
             meta_by_conn = dict(self._meta)
+            wakes = dict(self._wakes)
+            loops = dict(self._loops)
         sent = 0
+        to_wake: list[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = []
         for conn_id, q in items:
             if skip_client_id:
                 meta = meta_by_conn.get(conn_id) or {}
                 if meta.get("client_id") == skip_client_id:
                     continue
+            accepted = False
             try:
                 q.put_nowait(event)
+                accepted = True
                 sent += 1
             except queue.Full:
                 try:
@@ -189,9 +213,20 @@ class LiveHub:
                     pass
                 try:
                     q.put_nowait(event)
+                    accepted = True
                     sent += 1
                 except queue.Full:
                     pass
+            if accepted:
+                wake = wakes.get(conn_id)
+                loop = loops.get(conn_id)
+                if wake is not None and loop is not None:
+                    to_wake.append((loop, wake))
+        for loop, wake in to_wake:
+            try:
+                loop.call_soon_threadsafe(wake.set)
+            except RuntimeError:
+                pass
         return sent
 
 

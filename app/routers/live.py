@@ -39,7 +39,9 @@ async def live_events(
 
     user_id = request.session.get("user_id")
     username = request.session.get("display_name") or request.session.get("username")
-    conn_id, q = hub.subscribe(cid, user_id=user_id, username=username)
+    loop = asyncio.get_running_loop()
+    conn_id, q = hub.subscribe(cid, user_id=user_id, username=username, loop=loop)
+    wake = hub.wake_for(conn_id)
 
     async def gen() -> AsyncIterator[str]:
         last_ping = time.monotonic()
@@ -47,21 +49,39 @@ async def live_events(
             hello = {"type": "hello", "client_id": cid, **live_identity()}
             yield f"data: {json.dumps(hello)}\n\n"
             while True:
+                drained = False
+                while True:
+                    try:
+                        event = q.get_nowait()
+                    except queue.Empty:
+                        break
+                    yield f"data: {json.dumps(event)}\n\n"
+                    drained = True
+                if drained:
+                    continue
                 if await request.is_disconnected():
                     break
+                now = time.monotonic()
+                wait_for = HEARTBEAT_SECONDS - (now - last_ping)
+                if wait_for <= 0:
+                    last_ping = time.monotonic()
+                    ping = {"type": "ping", **cached_live_identity()}
+                    yield f"data: {json.dumps(ping)}\n\n"
+                    continue
+                if wake is None:
+                    await asyncio.sleep(min(2.0, wait_for))
+                    continue
+                wake.clear()
                 try:
                     event = q.get_nowait()
                     yield f"data: {json.dumps(event)}\n\n"
                     continue
                 except queue.Empty:
                     pass
-                now = time.monotonic()
-                if now - last_ping >= HEARTBEAT_SECONDS:
-                    last_ping = now
-                    ping = {"type": "ping", **cached_live_identity()}
-                    yield f"data: {json.dumps(ping)}\n\n"
-                else:
-                    await asyncio.sleep(0.4)
+                try:
+                    await asyncio.wait_for(wake.wait(), timeout=wait_for)
+                except asyncio.TimeoutError:
+                    pass
         finally:
             hub.unsubscribe(conn_id)
 

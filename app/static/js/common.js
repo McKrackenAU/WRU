@@ -735,10 +735,15 @@ let refreshRunning = false;
 let refreshPending = null;
 
 const LIVE_POLL_MS = 8000;
-const LIVE_POLL_SSE_MS = 30000;
-const LIVE_POLL_HIDDEN_MS = 45000;
+const LIVE_POLL_SSE_MS = 120000;
+const LIVE_POLL_HIDDEN_MS = 180000;
 const LIVE_REFRESH_DEBOUNCE_MS = 400;
 const LIVE_IDENTITY_KEY = "wru-live-identity";
+let liveIntentionalClose = false;
+
+export function liveStreamConnected() {
+  return Boolean(liveSource && !liveConnecting);
+}
 
 export function liveClientId() {
   try {
@@ -933,26 +938,47 @@ export function onLiveSitesChanged(handler) {
   return () => liveHandlers.delete(handler);
 }
 
+function stopLiveSync() {
+  liveIntentionalClose = true;
+  liveConnecting = false;
+  if (liveRetryTimer) {
+    clearTimeout(liveRetryTimer);
+    liveRetryTimer = null;
+  }
+  if (liveSource) {
+    try {
+      liveSource.close();
+    } catch {
+      /* ignore */
+    }
+    liveSource = null;
+  }
+}
+
 function bootstrapLiveSync() {
   if (!liveBootstrapped) {
     liveBootstrapped = true;
     startLivePoll();
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState === "hidden") {
+        stopLiveSync();
+        startLivePoll();
+        return;
+      }
       startLivePoll();
       checkLiveRevision().catch(() => {});
-      if (!liveSource && !liveConnecting) ensureLiveSync();
+      ensureLiveSync();
     });
     window.addEventListener("online", () => {
       checkLiveRevision().catch(() => {});
-      if (!liveSource && !liveConnecting) ensureLiveSync();
+      if (document.visibilityState !== "hidden") ensureLiveSync();
     });
     window.addEventListener("pageshow", () => {
       checkLiveRevision().catch(() => {});
-      if (!liveSource && !liveConnecting) ensureLiveSync();
+      if (document.visibilityState !== "hidden") ensureLiveSync();
     });
   }
-  ensureLiveSync();
+  if (document.visibilityState !== "hidden") ensureLiveSync();
 }
 
 function livePollDelay() {
@@ -1060,9 +1086,11 @@ function ingestLivePayload(data) {
 
 export function ensureLiveSync() {
   if (liveSource || liveConnecting || typeof EventSource === "undefined") return;
+  if (document.visibilityState === "hidden") return;
   if (document.body?.classList.contains("must-change-password")) return;
   if (location.pathname === "/login") return;
 
+  liveIntentionalClose = false;
   liveConnecting = true;
   const url = `/api/live/events?client_id=${encodeURIComponent(liveClientId())}`;
   const es = new EventSource(url, { withCredentials: true });
@@ -1082,6 +1110,8 @@ export function ensureLiveSync() {
     }
   };
   es.onerror = () => {
+    const ignore = liveIntentionalClose;
+    liveIntentionalClose = false;
     liveConnecting = false;
     try {
       es.close();
@@ -1089,13 +1119,14 @@ export function ensureLiveSync() {
       /* ignore */
     }
     liveSource = null;
+    startLivePoll();
+    if (ignore || document.visibilityState === "hidden") return;
     if (liveRetryTimer) clearTimeout(liveRetryTimer);
     liveRetryTimer = setTimeout(() => {
       liveRetryTimer = null;
       ensureLiveSync();
     }, liveRetryMs);
     liveRetryMs = Math.min(liveRetryMs * 1.7, 8000);
-    startLivePoll();
     checkLiveRevision().catch(() => {});
   };
 }

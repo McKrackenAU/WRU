@@ -24,8 +24,8 @@ SITES = (ROOT / "app/routers/sites.py").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_207():
-    assert VERSION == "2.07"
+def test_version_is_208():
+    assert VERSION == "2.08"
 
 
 def test_normalize_tags_dedupes_and_caps():
@@ -121,5 +121,7 @@ def test_bell_and_admin_wired():
     assert "pendingAppUpdate" in COMMON
     assert "applyAppUpdate" in COMMON
     assert "notifyApplyUpdate" in NOTIFY_JS
+    assert "liveStreamConnected" in NOTIFY_JS
+    assert "POLL_MS = 120000" in NOTIFY_JS
     assert "X-WRU-Client-Version" in COMMON
     assert 'ident === "reload"' not in COMMON

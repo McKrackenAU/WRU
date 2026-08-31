@@ -102,6 +102,27 @@ def test_cached_live_identity_matches_live_identity():
     assert "revision" in cached_a
 
 
+def test_publish_wakes_async_waiter():
+    import asyncio
+
+    async def run():
+        hub = LiveHub()
+        loop = asyncio.get_running_loop()
+        conn, q = hub.subscribe("wake-me", loop=loop)
+        wake = hub.wake_for(conn)
+        assert wake is not None
+        async def waiter():
+            await asyncio.wait_for(wake.wait(), timeout=1)
+        task = asyncio.create_task(waiter())
+        await asyncio.sleep(0)
+        hub.publish({"type": "sites_changed", "n": 7})
+        await task
+        assert q.get_nowait()["n"] == 7
+        hub.unsubscribe(conn)
+
+    asyncio.run(run())
+
+
 def test_full_queue_drops_oldest_not_raise():
     hub = LiveHub()
     _, q = hub.subscribe("full")
