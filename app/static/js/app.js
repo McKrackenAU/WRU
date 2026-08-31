@@ -467,7 +467,7 @@ function siteRowHtml(site) {
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
     </td>
     <td>
-      <div class="site-title" title="${escapeHtml(site.comments || "")}"><span class="drag-grip" draggable="false" data-drag-grip title="Drag to reorder or move program" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
+      <div class="site-title" title="${escapeHtml(site.comments || "")}"><span class="drag-grip" draggable="false" data-drag-grip title="${state.sortKey ? "Clear column sort to drag jobs" : "Drag to reorder or move program"}" aria-hidden="true">⋮⋮</span>${escapeHtml(site.road_name)}${site.site_number ? ` — ${escapeHtml(site.site_number)}` : ""}</div>
       <div class="site-meta">
         ${metaBits}
         ${commentSnippet(site.comments)}
@@ -632,15 +632,31 @@ function compareRegisterSites(a, b) {
 }
 
 function setRegisterSort(key) {
-  if (!key) return;
+  if (!key) {
+    state.sortKey = null;
+    state.sortDir = "asc";
+    saveRegisterSort();
+    renderRegister();
+    return;
+  }
   if (state.sortKey === key) {
-    state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+    if (state.sortDir === "asc") state.sortDir = "desc";
+    else {
+      state.sortKey = null;
+      state.sortDir = "asc";
+    }
   } else {
     state.sortKey = key;
     state.sortDir = "asc";
   }
   saveRegisterSort();
   renderRegister();
+}
+
+function syncSortButton() {
+  const btn = $("btnClearSort");
+  if (!btn) return;
+  btn.hidden = !state.sortKey;
 }
 
 function sortHeader(key, label) {
@@ -901,10 +917,15 @@ function wireProgramDragDrop() {
   root.dataset.programDndWired = "1";
 
   root.addEventListener("pointerdown", (ev) => {
-    if (state.sortKey || ev.button !== 0) return;
+    if (ev.button !== 0) return;
     const grip = ev.target.closest("[data-drag-grip]");
     const row = grip?.closest("tr.register-row");
     if (!grip || !row || !root.contains(row)) return;
+    if (state.sortKey) {
+      setStatus("Column sort cleared — drag the ⋮⋮ handle to reorder");
+      setRegisterSort(null);
+      return;
+    }
     const id = Number(row.dataset.siteId);
     if (!id) return;
     ev.preventDefault();
@@ -971,6 +992,7 @@ function renderRegister() {
   root.classList.toggle("is-compact", state.compact);
   root.classList.toggle("is-sorted", Boolean(state.sortKey));
   syncDensityButton();
+  syncSortButton();
   if (!state.sites.length) {
     root.innerHTML = `<div class="register-empty">No active sites match these filters.</div>`;
     renderJumpNav([], new Map());
@@ -2305,6 +2327,7 @@ function bindEvents() {
     saveDensityPref();
     syncDensityButton();
   });
+  on("btnClearSort", "click", () => setRegisterSort(null));
   on("btnCollapseAll", "click", () => {
     for (const site of state.sites) state.collapsedPrograms.add(programKey(site.program));
     saveCollapsedPrograms();

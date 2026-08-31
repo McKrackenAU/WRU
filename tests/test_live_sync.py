@@ -100,3 +100,5 @@ def test_register_drag_uses_grip_pointer_and_commits():
     assert "pointerup" in APP
     assert "commitSectionOrder" in APP
     assert 'ev.target.closest("[data-drag-grip]")' in APP
+    assert "btnClearSort" in APP
+    assert "Clear column sort to drag" in APP
