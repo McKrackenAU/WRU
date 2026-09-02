@@ -1417,7 +1417,7 @@ function fillCombinedPicker(site) {
     host.innerHTML = `<div class="combined-picker-empty">${
       q ? "No matching sites." : "No other sites to combine with yet."
     }</div>`;
-    syncDocShareCombinedUi(site);
+    syncDocShareCombinedUi(currentDrawerSite() || site);
     return;
   }
   host.innerHTML = options
@@ -1431,7 +1431,7 @@ function fillCombinedPicker(site) {
       </label>`;
     })
     .join("");
-  syncDocShareCombinedUi(site);
+  syncDocShareCombinedUi(currentDrawerSite() || site);
 }
 
 function collectCombinedSiteIds() {
@@ -1960,7 +1960,6 @@ function currentDrawerSite() {
 }
 
 function drawerIsCombined(site = currentDrawerSite()) {
-  if ((collectCombinedSiteIds() || []).length) return true;
   return Boolean(site && (site.combined_site_ids || []).length);
 }
 
@@ -2242,6 +2241,13 @@ function bindEvents() {
   on("search", "input", debounce(() => loadAll().catch(showLoadError), 250));
   on("combinedSiteFilter", "input", () => {
     fillCombinedPicker({
+      id: Number($("siteId")?.value || 0),
+      combined_site_ids: collectCombinedSiteIds(),
+    });
+  });
+  document.addEventListener("change", (ev) => {
+    if (!ev.target.closest("[data-combined-id]")) return;
+    syncDocShareCombinedUi({
       id: Number($("siteId")?.value || 0),
       combined_site_ids: collectCombinedSiteIds(),
     });

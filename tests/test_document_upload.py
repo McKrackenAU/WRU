@@ -70,7 +70,12 @@ def test_chunked_document_upload_is_wired():
     assert "share_with_combined: shareWithCombined" in APP_JS
     assert "data-doc-share" in APP_JS
     assert "syncDocShareCombinedUi" in APP_JS
+    assert "function drawerIsCombined" in APP_JS
+    assert "site.combined_site_ids" in APP_JS
     assert "Shared from" in APP_JS
+    assert "#docShareCombinedWrap[hidden]" in (
+        ROOT / "app/static/css/style.css"
+    ).read_text(encoding="utf-8")
     assert "query_site_documents" in DOCS_PY
     assert "share_with_combined" in DOCS_PY
     assert "downloadDocumentsZip" in APP_JS

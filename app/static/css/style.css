@@ -2717,6 +2717,11 @@ input[type="number"].num-stepper-input::-webkit-inner-spin-button {
   margin: 0 0 0.45rem;
 }
 
+#docShareCombinedWrap[hidden],
+#docShareCombinedHint[hidden] {
+  display: none !important;
+}
+
 .doc-share-meta {
   display: flex;
   flex-wrap: wrap;
