@@ -161,6 +161,11 @@ def run_migrations() -> None:
         "comms_row_id",
         "comms_row_id INTEGER REFERENCES comms_rows(id) ON DELETE SET NULL",
     )
+    ensure_column(
+        "documents",
+        "share_with_combined",
+        "share_with_combined BOOLEAN NOT NULL DEFAULT FALSE",
+    )
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(64)"))
     insp = inspect(engine)

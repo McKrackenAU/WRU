@@ -354,6 +354,8 @@ class Document(Base):
     comms_row_id: Mapped[int | None] = mapped_column(
         ForeignKey("comms_rows.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # When true, this file also appears on every other site in the combined MoA group.
+    share_with_combined: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     site: Mapped[Site | None] = relationship(back_populates="documents")
     comms_row: Mapped["CommsRow | None"] = relationship(back_populates="documents")

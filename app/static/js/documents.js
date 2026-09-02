@@ -55,6 +55,10 @@ async function load() {
             d.source === "comms"
               ? ` <span class="hint">(${d.visibility === "comms" ? "comms only" : "from comms"})</span>`
               : ""
+          }${
+            d.share_with_combined
+              ? ` <span class="badge badge-combined">Shared with combined</span>`
+              : ""
           }</td>
           <td class="mono">${new Date(d.uploaded_at).toLocaleString()}</td>
           <td><a class="btn" href="/api/documents/${d.id}/download">Download</a></td>

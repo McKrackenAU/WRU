@@ -8,9 +8,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.models import Site, WorkflowStep
+from app.models import Document, Site, WorkflowStep
+from app.routers.documents import _doc_out, query_site_documents
 from app.services import (
     apply_combined_application,
+    combined_group_ids,
     group_client_list_applications,
     site_number_sort_key,
     sync_combined_application_from,
@@ -29,6 +31,8 @@ def test_ui_wires_combined_application_picker():
     assert "Same MoA application as" in INDEX
     assert "combined_site_ids: collectCombinedSiteIds()" in APP_JS
     assert "badge-combined" in APP_JS
+    assert 'id="docShareCombined"' in INDEX
+    assert "Share with combined jobs" in INDEX
     assert "show as one row" in LISTS_HTML
     assert "group_client_list_applications" in EXPORT
     assert "group_client_list_applications" in SITES
@@ -168,3 +172,65 @@ def test_ungroup_clears_when_only_one_left():
 def test_sync_skips_when_not_grouped():
     site = SimpleNamespace(id=1, combined_application_id=None)
     assert sync_combined_application_from(SimpleNamespace(query=lambda *_: None), site) == []
+
+
+def _doc(db, site, name, *, shared=False):
+    doc = Document(
+        site_id=site.id,
+        category="moa",
+        stored_name=f"{site.id}_{name}",
+        original_filename=name,
+        size_bytes=12,
+        share_with_combined=shared,
+    )
+    db.add(doc)
+    db.flush()
+    return doc
+
+
+def test_combined_group_ids_and_shared_documents():
+    db = _session()
+    a = _site(db, "PRINCES HWY WEST", "S42")
+    b = _site(db, "PRINCES HWY WEST", "S43")
+    c = _site(db, "PRINCES HWY WEST", "S44")
+    lone = _site(db, "SOLO RD", "S99")
+    apply_combined_application(db, a, [b.id, c.id])
+    db.flush()
+
+    assert sorted(combined_group_ids(db, a)) == sorted([a.id, b.id, c.id])
+    assert combined_group_ids(db, lone) == [lone.id]
+
+    own_a = _doc(db, a, "moa-letter.pdf", shared=True)
+    private_a = _doc(db, a, "site-a-only.jpg", shared=False)
+    own_b = _doc(db, b, "tgs.pdf", shared=True)
+    private_b = _doc(db, b, "notes-b.txt", shared=False)
+    lone_doc = _doc(db, lone, "solo.pdf", shared=True)
+    db.flush()
+
+    a_names = {d.original_filename for d in query_site_documents(db, a)}
+    b_names = {d.original_filename for d in query_site_documents(db, b)}
+    c_names = {d.original_filename for d in query_site_documents(db, c)}
+    lone_names = {d.original_filename for d in query_site_documents(db, lone)}
+
+    assert a_names == {"moa-letter.pdf", "site-a-only.jpg", "tgs.pdf"}
+    assert b_names == {"tgs.pdf", "notes-b.txt", "moa-letter.pdf"}
+    assert c_names == {"moa-letter.pdf", "tgs.pdf"}
+    assert lone_names == {"solo.pdf"}
+    assert "notes-b.txt" not in a_names
+    assert "site-a-only.jpg" not in b_names
+
+    payload = _doc_out(own_a, a, viewing_site=b)
+    assert payload["share_with_combined"] is True
+    assert payload["shared"] is True
+    assert payload["shared_from_site_id"] == a.id
+    assert payload["shared_from_site_number"] == "S42"
+
+    owner_view = _doc_out(own_a, a, viewing_site=a)
+    assert owner_view["shared"] is False
+    assert owner_view["share_with_combined"] is True
+    assert owner_view["shared_from_site_id"] is None
+
+    assert _doc_out(private_a, a, viewing_site=a)["share_with_combined"] is False
+    assert _doc_out(own_b, b, viewing_site=c)["shared"] is True
+    assert _doc_out(private_b, b, viewing_site=b)["shared"] is False
+    assert _doc_out(lone_doc, lone, viewing_site=lone)["shared"] is False

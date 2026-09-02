@@ -37,12 +37,17 @@ class DocumentOut(BaseModel):
     visibility: str = "users"
     source: str = "site"
     comms_row_id: int | None = None
+    share_with_combined: bool = False
+    shared: bool = False
+    shared_from_site_id: int | None = None
+    shared_from_site_number: str | None = None
 
 
 class DocumentUpdate(BaseModel):
     category: str | None = None
     description: str | None = None
     visibility: str | None = None
+    share_with_combined: bool | None = None
 
 
 class TrackingEventOut(BaseModel):

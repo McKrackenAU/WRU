@@ -2713,6 +2713,18 @@ input[type="number"].num-stepper-input::-webkit-inner-spin-button {
   background: var(--panel);
 }
 
+#docShareCombinedWrap {
+  margin: 0 0 0.45rem;
+}
+
+.doc-share-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  margin-top: 0.35rem;
+}
+
 .doc-select-all,
 .doc-pick {
   display: inline-flex;

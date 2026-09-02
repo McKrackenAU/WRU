@@ -25,6 +25,7 @@ from ..file_store import materialize_original, read_stored_bytes, write_stored_b
 from ..storage_paths import documents_dir
 from ..doc_categories import FALLBACK_KEY, active_category_keys, category_label_map, ensure_doc_category_seed
 from ..models import Document, Site, User
+from ..services import combined_group_ids
 from ..routers.import_tracker import (
     CHUNK_SIZE,
     TrackerChunkBody,
@@ -54,6 +55,7 @@ class DocumentUploadBegin(BaseModel):
     description: str | None = None
     uploaded_by: str | None = None
     moa_number: str | None = None
+    share_with_combined: bool = False
 
 
 def normalize_doc_category(
@@ -80,6 +82,30 @@ def normalize_doc_category(
     if category == FALLBACK_KEY and suffix in {".eml", ".msg", ".oft"} and "email" in allowed:
         return "email"
     return category
+
+
+def parse_share_with_combined(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def query_site_documents(db: Session, site: Site):
+    """Own documents plus files siblings marked share-with-combined."""
+    query = db.query(Document)
+    member_ids = combined_group_ids(db, site)
+    siblings = [sid for sid in member_ids if sid != int(site.id)]
+    if not siblings:
+        return query.filter(Document.site_id == site.id)
+    return query.filter(
+        (Document.site_id == site.id)
+        | (
+            Document.site_id.in_(siblings)
+            & Document.share_with_combined.is_(True)
+        )
+    )
 
 
 def _cleanup_stale_sessions() -> None:
@@ -135,6 +161,7 @@ def store_document_bytes(
     source: str = "site",
     comms_row_id: int | None = None,
     allow_missing_site: bool = False,
+    share_with_combined: bool = False,
 ) -> Document:
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
@@ -169,6 +196,7 @@ def store_document_bytes(
         visibility=vis,
         source=src,
         comms_row_id=comms_row_id,
+        share_with_combined=bool(share_with_combined) and site is not None,
     )
     db.add(doc)
     db.commit()
@@ -188,8 +216,11 @@ def apply_document_visibility(query, user: User | None):
     return query.filter((Document.visibility == "users") | (Document.visibility.is_(None)))
 
 
-def _doc_out(doc: Document, site: Site | None = None) -> dict:
+def _doc_out(doc: Document, site: Site | None = None, *, viewing_site: Site | None = None) -> dict:
     site = site or doc.site
+    owner_id = int(doc.site_id) if doc.site_id else None
+    viewing_id = int(viewing_site.id) if viewing_site is not None else None
+    shared_in = bool(doc.share_with_combined and viewing_id and owner_id and viewing_id != owner_id)
     return {
         "id": doc.id,
         "site_id": doc.site_id,
@@ -206,6 +237,10 @@ def _doc_out(doc: Document, site: Site | None = None) -> dict:
         "visibility": doc.visibility or "users",
         "source": doc.source or "site",
         "comms_row_id": doc.comms_row_id,
+        "share_with_combined": bool(doc.share_with_combined),
+        "shared": shared_in,
+        "shared_from_site_id": owner_id if shared_in else None,
+        "shared_from_site_number": (site.site_number if site and shared_in else None),
     }
 
 
@@ -250,10 +285,10 @@ def list_documents(
     site = db.get(Site, site_id)
     if not site:
         raise HTTPException(status_code=404, detail="Site not found")
-    query = db.query(Document).filter(Document.site_id == site_id)
+    query = query_site_documents(db, site)
     query = apply_document_visibility(query, user)
     docs = query.order_by(Document.uploaded_at.desc(), Document.id.desc()).all()
-    return [_doc_out(d, site) for d in docs]
+    return [_doc_out(d, d.site or site, viewing_site=site) for d in docs]
 
 
 @router.post("/api/sites/{site_id}/documents", response_model=DocumentOut, status_code=201)
@@ -264,6 +299,7 @@ async def upload_document(
     category: str = Form(default="other"),
     description: str | None = Form(default=None),
     moa_number: str | None = Form(default=None),
+    share_with_combined: str | None = Form(default=None),
     db: Session = Depends(get_db),
 ):
     site = db.get(Site, site_id)
@@ -292,8 +328,9 @@ async def upload_document(
         description=description,
         uploaded_by=uploaded_by,
         moa_number=moa_number,
+        share_with_combined=parse_share_with_combined(share_with_combined),
     )
-    return _doc_out(doc, site)
+    return _doc_out(doc, site, viewing_site=site)
 
 
 @router.post("/api/sites/{site_id}/documents/session")
@@ -323,6 +360,7 @@ def begin_document_session(site_id: int, payload: DocumentUploadBegin, db: Sessi
             "description": (payload.description or "").strip() or None,
             "uploaded_by": (payload.uploaded_by or "").strip() or None,
             "moa_number": (payload.moa_number or "").strip() or None,
+            "share_with_combined": bool(payload.share_with_combined),
         },
     )
     return {
@@ -402,8 +440,9 @@ def commit_document_session(site_id: int, upload_id: str, db: Session = Depends(
             description=meta.get("description"),
             uploaded_by=meta.get("uploaded_by"),
             moa_number=meta.get("moa_number"),
+            share_with_combined=parse_share_with_combined(meta.get("share_with_combined")),
         )
-        return _doc_out(doc, site)
+        return _doc_out(doc, site, viewing_site=site)
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 
@@ -628,6 +667,8 @@ def update_document(
         if vis not in {"users", "comms"}:
             raise HTTPException(status_code=400, detail="Visibility must be users or comms")
         doc.visibility = vis
+    if payload.share_with_combined is not None:
+        doc.share_with_combined = bool(payload.share_with_combined)
     db.commit()
     db.refresh(doc)
     return _doc_out(doc)

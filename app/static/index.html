@@ -351,6 +351,11 @@
                   <input type="file" id="docFile" multiple />
                   <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
                 </div>
+                <label class="doc-select-all" id="docShareCombinedWrap" hidden>
+                  <input type="checkbox" id="docShareCombined" checked />
+                  Share with combined jobs
+                </label>
+                <p class="hint" id="docShareCombinedHint" hidden>This file will appear on every site in the combined MoA group.</p>
                 <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads and folder downloads use JSON chunks so workplace filters do not block them.</p>
                 <p class="hint" id="docUploadStatus" hidden></p>
                 <div class="doc-select-bar" id="docSelectBar">
