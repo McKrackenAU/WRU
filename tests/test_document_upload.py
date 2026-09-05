@@ -65,9 +65,9 @@ def test_chunked_document_upload_is_wired():
     assert "wireDocDropzone" in APP_JS
     assert 'addEventListener(\n    "drop"' in APP_JS
     assert "Drop files here" in INDEX
-    assert 'id="docShareCombined"' in INDEX
-    assert "Share with combined jobs" in INDEX
-    assert "share_with_combined: shareWithCombined" in APP_JS
+    assert 'id="docShareCombinedHint"' in INDEX
+    assert "share documents automatically" in INDEX
+    assert "openDocumentPreview" in APP_JS
     assert "data-doc-share" in APP_JS
     assert "syncDocShareCombinedUi" in APP_JS
     assert "function drawerIsCombined" in APP_JS

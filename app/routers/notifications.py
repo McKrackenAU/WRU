@@ -17,6 +17,8 @@ from ..notify import (
     normalize_tags,
     normalize_user_ids,
     notification_to_public,
+    parse_trigger,
+    trigger_catalog,
 )
 
 inbox_router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -70,8 +72,10 @@ def _apply_rule_fields(rule: NotificationRule, payload: RuleIn | RulePatchIn, *,
     if "enabled" in data and data["enabled"] is not None:
         rule.enabled = bool(data["enabled"])
     if "trigger" in data and data["trigger"] is not None:
-        trigger = (data["trigger"] or TRIGGER_STAGE_ENTERED).strip() or TRIGGER_STAGE_ENTERED
-        rule.trigger = trigger
+        try:
+            rule.trigger = parse_trigger(data["trigger"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if "stage_key" in data and data["stage_key"] is not None:
         rule.stage_key = (data["stage_key"] or "").strip()
     if "program" in data and data["program"] is not None:
@@ -155,7 +159,10 @@ def rule_options(db: Session = Depends(get_db)):
         .order_by(User.username.asc())
         .all()
     )
-    return {"users": [user_to_public(u) for u in users]}
+    return {
+        "users": [user_to_public(u) for u in users],
+        "triggers": trigger_catalog(),
+    }
 
 
 @admin_router.post("", status_code=201)

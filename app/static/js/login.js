@@ -18,7 +18,7 @@ function showError(id, msg) {
 }
 
 function nextUrl() {
-  return safeNextUrl(qs("next"), "/");
+  return safeNextUrl(qs("next"), "/dashboard");
 }
 
 function afterLogin(user) {

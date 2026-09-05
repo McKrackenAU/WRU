@@ -199,8 +199,16 @@ function renderItems() {
             ${item.error ? ` · <span class="must-have late">${escapeHtml(item.error)}</span>` : ""}
           </div>
         </div>
-        <label class="gantt-shifts">Shifts
+        <label class="gantt-shifts">Days of work
           <input type="number" min="1" value="${item.shifts_count}" data-shifts="${item.id}" />
+          <span class="gantt-day-presets">
+            ${[1, 2, 3, 5, 10]
+              .map(
+                (n) =>
+                  `<button type="button" class="btn btn-sm" data-shift-preset="${item.id}" data-days="${n}">${n}</button>`
+              )
+              .join("")}
+          </span>
         </label>
         <div class="gantt-shift-checks">
           <label class="check-row gantt-shift-check">
@@ -361,6 +369,20 @@ async function init() {
     syncPdfLink();
   });
   on("ganttList", "click", async (ev) => {
+    const preset = ev.target.closest("[data-shift-preset]");
+    if (preset) {
+      state.board = await api(
+        `/api/gantt/board/items/${preset.dataset.shiftPreset}?program=${encodeURIComponent(program())}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shifts_count: Number(preset.dataset.days || 1) }),
+        }
+      );
+      applyBoardForm();
+      renderItems();
+      return;
+    }
     const rm = ev.target.closest("[data-rm]");
     if (!rm) return;
     if (!await confirmDialog("Remove this site from the Gantt?")) return;

@@ -5,6 +5,7 @@ import {
   confirmDialog,
   errorMessage,
   uploadFileChunked,
+  downloadChunkedSession,
 } from "./common.js";
 
 function setStatus(id, text) {
@@ -17,33 +18,14 @@ async function exportBackup() {
   const btn = $("btnExportBackup");
   if (btn) btn.disabled = true;
   try {
-    const res = await fetch("/api/admin/backup/export", {
-      credentials: "include",
-      cache: "no-store",
+    await downloadChunkedSession({
+      beginUrl: "/api/admin/backup/export/session",
+      beginBody: {},
+      chunkUrl: (id, i) => `/api/documents/download-session/${encodeURIComponent(id)}/chunk/${i}`,
+      onProgress: (msg) => setStatus("exportStatus", msg),
+      timeoutMs: 120000,
     });
-    if (!res.ok) {
-      let detail = res.statusText || `HTTP ${res.status}`;
-      try {
-        const body = await res.json();
-        if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-      } catch {
-        /* ignore */
-      }
-      throw new Error(detail);
-    }
-    const blob = await res.blob();
-    const disp = res.headers.get("content-disposition") || "";
-    const match = /filename="?([^"]+)"?/i.exec(disp);
-    const name = match?.[1] || "wru-backup.zip";
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    setStatus("exportStatus", `Downloaded ${name}`);
+    setStatus("exportStatus", "Backup downloaded");
   } catch (err) {
     setStatus("exportStatus", "");
     await alertDialog(errorMessage(err, "Could not export backup"));

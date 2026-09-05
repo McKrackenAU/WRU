@@ -31,8 +31,8 @@ def test_ui_wires_combined_application_picker():
     assert "Same MoA application as" in INDEX
     assert "combined_site_ids: collectCombinedSiteIds()" in APP_JS
     assert "badge-combined" in APP_JS
-    assert 'id="docShareCombined"' in INDEX
-    assert "Share with combined jobs" in INDEX
+    assert 'id="docShareCombinedHint"' in INDEX
+    assert "share documents automatically" in INDEX
     assert "show as one row" in LISTS_HTML
     assert "group_client_list_applications" in EXPORT
     assert "group_client_list_applications" in SITES
@@ -234,3 +234,17 @@ def test_combined_group_ids_and_shared_documents():
     assert _doc_out(own_b, b, viewing_site=c)["shared"] is True
     assert _doc_out(private_b, b, viewing_site=b)["shared"] is False
     assert _doc_out(lone_doc, lone, viewing_site=lone)["shared"] is False
+
+
+def test_combining_sites_auto_shares_existing_documents():
+    db = _session()
+    a = _site(db, "BALLARAT RD", "S10")
+    b = _site(db, "BALLARAT RD", "S11")
+    existing = _doc(db, a, "already-on-a.pdf", shared=False)
+    db.flush()
+    apply_combined_application(db, a, [b.id])
+    db.flush()
+    db.refresh(existing)
+    assert existing.share_with_combined is True
+    names = {d.original_filename for d in query_site_documents(db, b)}
+    assert "already-on-a.pdf" in names

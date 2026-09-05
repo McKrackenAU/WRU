@@ -284,6 +284,11 @@ def lists_page():
     return _page("lists.html")
 
 
+@app.get("/generics")
+def generics_page():
+    return _page("generics.html")
+
+
 @app.get("/archive")
 def archive_page():
     return _page("archive.html")

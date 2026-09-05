@@ -21,6 +21,7 @@ import {
   fillDocCategorySelect,
   docCategorySelectHtml,
   downloadDocumentsZip,
+  openDocumentPreview,
 } from "./common.js";
 import { categoryTagsFor, selectedTagsFrom, tagPickerHtml } from "./tag_picker.js";
 
@@ -466,6 +467,16 @@ function siteRowHtml(site) {
   const combinedBadge = combinedNums.length
     ? `<span class="badge badge-combined" title="Same MoA application">Combined · ${escapeHtml(combinedNums.join(", "))}</span>`
     : "";
+  const extFlag = String(site.extension_flag || "").trim().toLowerCase();
+  const extensionBadge =
+    extFlag === "yes"
+      ? `<span class="badge badge-extension" title="Extension / change applied${
+          site.extension_submission_date ? ` ${fmtDate(site.extension_submission_date)}` : ""
+        }">Extension applied</span>`
+      : "";
+  const genericBadge = site.is_generic_moa
+    ? `<span class="badge badge-generic" title="Network-wide generic MoA">Generic MoA</span>`
+    : "";
   return `<tr class="register-row ${highlight}" data-site-id="${site.id}" data-action="open" data-id="${site.id}" data-program="${escapeHtml(site.program || "Unassigned")}" data-priority="${site.today_priority || ""}">
     <td class="select-col" onclick="event.stopPropagation()">
       <input type="checkbox" class="site-select" data-select-id="${site.id}" ${checked} aria-label="Select ${escapeHtml(site.road_name)}" />
@@ -479,6 +490,8 @@ function siteRowHtml(site) {
       <div class="register-row-tags">
         ${tagChips}
         ${combinedBadge}
+        ${extensionBadge}
+        ${genericBadge}
         <button type="button" class="btn btn-sm" data-job-tags="${site.id}">Tags</button>
       </div>
     </td>
@@ -1516,7 +1529,7 @@ function setSiteExtrasVisible(visible) {
 }
 
 function setTab(name) {
-  state.activeTab = name;
+  if (name === "workflow") name = "overview";
   document.querySelectorAll(".drawer-tab").forEach((t) => {
     t.classList.toggle("active", t.dataset.tab === name);
   });
@@ -1964,8 +1977,8 @@ function drawerIsCombined(site = currentDrawerSite()) {
 }
 
 function syncDocShareCombinedUi(site = currentDrawerSite()) {
-  const combined = drawerIsCombined(site) && !state.readOnlyArchive;
-  if ($("docShareCombinedWrap")) $("docShareCombinedWrap").hidden = !combined;
+  const combined = drawerIsCombined(site);
+  if ($("docShareCombinedWrap")) $("docShareCombinedWrap").hidden = true;
   if ($("docShareCombinedHint")) $("docShareCombinedHint").hidden = !combined;
 }
 
@@ -2013,7 +2026,8 @@ async function refreshDocuments() {
           </span>
           ${canDelete ? `<button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>` : ""}
         </div>
-        <p><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></p>
+        <p><a href="/api/documents/${d.id}/download" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">${escapeHtml(d.original_filename)}</a>
+          <button type="button" class="btn btn-sm" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">View</button></p>
         ${d.description ? `<p class="meta">${escapeHtml(d.description)}</p>` : ""}
         ${shareToggle || shareBadge ? `<div class="doc-share-meta">${shareToggle}${shareBadge}</div>` : ""}
       </li>`;
@@ -2138,7 +2152,7 @@ async function uploadDoc(incomingFiles) {
   }
   const category = $("docCategory")?.value || "other";
   const description = $("docDesc")?.value.trim() || null;
-  const shareWithCombined = Boolean(drawerIsCombined() && $("docShareCombined")?.checked);
+  const shareWithCombined = drawerIsCombined();
   const uploadedBy = userName() || null;
   const btn = $("btnUploadDoc");
   if (btn) btn.disabled = true;
@@ -2487,6 +2501,16 @@ function bindEvents() {
   });
 
   on("docList", "click", async (ev) => {
+    const preview = ev.target.closest("[data-doc-preview]");
+    if (preview) {
+      ev.preventDefault();
+      openDocumentPreview({
+        id: Number(preview.dataset.docPreview),
+        original_filename: preview.dataset.docName,
+        content_type: preview.dataset.docType,
+      });
+      return;
+    }
     const btn = ev.target.closest("[data-del-doc]");
     if (!btn) return;
     const shared = btn.closest("li")?.querySelector("[data-doc-share]:checked, .badge-combined");

@@ -31,8 +31,8 @@ NOTIFY_ADMIN = (ROOT / "app/static/js/notify_admin.js").read_text(encoding="utf-
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_212():
-    assert VERSION == "2.12"
+def test_version_is_213():
+    assert VERSION == "2.13"
 
 
 def test_merge_and_effective_job_tags():
@@ -93,7 +93,8 @@ def test_admin_tags_page_wired():
     assert 'register-row-tags" onclick="event.stopPropagation()"' not in APP_JS
     assert 'register-program-tags" onclick="event.stopPropagation()"' not in APP_JS
     assert "renderJobTags" in APP_JS
-    assert "calendar_note" in NOTIFY_ADMIN
+    assert "opts.triggers" in NOTIFY_ADMIN
+    assert "triggerNeedsStage" in NOTIFY_ADMIN
     assert "ensure_calendar_note_rule" in NOTIFY
     assert "dispatch_calendar_note_notifications" in NOTIFY
 

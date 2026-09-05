@@ -18,7 +18,12 @@ from app.services import apply_workflow, ensure_workflow_steps, set_councils  # 
 
 
 def main() -> None:
+    import os
+
     run_migrations()
+    if (os.environ.get("WRU_SKIP_SEED") or "").strip() in {"1", "true", "yes"}:
+        print("WRU_SKIP_SEED is set; not loading sample sites.")
+        return
     db = SessionLocal()
     try:
         if db.query(Site).count():

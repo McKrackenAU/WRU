@@ -353,6 +353,14 @@ def apply_combined_application(db: Session, site: Site, other_ids: list[int] | N
                 row.combined_application_id = None
 
     sync_combined_application_from(db, site)
+    from .models import Document
+
+    member_ids = [int(s.id) for s in new_members]
+    if member_ids:
+        db.query(Document).filter(Document.site_id.in_(member_ids)).update(
+            {Document.share_with_combined: True},
+            synchronize_session=False,
+        )
     return [int(s.id) for s in others]
 
 

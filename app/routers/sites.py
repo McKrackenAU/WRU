@@ -13,7 +13,14 @@ from ..storage_paths import cost_estimates_dir, documents_dir
 from ..financial_year import australian_financial_year
 from ..activity import actor_name, log_site_activity, log_stage_change, site_label, snapshot_stage
 from ..live_hub import notify_from_request
-from ..notify import dispatch_comms_due_notifications, dispatch_stage_notifications, normalize_tags
+from ..notify import (
+    TRIGGER_EXTENSION_APPLIED,
+    TRIGGER_MOA_RECEIVED,
+    dispatch_comms_due_notifications,
+    dispatch_named_notifications,
+    dispatch_stage_notifications,
+    normalize_tags,
+)
 from ..lookups import ensure_lookup_value
 from ..gantt_engine import recompute_board_dates
 from ..models import CostEstimate, GanttBoard, GanttItem, MapFeature, MapLayer, Site, SiteCouncil
@@ -407,6 +414,8 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
         data["tags"] = normalize_tags(data.get("tags"))
 
     before_stage = snapshot_stage(site, db)
+    before_moa = site.moa_received_date
+    before_ext = (site.extension_flag or "").strip().lower()
     who = actor_name(request)
 
     for key, value in data.items():
@@ -471,6 +480,12 @@ def update_site(site_id: int, payload: SiteUpdate, request: Request, db: Session
         log_stage_change(db, site, before_key=before_stage, after_key=after_stage, who=who)
     if before_stage != after_stage:
         dispatch_stage_notifications(db, site, before_stage, after_stage)
+    after_moa = site.moa_received_date
+    after_ext = (site.extension_flag or "").strip().lower()
+    if after_moa and after_moa != before_moa:
+        dispatch_named_notifications(db, site, TRIGGER_MOA_RECEIVED)
+    if after_ext == "yes" and before_ext != "yes":
+        dispatch_named_notifications(db, site, TRIGGER_EXTENSION_APPLIED)
     if "indicative_site_start_date" in data:
         dispatch_comms_due_notifications(db, site=site)
 

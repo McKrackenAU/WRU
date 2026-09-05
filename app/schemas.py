@@ -378,3 +378,7 @@ class DashboardOut(BaseModel):
     permits_priority_count: int
     trims_priority_count: int = 0
     recent_tracking: list[dict[str, Any]]
+    focus_tags: list[str] = Field(default_factory=list)
+    recent_approvals: list[dict[str, Any]] = Field(default_factory=list)
+    recent_status_changes: list[dict[str, Any]] = Field(default_factory=list)
+    comms_preview: list[dict[str, Any]] = Field(default_factory=list)

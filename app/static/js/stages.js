@@ -238,8 +238,13 @@ async function init() {
   $("programList").addEventListener("click", async (ev) => {
     const del = ev.target.closest("[data-del-prog]");
     if (!del) return;
-    if (!await confirmDialog("Deactivate this program category?")) return;
-    await api(`/api/admin/programs/${del.dataset.delProg}`, { method: "DELETE" });
+    if (
+      !await confirmDialog(
+        "Remove this program category completely? Jobs using it keep their other fields and the program name is cleared."
+      )
+    )
+      return;
+    await api(`/api/admin/programs/${del.dataset.delProg}?hard=true`, { method: "DELETE" });
     await loadPrograms();
   });
 }

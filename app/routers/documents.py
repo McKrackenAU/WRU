@@ -196,7 +196,11 @@ def store_document_bytes(
         visibility=vis,
         source=src,
         comms_row_id=comms_row_id,
-        share_with_combined=bool(share_with_combined) and site is not None,
+        share_with_combined=(
+            bool(share_with_combined)
+            or bool(site is not None and getattr(site, "combined_application_id", None))
+        )
+        and site is not None,
     )
     db.add(doc)
     db.commit()
@@ -695,6 +699,30 @@ def download_document(
         filename=doc.original_filename,
         background=BackgroundTask(unpacked.unlink, missing_ok=True) if ephemeral else None,
     )
+
+
+@router.get("/api/documents/{document_id}/view")
+def view_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    doc = db.get(Document, document_id)
+    if not doc or not document_is_visible(doc, user):
+        raise HTTPException(status_code=404, detail="Document not found")
+    path = documents_dir() / doc.stored_name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File missing on disk")
+    unpacked, ephemeral = materialize_original(path)
+    name = doc.original_filename or path.name
+    response = FileResponse(
+        unpacked,
+        media_type=doc.content_type or "application/octet-stream",
+        background=BackgroundTask(unpacked.unlink, missing_ok=True) if ephemeral else None,
+    )
+    safe = "".join("_" if ch in '\\/:*?"<>|' else ch for ch in name)
+    response.headers["Content-Disposition"] = f'inline; filename="{safe}"'
+    return response
 
 
 @router.delete("/api/documents/{document_id}", status_code=204)
