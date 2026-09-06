@@ -26,7 +26,7 @@
       <div class="page-head">
         <div>
           <h1>Notification rules</h1>
-          <p>Push a bell notice to people with matching account tags. Example: a Structures job enters Ready for Works → anyone tagged <code>structures</code> (Omar and others) is flagged.</p>
+          <p>Every built-in flag is listed here so you can edit who it reaches. Add more rules for stage changes, MoA approval, extensions, comms due dates, and calendar notes.</p>
         </div>
       </div>
 
@@ -39,11 +39,7 @@
           </label>
           <label>
             Trigger
-            <select id="newTrigger">
-              <option value="stage_entered">Job enters a stage</option>
-              <option value="comms_due">Comms item due or overdue</option>
-              <option value="calendar_note">Calendar note added</option>
-            </select>
+            <select id="newTrigger"></select>
           </label>
           <label id="newStageWrap">
             When a job enters

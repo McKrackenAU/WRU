@@ -16,6 +16,8 @@ import {
 
 const JOB_FILTER_KEY = "job";
 const BLANK = "(Blank)";
+const BLANK_LABEL = "Empty";
+const ROAD_OTHER = "__other__";
 const COLOR_PALETTE = ["#2fbf78", "#5aa0d6", "#a78bfa", "#fb7185", "#fbbf24", "#2dd4bf", "#fb923c", "#94a3b8", "#f472b6", "#38bdf8"];
 
 const DRAWER_TAB_RULES = [
@@ -42,6 +44,10 @@ const state = {
   formFields: [],
   notes: [],
   jobCategories: [],
+  roads: [],
+  dirtyFields: new Set(),
+  baseUpdatedAt: null,
+  filterQuery: {},
 };
 
 function sheetIdFromUrl() {
@@ -91,8 +97,35 @@ function labeledControl(name, controlHtml) {
   return `<label class="full comms-field"><span class="comms-field-label">${escapeHtml(name)}</span>${controlHtml}</label>`;
 }
 
+function isRoadColumn(col) {
+  const hay = `${col.field_key || ""} ${col.name || ""}`;
+  return /road|street|location/i.test(hay) && col.field_type === "text";
+}
+
+function roadSelectHtml(col, value) {
+  const v = value == null ? "" : String(value);
+  const roads = state.roads || [];
+  const known = roads.some((r) => r === v);
+  const options = ["", ...roads, ROAD_OTHER];
+  const selected = known || !v ? v : ROAD_OTHER;
+  return `<div class="comms-road-wrap">
+    <select data-field="${escapeHtml(col.field_key)}" data-road-select="1">
+      ${options
+        .map((o) => {
+          const label = o === ROAD_OTHER ? "Other…" : o || "Select…";
+          return `<option value="${escapeHtml(o)}" ${o === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+        })
+        .join("")}
+    </select>
+    <input type="text" data-field="${escapeHtml(col.field_key)}" data-road-other="1" placeholder="Custom road name" ${
+      selected === ROAD_OTHER ? "" : "hidden"
+    } value="${escapeHtml(known ? "" : v)}" />
+  </div>`;
+}
+
 function cellInput(col, value) {
   const v = value == null ? "" : String(value);
+  if (isRoadColumn(col)) return roadSelectHtml(col, v);
   if (col.field_type === "checkbox") {
     return `<input type="checkbox" data-field="${escapeHtml(col.field_key)}" ${
       v === "true" || v === "1" || v.toLowerCase() === "yes" ? "checked" : ""
@@ -516,16 +549,18 @@ function renderFilters() {
             <button type="button" class="filter-drop-tool" data-drop-select="all" data-drop-key="${escapeHtml(col.key)}">All</button>
             <button type="button" class="filter-drop-tool" data-drop-select="none" data-drop-key="${escapeHtml(col.key)}">None</button>
           </div>
+          <input type="search" class="filter-drop-search" data-filter-search="${escapeHtml(col.key)}" placeholder="Find…" autocomplete="off" />
           <div class="filter-drop-col">
             ${values
-              .map(
-                (value) => `<label class="lists-check">
+              .map((value) => {
+                const label = value === BLANK ? BLANK_LABEL : value;
+                return `<label class="lists-check" title="${escapeHtml(label)}">
                   <input type="checkbox" data-filter-key="${escapeHtml(col.key)}" value="${escapeHtml(value)}" ${
                     selected.has(value) ? "checked" : ""
                   } />
-                  <span>${escapeHtml(value)}</span>
-                </label>`
-              )
+                  <span>${escapeHtml(label)}</span>
+                </label>`;
+              })
               .join("")}
           </div>
         </div>
@@ -833,8 +868,33 @@ function renderDrawer() {
     `;
     refreshFormFileLists().catch(() => {});
   } else {
+    const jobBlock =
+      active.id === "overview"
+        ? `<div class="form-section">
+          <h3>Linked job</h3>
+          <p class="hint">Link this planner row to a site register job.</p>
+          <p id="jobLinked"></p>
+          <div class="form-grid">
+            <label>Category
+              <select id="jobCategory">
+                <option value="">Select a category…</option>
+              </select>
+            </label>
+            <label>Job
+              <select id="jobPick" disabled>
+                <option value="">Select a job…</option>
+              </select>
+            </label>
+            <label class="full">Or search
+              <input id="jobSearch" type="search" placeholder="Search road, site, MoA…" autocomplete="off" />
+            </label>
+          </div>
+          <ul class="comms-job-results" id="jobResults" hidden></ul>
+        </div>`
+        : "";
     $("commsDrawerBody").innerHTML = `
       <section class="tab-panel active">
+        ${jobBlock}
         <div class="form-section">
           <h3>${escapeHtml(active.label)}</h3>
           <div class="form-grid" id="commsFieldGrid">
@@ -845,6 +905,11 @@ function renderDrawer() {
         </div>
       </section>
     `;
+    if (active.id === "overview") {
+      renderJobLinked();
+      bindDrawerJobHandlers();
+      loadJobCategories().catch(() => {});
+    }
   }
   openDrawer();
 }
@@ -1177,17 +1242,38 @@ async function loadSheets(preferredId) {
   }
 }
 
-async function loadSheet(id, { keepRow } = {}) {
+async function loadSheet(id, { keepRow, skipDrawer } = {}) {
   state.view = "planner";
-  state.sheet = await api(`/api/comms/sheets/${id}`);
+  const incoming = await api(`/api/comms/sheets/${id}`);
   const keep = keepRow || state.openRowId;
-  if (keep && !(state.sheet.rows || []).some((r) => r.id === keep)) state.openRowId = null;
-  else if (keep) state.openRowId = keep;
+  const openId = keep && (incoming.rows || []).some((r) => r.id === keep) ? keep : null;
+  const dirty = state.dirtyFields.size > 0 && openId && state.openRowId === openId;
+  if (dirty) {
+    const local = (state.sheet?.rows || []).find((r) => r.id === openId);
+    const remote = (incoming.rows || []).find((r) => r.id === openId);
+    if (local && remote) {
+      remote.values = { ...(remote.values || {}), ...pickDirty(local.values || {}, state.dirtyFields) };
+      remote.form_values = { ...(remote.form_values || {}), ...pickDirty(local.form_values || {}, state.dirtyFields) };
+    }
+  }
+  state.sheet = incoming;
+  state.openRowId = openId;
   setSheetUrl(id, state.openRowId);
   renderSheetTabs();
   setViewChrome();
   renderTable({ refreshFilters: true });
-  if (state.openRowId) renderDrawer();
+  if (state.openRowId && !skipDrawer && !dirty) {
+    state.baseUpdatedAt = currentRow()?.updated_at || null;
+    renderDrawer();
+  }
+}
+
+function pickDirty(values, keys) {
+  const out = {};
+  for (const key of keys) {
+    if (key in values) out[key] = values[key];
+  }
+  return out;
 }
 
 function showDrawerSaved(ok = true) {
@@ -1230,13 +1316,28 @@ async function persistDrawerField(el) {
   }
   const field = el.dataset.field;
   if (!field) return;
-  const value = el.type === "checkbox" ? (el.checked ? "Yes" : "No") : el.value;
+  let value = el.type === "checkbox" ? (el.checked ? "Yes" : "No") : el.value;
+  if (el.dataset.roadSelect === "1") {
+    if (value === ROAD_OTHER) {
+      const other = el.parentElement?.querySelector("[data-road-other]");
+      if (other) other.hidden = false;
+      return;
+    }
+    const other = el.parentElement?.querySelector("[data-road-other]");
+    if (other) other.hidden = true;
+  }
+  if (el.dataset.roadOther === "1") value = el.value;
+  state.dirtyFields.add(field);
   await saveCell(state.openRowId, field, value);
+  state.dirtyFields.delete(field);
+  const row = currentRow();
+  if (row?.updated_at) state.baseUpdatedAt = row.updated_at;
   renderTable();
   showDrawerSaved();
 }
 
 function queueDrawerField(el) {
+  if (el?.dataset?.field) state.dirtyFields.add(el.dataset.field);
   clearTimeout(state.fieldTimer);
   state.fieldTimer = setTimeout(() => {
     persistDrawerField(el).catch((err) => alertDialog(errorMessage(err, "Could not save")));
@@ -1244,13 +1345,44 @@ function queueDrawerField(el) {
 }
 
 async function saveCell(rowId, field, value) {
-  await api(`/api/comms/rows/${rowId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ values: { [field]: value } }),
-  });
   const row = (state.sheet?.rows || []).find((r) => r.id === rowId);
-  if (row) row.values = { ...(row.values || {}), [field]: value };
+  try {
+    const next = await api(`/api/comms/rows/${rowId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        values: { [field]: value },
+        expected_updated_at: state.baseUpdatedAt || row?.updated_at || null,
+      }),
+    });
+    if (row) {
+      row.values = next.values || { ...(row.values || {}), [field]: value };
+      row.updated_at = next.updated_at || row.updated_at;
+    }
+    state.baseUpdatedAt = next.updated_at || state.baseUpdatedAt;
+  } catch (err) {
+    if (err?.status === 409 || /409|Someone else changed/i.test(err?.message || "")) {
+      const keep = await confirmDialog(
+        `Someone else also changed “${field}”. Keep your value?\n\nYours: ${value || "(empty)"}`
+      );
+      if (!keep) {
+        await loadSheet(state.sheet.id, { keepRow: rowId });
+        return;
+      }
+      const next = await api(`/api/comms/rows/${rowId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: { [field]: value } }),
+      });
+      if (row) {
+        row.values = next.values || { ...(row.values || {}), [field]: value };
+        row.updated_at = next.updated_at || row.updated_at;
+      }
+      state.baseUpdatedAt = next.updated_at || state.baseUpdatedAt;
+      return;
+    }
+    throw err;
+  }
 }
 
 async function saveGroupColor(group, color) {
@@ -1396,6 +1528,12 @@ function renderColumnList() {
 
 async function init() {
   await injectChrome({ active: "/comms" });
+  try {
+    const meta = await api("/api/meta");
+    state.roads = meta.roads || [];
+  } catch {
+    state.roads = [];
+  }
   await loadFormFields().catch(() => {});
   await loadSheets();
 
@@ -1661,6 +1799,18 @@ async function init() {
     if (box.checked) state.filters[key].add(box.value);
     else state.filters[key].delete(box.value);
     renderTable();
+  });
+  $("commsFilters")?.addEventListener("input", (ev) => {
+    const search = ev.target.closest("[data-filter-search]");
+    if (!search) return;
+    const q = search.value.trim().toLowerCase();
+    search
+      .closest(".filter-drop")
+      ?.querySelectorAll(".filter-drop-col .lists-check")
+      .forEach((row) => {
+        const text = (row.textContent || "").toLowerCase();
+        row.hidden = Boolean(q) && !text.includes(q);
+      });
   });
 
   on("btnAddSheet", "click", async () => {
@@ -2013,7 +2163,11 @@ async function init() {
   });
 
   onLiveSitesChanged(() => {
-    if (state.sheet) loadSheet(state.sheet.id, { keepRow: state.openRowId }).catch(() => {});
+    if (!state.sheet) return;
+    loadSheet(state.sheet.id, {
+      keepRow: state.openRowId,
+      skipDrawer: state.dirtyFields.size > 0,
+    }).catch(() => {});
   });
 }
 

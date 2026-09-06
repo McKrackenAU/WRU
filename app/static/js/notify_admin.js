@@ -3,6 +3,23 @@ import { $, api, on, escapeHtml, injectChrome, alertDialog, confirmDialog, showP
 let stages = [];
 let programs = [];
 let users = [];
+let triggers = [];
+
+function triggerNeedsStage(key) {
+  const row = triggers.find((t) => t.key === key);
+  if (row) return Boolean(row.needs_stage);
+  return key === "stage_entered";
+}
+
+function triggerOptions(selected) {
+  const want = selected || (triggers[0] && triggers[0].key) || "stage_entered";
+  return triggers
+    .map(
+      (t) =>
+        `<option value="${escapeHtml(t.key)}" ${t.key === want ? "selected" : ""}>${escapeHtml(t.label)}</option>`
+    )
+    .join("");
+}
 
 function userLabel(id) {
   const u = users.find((row) => row.id === id);
@@ -72,12 +89,8 @@ async function loadRules() {
               return `<tr data-id="${r.id}">
                 <td><input data-f="name" value="${escapeHtml(r.name)}" /></td>
                 <td>
-                  <select data-f="trigger">
-                    <option value="stage_entered" ${r.trigger === "stage_entered" || !r.trigger ? "selected" : ""}>Job enters a stage</option>
-                    <option value="comms_due" ${r.trigger === "comms_due" ? "selected" : ""}>Comms due / overdue</option>
-                    <option value="calendar_note" ${r.trigger === "calendar_note" ? "selected" : ""}>Calendar note added</option>
-                  </select>
-                  <select data-f="stage_key" ${r.trigger === "comms_due" || r.trigger === "calendar_note" ? "hidden" : ""}>${stageOptions(r.stage_key)}</select>
+                  <select data-f="trigger">${triggerOptions(r.trigger)}</select>
+                  <select data-f="stage_key" ${triggerNeedsStage(r.trigger) ? "" : "hidden"}>${stageOptions(r.stage_key)}</select>
                 </td>
                 <td><select data-f="program">${programOptions(r.program)}</select></td>
                 <td>
@@ -109,6 +122,10 @@ async function loadRules() {
 
   wrap.querySelectorAll("tr[data-id]").forEach((tr) => {
     const id = Number(tr.dataset.id);
+    tr.querySelector('[data-f="trigger"]')?.addEventListener("change", (ev) => {
+      const stage = tr.querySelector('[data-f="stage_key"]');
+      if (stage) stage.hidden = !triggerNeedsStage(ev.target.value);
+    });
     tr.querySelector("[data-save]")?.addEventListener("click", async () => {
       try {
         await api(`/api/admin/notification-rules/${id}`, {
@@ -148,13 +165,15 @@ async function init() {
   stages = meta.workflow_stages || [];
   programs = meta.programs || [];
   users = opts.users || [];
+  triggers = opts.triggers || [];
 
+  $("newTrigger").innerHTML = triggerOptions("stage_entered");
   $("newStage").innerHTML = stageOptions("ready_for_works");
   $("newProgram").innerHTML = programOptions("Structures");
   $("newUsers").innerHTML = userOptions([]);
   const syncTrigger = () => {
     const wrap = $("newStageWrap");
-    if (wrap) wrap.hidden = ["comms_due", "calendar_note"].includes($("newTrigger").value);
+    if (wrap) wrap.hidden = !triggerNeedsStage($("newTrigger").value);
   };
   $("newTrigger")?.addEventListener("change", syncTrigger);
   syncTrigger();
@@ -182,9 +201,11 @@ async function init() {
       });
       $("createRuleForm").reset();
       $("newEnabled").checked = true;
+      $("newTrigger").innerHTML = triggerOptions("stage_entered");
       $("newStage").innerHTML = stageOptions("ready_for_works");
       $("newProgram").innerHTML = programOptions("Structures");
       $("newUsers").innerHTML = userOptions([]);
+      syncTrigger();
       msg.textContent = "Rule saved.";
       await loadRules();
     } catch (err) {

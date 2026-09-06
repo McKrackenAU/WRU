@@ -96,7 +96,7 @@ def test_backup_admin_page_wired():
     main = (root / "app/main.py").read_text(encoding="utf-8")
     assert "Download backup" in html
     assert "Import backup" in html
-    assert "/api/admin/backup/export" in js
+    assert "/api/admin/backup/export/session" in js
     assert "/api/admin/backup/session" in js
     assert 'href="/admin/backup"' in admin
     assert 'href: "/admin/backup"' in nav

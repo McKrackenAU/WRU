@@ -17,11 +17,23 @@ MAX_USER_IDS = 50
 TRIGGER_STAGE_ENTERED = "stage_entered"
 TRIGGER_COMMS_DUE = "comms_due"
 TRIGGER_CALENDAR_NOTE = "calendar_note"
+TRIGGER_MOA_RECEIVED = "moa_received"
+TRIGGER_EXTENSION_APPLIED = "extension_applied"
 DEFAULT_RULE_NAME = "Structures ready for works"
 COMMS_DUE_RULE_NAME = "Comms item due"
 CALENDAR_NOTE_RULE_NAME = "Calendar note"
+MOA_RECEIVED_RULE_NAME = "MoA received"
+EXTENSION_APPLIED_RULE_NAME = "Extension applied"
 DEFAULT_LIBRARY_TAGS = (("structures", "Structures"), ("comms", "Comms"))
-STAGELESS_TRIGGERS = {TRIGGER_COMMS_DUE, TRIGGER_CALENDAR_NOTE}
+KNOWN_TRIGGERS = [
+    {"key": TRIGGER_STAGE_ENTERED, "label": "Job enters a stage", "needs_stage": True},
+    {"key": TRIGGER_COMMS_DUE, "label": "Comms item due or overdue", "needs_stage": False},
+    {"key": TRIGGER_CALENDAR_NOTE, "label": "Calendar note added", "needs_stage": False},
+    {"key": TRIGGER_MOA_RECEIVED, "label": "MoA received / approved", "needs_stage": False},
+    {"key": TRIGGER_EXTENSION_APPLIED, "label": "Extension applied for", "needs_stage": False},
+]
+KNOWN_TRIGGER_KEYS = {item["key"] for item in KNOWN_TRIGGERS}
+STAGELESS_TRIGGERS = {item["key"] for item in KNOWN_TRIGGERS if not item["needs_stage"]}
 _PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}", re.IGNORECASE)
 
 
@@ -71,6 +83,28 @@ def normalize_user_ids(raw) -> list[int]:
 
 def user_tag_set(user) -> set[str]:
     return set(normalize_tags(getattr(user, "tags", None)))
+
+
+def trigger_catalog() -> list[dict]:
+    return [dict(item) for item in KNOWN_TRIGGERS]
+
+
+def parse_trigger(raw: str | None) -> str:
+    key = (raw or "").strip() or TRIGGER_STAGE_ENTERED
+    if key not in KNOWN_TRIGGER_KEYS:
+        raise ValueError("Unknown notification trigger")
+    return key
+
+
+def site_matches_user_focus(site, user, db: Session | None = None) -> bool:
+    """True when the user has no tags, or shares a tag with the job/program."""
+    wanted = user_tag_set(user)
+    if not wanted:
+        return True
+    category = category_tags_for_program(db, getattr(site, "program", None))
+    have = set(effective_job_tags(site, category))
+    have.update(normalize_tags(getattr(site, "program", None)))
+    return bool(wanted & have)
 
 
 def merge_tag_lists(*groups) -> list[str]:
@@ -396,6 +430,136 @@ def dispatch_calendar_note_notifications(
             )
         )
         created += 1
+    return created
+
+
+def ensure_named_trigger_rule(
+    db: Session,
+    *,
+    trigger: str,
+    name: str,
+    target_tags: list[str],
+    message_template: str = "",
+    stage_key: str = "",
+    program: str = "",
+) -> None:
+    existing = (
+        db.query(NotificationRule)
+        .filter(NotificationRule.trigger == trigger)
+        .first()
+    )
+    if existing:
+        return
+    db.add(
+        NotificationRule(
+            name=name,
+            enabled=True,
+            trigger=trigger,
+            stage_key=stage_key,
+            program=program,
+            target_tags=list(target_tags),
+            target_user_ids=[],
+            message_template=message_template,
+        )
+    )
+    db.commit()
+
+
+def ensure_builtin_notification_rules(db: Session) -> None:
+    """Seed every built-in trigger so admins can edit them instead of hard-coded flags."""
+    ensure_default_notification_rules(db)
+    ensure_comms_due_rule(db)
+    ensure_calendar_note_rule(db)
+    ensure_named_trigger_rule(
+        db,
+        trigger=TRIGGER_MOA_RECEIVED,
+        name=MOA_RECEIVED_RULE_NAME,
+        target_tags=["structures"],
+        message_template="MoA approved for {site}.",
+    )
+    ensure_named_trigger_rule(
+        db,
+        trigger=TRIGGER_EXTENSION_APPLIED,
+        name=EXTENSION_APPLIED_RULE_NAME,
+        target_tags=["structures"],
+        message_template="Extension applied for {site}.",
+    )
+
+
+def rule_matches_named_trigger(rule, trigger: str, site) -> bool:
+    if not getattr(rule, "enabled", True):
+        return False
+    if (getattr(rule, "trigger", None) or "") != trigger:
+        return False
+    wanted_program = (getattr(rule, "program", None) or "").strip()
+    if wanted_program:
+        site_program = (getattr(site, "program", None) or "").strip()
+        if site_program.lower() != wanted_program.lower():
+            return False
+    return True
+
+
+def dispatch_named_notifications(
+    db: Session,
+    site,
+    trigger: str,
+    *,
+    title: str | None = None,
+    default_body: str | None = None,
+) -> int:
+    """Fan out inbox items for a named site event (MoA received, extension, …). Caller commits."""
+    rules = [
+        rule
+        for rule in db.query(NotificationRule).all()
+        if rule_matches_named_trigger(rule, trigger, site)
+    ]
+    if not rules:
+        return 0
+    labels = {
+        TRIGGER_MOA_RECEIVED: "MoA received",
+        TRIGGER_EXTENSION_APPLIED: "Extension applied",
+    }
+    label = labels.get(trigger, trigger.replace("_", " ").title())
+    created = 0
+    seen: set[tuple[int, int]] = set()
+    for rule in rules:
+        for user in db.query(User).all():
+            if not getattr(user, "active", True) or is_hidden_user(user):
+                continue
+            if not user_matches_rule(user, rule):
+                continue
+            uid = getattr(user, "id", None)
+            rid = getattr(rule, "id", None)
+            if uid is None:
+                continue
+            key = (int(uid), int(rid) if rid is not None else id(rule))
+            if key in seen:
+                continue
+            seen.add(key)
+            already = (
+                db.query(AppNotification)
+                .filter(
+                    AppNotification.user_id == user.id,
+                    AppNotification.rule_id == rule.id,
+                    AppNotification.site_id == getattr(site, "id", None),
+                    AppNotification.read_at.is_(None),
+                )
+                .first()
+            )
+            if already:
+                continue
+            template = (getattr(rule, "message_template", None) or "").strip() or default_body
+            db.add(
+                AppNotification(
+                    user_id=user.id,
+                    rule_id=rule.id,
+                    site_id=getattr(site, "id", None),
+                    title=(title or render_title(site, label))[:255],
+                    body=render_body(template, site, trigger, label),
+                    link=notification_link(site),
+                )
+            )
+            created += 1
     return created
 
 

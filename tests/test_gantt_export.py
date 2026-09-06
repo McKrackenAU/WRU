@@ -87,8 +87,8 @@ def test_gantt_pdf_table_has_day_night_not_contractors():
     pdf = build_gantt_pdf({"program": "LCP-FMRP", "items": items})
     text = _pdf_text(pdf)
     assert "Day / Night" in text
-    assert "13/09/2026" in text
-    assert "14/09/2026" in text
+    assert "Sun 13 Sep 2026" in text
+    assert "Mon 14 Sep 2026" in text
     assert "Night" in text
     assert "Asphalt" not in text
     assert "Traffic" not in text
@@ -146,3 +146,5 @@ def test_gantt_page_has_day_night_not_contractor_filters():
     assert "schedule_saved" in GANTT_JS
     assert "pdfAsphalt" not in GANTT_JS
     assert "pdfTraffic" not in GANTT_JS
+    assert "data-shift-preset" in GANTT_JS
+    assert "Days of work" in GANTT_HTML

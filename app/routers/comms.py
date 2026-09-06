@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -92,6 +92,7 @@ class RowUpdate(BaseModel):
     section: str | None = Field(default=None, max_length=255)
     site_id: int | None = None
     clear_site: bool = False
+    expected_updated_at: datetime | None = None
 
 
 class NoteCreate(BaseModel):
@@ -684,6 +685,25 @@ def create_row(sheet_id: int, payload: RowCreate, request: Request, db: Session 
 @router.patch("/rows/{row_id}")
 def update_row(row_id: int, payload: RowUpdate, request: Request, db: Session = Depends(get_db)):
     row = _row_or_404(db, row_id)
+    if payload.expected_updated_at and row.updated_at:
+        incoming = payload.expected_updated_at
+        if incoming.tzinfo is None and getattr(row.updated_at, "tzinfo", None):
+            incoming = incoming.replace(tzinfo=row.updated_at.tzinfo)
+        if row.updated_at > incoming:
+            conflicts = []
+            current = dict(row.values or {})
+            for key, val in (payload.values or {}).items():
+                if current.get(key) != val:
+                    conflicts.append(key)
+            if conflicts:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "Someone else changed this row",
+                        "conflicting_keys": conflicts,
+                        "server_values": {k: current.get(k) for k in conflicts},
+                    },
+                )
     if payload.values is not None:
         merged = dict(row.values or {})
         merged.update(payload.values)

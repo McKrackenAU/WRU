@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#004825" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)" />
-  <title>Sites · WRU TGS Tracker</title>
+  <title>Sites · WRU</title>
   <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
   <link rel="stylesheet" href="/static/css/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
@@ -29,15 +29,23 @@
     <main id="main-content" class="main sites-main" tabindex="-1">
       <div class="page-head sites-head">
         <div>
-          <h1>Sites register</h1>
-          <p id="statusLine" aria-live="polite">Loading active TGS / MoA jobs…</p>
+          <h1>Sites</h1>
+          <p id="statusLine" aria-live="polite">Loading jobs…</p>
         </div>
-        <div class="toolbar">
+        <div class="toolbar sites-toolbar">
           <a class="btn" href="/lists">Client lists</a>
-          <a class="btn" href="/api/export/permits-list.xlsx">Permits Excel</a>
-          <a class="btn" href="/api/export/permits-list.pdf">Permits PDF</a>
-          <a class="btn" href="/api/export/trims-list.xlsx">TRIMS Excel</a>
-          <a class="btn" href="/api/export/trims-list.pdf">TRIMS PDF</a>
+          <a class="btn" href="/generics">Generic MoAs</a>
+          <div class="filter-drop" data-drop="export">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">Export</span>
+            </button>
+            <div class="filter-drop-panel" role="menu" aria-label="Export lists">
+              <a class="filter-drop-tool" href="/api/export/permits-list.xlsx">Permits Excel</a>
+              <a class="filter-drop-tool" href="/api/export/permits-list.pdf">Permits PDF</a>
+              <a class="filter-drop-tool" href="/api/export/trims-list.xlsx">TRIMS Excel</a>
+              <a class="filter-drop-tool" href="/api/export/trims-list.pdf">TRIMS PDF</a>
+            </div>
+          </div>
           <button type="button" class="btn" id="btnColumns">Columns</button>
           <button type="button" class="btn btn-primary" id="btnAddSite">Add site</button>
         </div>
@@ -111,12 +119,19 @@
               <div class="filter-drop-col" id="filterList"></div>
             </div>
           </div>
-          <button type="button" class="btn btn-sm" id="btnFiltersAll">Show all</button>
+          <button type="button" class="btn btn-sm" id="btnFiltersAll">All</button>
           <button type="button" class="btn btn-sm" id="btnFiltersClear">Clear</button>
-          <button type="button" class="btn" id="btnDensity" aria-pressed="true">Compact</button>
-          <button type="button" class="btn" id="btnClearSort" hidden>Clear sort</button>
-          <button type="button" class="btn" id="btnCollapseAll">Collapse all</button>
-          <button type="button" class="btn" id="btnExpandAll">Expand all</button>
+          <div class="filter-drop" data-drop="view">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">View</span>
+            </button>
+            <div class="filter-drop-panel" role="group" aria-label="View">
+              <button type="button" class="filter-drop-tool" id="btnDensity" aria-pressed="true">Compact</button>
+              <button type="button" class="filter-drop-tool" id="btnClearSort" hidden>Clear sort</button>
+              <button type="button" class="filter-drop-tool" id="btnCollapseAll">Collapse programs</button>
+              <button type="button" class="filter-drop-tool" id="btnExpandAll">Expand programs</button>
+            </div>
+          </div>
         </div>
         <nav class="register-jump" id="registerJump" aria-label="Jump to program" hidden></nav>
       </div>
@@ -161,13 +176,13 @@
           <p class="drawer-kicker" id="drawerKicker">Site</p>
           <h2 id="siteDialogTitle">Add site</h2>
         </div>
-        <button type="button" class="icon-btn" data-close-drawer aria-label="Close">×</button>
+        <button type="button" class="btn btn-sm" data-close-drawer>Close</button>
       </header>
       <div class="drawer-tabs" role="tablist">
         <button type="button" class="drawer-tab active" data-tab="overview">Overview</button>
         <button type="button" class="drawer-tab" data-tab="moa">MoA &amp; dates</button>
         <button type="button" class="drawer-tab" data-tab="councils">Councils</button>
-        <button type="button" class="drawer-tab" data-tab="workflow">Workflow</button>
+        <button type="button" class="drawer-tab" data-tab="workflow" hidden>Workflow</button>
         <button type="button" class="drawer-tab" data-tab="activity">Activity</button>
         <button type="button" class="drawer-tab" data-tab="documents">Documents</button>
       </div>
@@ -308,7 +323,7 @@
           <p class="hint" id="councilHint">Assumed no-objection uses the admin SLA setting.</p>
         </section>
 
-        <section class="tab-panel" data-panel="workflow">
+        <section class="tab-panel" data-panel="workflow" hidden>
           <p class="hint">Tick stages as work progresses. Permits / TRIMS lists update automatically.</p>
           <div id="workflowChecks" class="workflow-checks"></div>
         </section>
@@ -351,6 +366,7 @@
                   <input type="file" id="docFile" multiple />
                   <button type="button" class="btn btn-primary" id="btnUploadDoc">Upload</button>
                 </div>
+                <p class="hint" id="docShareCombinedHint" hidden>Combined jobs share documents automatically — this file will appear on every site in the MoA group.</p>
                 <p class="hint" id="docUploadHint">Drop files here or onto the list, or use Upload. They all use this category. Uploads and folder downloads use JSON chunks so workplace filters do not block them.</p>
                 <p class="hint" id="docUploadStatus" hidden></p>
                 <div class="doc-select-bar" id="docSelectBar">

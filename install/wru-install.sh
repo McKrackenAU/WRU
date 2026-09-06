@@ -411,8 +411,13 @@ print("Database connection OK")
 PY
 
 python3 -c "from app.migrate import run_migrations; run_migrations()"
-if ! python3 scripts/seed.py; then
-  msg_warn "Sample seed failed (schema is migrated); continuing"
+# Fresh installs stay empty so there is no demo data leakage. Live updates never seed.
+if [[ "${WRU_SEED_SAMPLE:-}" == "1" ]]; then
+  if ! python3 scripts/seed.py; then
+    msg_warn "Sample seed failed (schema is migrated); continuing"
+  fi
+else
+  msg_ok "Skipped sample sites (set WRU_SEED_SAMPLE=1 to load demo jobs)"
 fi
 if [[ -f "${DATA_DIR}/bootstrap_admin.txt" ]]; then
   msg_warn "First admin credentials: ${DATA_DIR}/bootstrap_admin.txt (change password after login)"

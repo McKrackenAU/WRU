@@ -373,6 +373,58 @@ export async function downloadDocumentById(documentId, onProgress) {
   });
 }
 
+export function canPreviewDocument(doc) {
+  const type = String(doc?.content_type || "").toLowerCase();
+  const name = String(doc?.original_filename || "").toLowerCase();
+  return (
+    type.includes("pdf") ||
+    type.startsWith("image/") ||
+    name.endsWith(".pdf") ||
+    /\.(png|jpe?g|gif|webp|svg)$/.test(name)
+  );
+}
+
+export function openDocumentPreview(doc) {
+  const id = Number(doc?.id || doc);
+  if (!id) return;
+  let dialog = document.getElementById("docPreviewDialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "docPreviewDialog";
+    dialog.className = "doc-preview-dialog";
+    dialog.innerHTML = `
+      <div class="doc-preview-head">
+        <h2 id="docPreviewTitle">Document</h2>
+        <a class="btn" id="docPreviewDownload" href="#">Download</a>
+        <button type="button" class="btn" id="docPreviewClose">Close</button>
+      </div>
+      <iframe class="doc-preview-frame" id="docPreviewFrame" title="Document preview"></iframe>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector("#docPreviewClose")?.addEventListener("click", () => dialog.close());
+  }
+  const name = doc?.original_filename || "Document";
+  const title = dialog.querySelector("#docPreviewTitle");
+  if (title) title.textContent = name;
+  const dl = dialog.querySelector("#docPreviewDownload");
+  if (dl) dl.href = `/api/documents/${id}/download`;
+  const frame = dialog.querySelector("#docPreviewFrame");
+  if (canPreviewDocument(doc)) {
+    if (frame) {
+      frame.hidden = false;
+      frame.src = `/api/documents/${id}/view`;
+    }
+  } else {
+    if (frame) {
+      frame.hidden = true;
+      frame.src = "about:blank";
+    }
+    window.open(`/api/documents/${id}/download`, "_blank", "noopener");
+    return;
+  }
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+
 export function escapeHtml(str) {
   return String(str ?? "")
     .replaceAll("&", "&amp;")
@@ -455,34 +507,35 @@ export function initThemeToggle() {
 
 /** Day-to-day tracker navigation */
 export const OPS_NAV = [
-  { href: "/dashboard", label: "Dashboard", hint: "Program health" },
-  { href: "/", label: "Sites", hint: "TGS / MoA register" },
-  { href: "/lists", label: "Client lists", hint: "Permits & TRIMS" },
-  { href: "/tracking", label: "Activity", hint: "Who changed what" },
-  { href: "/costs", label: "Traffic costs", hint: "TM estimates" },
-  { href: "/asphalt", label: "Asphalt costs", hint: "Subcontractor rates" },
-  { href: "/spend", label: "Actual spend", hint: "Traffic & pavements" },
-  { href: "/gantt", label: "Gantt", hint: "Works sequence" },
-  { href: "/documents", label: "Documents", hint: "Files" },
-  { href: "/comms", label: "Comms", hint: "Stakeholder planner", commsOnly: true },
-  { href: "/calendar", label: "Comms calendar", hint: "Due dates" },
-  { href: "/map", label: "Map", hint: "Site markups" },
-  { href: "/archive", label: "Archive", hint: "Completed jobs" },
+  { href: "/dashboard", label: "Home", hint: "Your work", group: "Today" },
+  { href: "/", label: "Sites", hint: "Job register", group: "Today" },
+  { href: "/lists", label: "Client lists", hint: "Permits & TRIMS", group: "Today" },
+  { href: "/generics", label: "Generic MoAs", hint: "Network-wide", group: "Today" },
+  { href: "/tracking", label: "Activity", hint: "Recent changes", group: "Today" },
+  { href: "/gantt", label: "Gantt", hint: "Works sequence", group: "Works" },
+  { href: "/documents", label: "Documents", hint: "Files", group: "Works" },
+  { href: "/map", label: "Map", hint: "Markups", group: "Works" },
+  { href: "/costs", label: "Traffic costs", hint: "TM estimates", group: "Costs" },
+  { href: "/asphalt", label: "Asphalt costs", hint: "Subcontractors", group: "Costs" },
+  { href: "/spend", label: "Actual spend", hint: "Traffic & pavements", group: "Costs" },
+  { href: "/comms", label: "Comms", hint: "Planner", commsOnly: true, group: "Comms" },
+  { href: "/calendar", label: "Calendar", hint: "Due dates", group: "Comms" },
+  { href: "/archive", label: "Archive", hint: "Completed", group: "More" },
 ];
 
 /** Admin console navigation */
 export const ADMIN_NAV = [
-  { href: "/admin", label: "Overview", hint: "Admin home" },
-  { href: "/admin/users", label: "Users", hint: "Logins & roles" },
-  { href: "/admin/tags", label: "Tags", hint: "Library for jobs & people" },
-  { href: "/admin/notifications", label: "Notifications", hint: "Bell rules & tags" },
-  { href: "/admin/stages", label: "Stages & programs", hint: "Workflow" },
-  { href: "/admin/settings", label: "Rules & roads", hint: "SLAs · roads · document types" },
-  { href: "/admin/rates", label: "Traffic rates", hint: "Crew & allowances" },
-  { href: "/admin/asphalt", label: "Asphalt rates", hint: "Subcontractors" },
-  { href: "/admin/system", label: "System & updates", hint: "Version · GitHub" },
-  { href: "/admin/backup", label: "Backup & migrate", hint: "Export · import" },
-  { href: "/admin/storage", label: "File storage", hint: "Disk paths" },
+  { href: "/admin", label: "Overview", hint: "Admin home", group: "People" },
+  { href: "/admin/users", label: "Users", hint: "Logins & roles", group: "People" },
+  { href: "/admin/tags", label: "Tags", hint: "Jobs & people", group: "People" },
+  { href: "/admin/notifications", label: "Notifications", hint: "Bell rules", group: "People" },
+  { href: "/admin/stages", label: "Stages & programs", hint: "Workflow", group: "Setup" },
+  { href: "/admin/settings", label: "Rules & roads", hint: "SLAs · lookups", group: "Setup" },
+  { href: "/admin/rates", label: "Traffic rates", hint: "Crew & allowances", group: "Rates" },
+  { href: "/admin/asphalt", label: "Asphalt rates", hint: "Subcontractors", group: "Rates" },
+  { href: "/admin/system", label: "System", hint: "Version · GitHub", group: "Server" },
+  { href: "/admin/backup", label: "Backup", hint: "Export · import", group: "Server" },
+  { href: "/admin/storage", label: "Storage", hint: "Disk paths", group: "Server" },
 ];
 
 function isActivePath(href, path) {
@@ -492,15 +545,31 @@ function isActivePath(href, path) {
 }
 
 function sideNavHtml(links, path) {
-  return links
-    .map((l) => {
-      const active = isActivePath(l.href, path);
-      return `<a href="${l.href}" class="side-link ${active ? "active" : ""}" ${
-        active ? 'aria-current="page"' : ""
-      }>
+  const groups = [];
+  for (const l of links) {
+    const name = l.group || "";
+    if (!groups.length || groups[groups.length - 1].name !== name) {
+      groups.push({ name, items: [l] });
+    } else {
+      groups[groups.length - 1].items.push(l);
+    }
+  }
+  return groups
+    .map((g) => {
+      const items = g.items
+        .map((l) => {
+          const active = isActivePath(l.href, path);
+          return `<a href="${l.href}" class="side-link ${active ? "active" : ""}" ${
+            active ? 'aria-current="page"' : ""
+          }>
       <span class="side-link-label">${escapeHtml(l.label)}</span>
       ${l.hint ? `<span class="side-link-hint">${escapeHtml(l.hint)}</span>` : ""}
     </a>`;
+        })
+        .join("");
+      return g.name
+        ? `<div class="side-nav-group"><p class="side-nav-heading">${escapeHtml(g.name)}</p>${items}</div>`
+        : items;
     })
     .join("");
 }
@@ -1172,8 +1241,8 @@ export async function injectChrome({ active, mode } = {}) {
       <div class="sidebar-brand">
         <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="36" height="36" alt="" />
         <div class="brand-text">
-          <p class="app-name">${isAdmin ? "WRU Admin" : "WRU TGS Tracker"}</p>
-          <p class="tagline">${isAdmin ? "Configuration" : "Traffic guidance · MoA"}</p>
+          <p class="app-name">${isAdmin ? "WRU Admin" : "WRU"}</p>
+          <p class="tagline">${isAdmin ? "Configuration" : "Works register"}</p>
         </div>
         <button type="button" class="icon-btn sidebar-close" id="navClose" aria-label="Close menu" hidden>
           <span aria-hidden="true">×</span>
@@ -1229,7 +1298,7 @@ export async function injectChrome({ active, mode } = {}) {
         <div class="brand-block top-brand">
           <img class="ventia-logo" src="/static/brand/ventia-logo.png" alt="Ventia" />
           <div class="brand-text">
-            <p class="app-name">${isAdmin ? "Admin console" : "Operations"}</p>
+            <p class="app-name">${isAdmin ? "Admin" : "Operations"}</p>
           </div>
         </div>
       </div>
@@ -1264,8 +1333,8 @@ export async function injectChrome({ active, mode } = {}) {
         <img class="brand-mark" src="/static/brand/veninspect-mark.png" width="18" height="18" alt="" />
         <span>${
           isAdmin
-            ? "WRU Admin · configuration stays out of day-to-day tracking"
-            : "WRU TGS Tracker · traffic guidance schedules"
+            ? "WRU Admin"
+            : "WRU · works register"
         }</span>
         ${ver ? `<span class="footer-version" title="Installed app version">${escapeHtml(ver)}</span>` : ""}
       </div>

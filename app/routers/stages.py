@@ -347,10 +347,24 @@ def update_program(program_id: int, payload: ProgramIn, db: Session = Depends(ge
 
 
 @router.delete("/programs/{program_id}", status_code=204)
-def delete_program(program_id: int, db: Session = Depends(get_db)):
+def delete_program(
+    program_id: int,
+    hard: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
     row = db.get(ProgramCategory, program_id)
     if not row:
         raise HTTPException(status_code=404, detail="Program not found")
+    if hard:
+        in_use = db.query(Site).filter(func.lower(Site.program) == row.name.strip().lower()).count()
+        if in_use:
+            db.query(Site).filter(func.lower(Site.program) == row.name.strip().lower()).update(
+                {Site.program: None},
+                synchronize_session=False,
+            )
+        db.delete(row)
+        db.commit()
+        return None
     row.active = False
     db.commit()
     return None

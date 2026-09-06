@@ -5,9 +5,16 @@ from collections import Counter
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from ..auth import can_manage_comms, get_current_user
 from ..calculations import must_have_status
 from ..database import get_db
-from ..models import Site, TrackingEvent
+from ..models import CommsRow, Site, TrackingEvent, User
+from ..notify import (
+    category_tags_for_program,
+    effective_job_tags,
+    site_matches_user_focus,
+    user_tag_set,
+)
 from ..schemas import DashboardOut
 from ..services import lean_sites_query, serialize_sites
 from ..stage_registry import active_stages
@@ -15,12 +22,23 @@ from ..stage_registry import active_stages
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+def _iso(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
 @router.get("", response_model=DashboardOut)
-def dashboard(db: Session = Depends(get_db)):
+def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     sites = lean_sites_query(db).filter(Site.archived.is_(False)).all()
     rows = serialize_sites(db, sites)
     archived_count = db.query(Site).filter(Site.archived.is_(True)).count()
     stages = active_stages(db)
+    focus_tags = sorted(user_tag_set(user))
+    focused = [site for site in sites if site_matches_user_focus(site, user, db)]
+    focused_ids = {site.id for site in focused}
 
     stage_counts = Counter()
     council_counts = Counter()
@@ -64,23 +82,72 @@ def dashboard(db: Session = Depends(get_db)):
         .join(Site)
         .filter(Site.archived.is_(False))
         .order_by(TrackingEvent.created_at.desc())
-        .limit(12)
+        .limit(40)
         .all()
     )
     recent_tracking = []
+    recent_status_changes = []
     for ev in recent:
-        recent_tracking.append(
+        item = {
+            "id": ev.id,
+            "site_id": ev.site_id,
+            "road_name": ev.site.road_name if ev.site else None,
+            "site_number": ev.site.site_number if ev.site else None,
+            "event_type": ev.event_type,
+            "message": ev.message,
+            "created_by": ev.created_by,
+            "created_at": ev.created_at,
+        }
+        if len(recent_tracking) < 12:
+            recent_tracking.append(item)
+        if ev.site_id in focused_ids and len(recent_status_changes) < 8:
+            recent_status_changes.append(item)
+
+    recent_approvals = []
+    for site in sorted(
+        [s for s in focused if s.moa_received_date],
+        key=lambda s: (s.moa_received_date, s.id),
+        reverse=True,
+    )[:8]:
+        recent_approvals.append(
             {
-                "id": ev.id,
-                "site_id": ev.site_id,
-                "road_name": ev.site.road_name if ev.site else None,
-                "site_number": ev.site.site_number if ev.site else None,
-                "event_type": ev.event_type,
-                "message": ev.message,
-                "created_by": ev.created_by,
-                "created_at": ev.created_at,
+                "id": site.id,
+                "site_number": site.site_number,
+                "road_name": site.road_name,
+                "program": site.program,
+                "moa_number": site.moa_number,
+                "moa_received_date": _iso(site.moa_received_date),
+                "tags": effective_job_tags(site, category_tags_for_program(db, site.program)),
             }
         )
+
+    comms_preview = []
+    show_comms = can_manage_comms(user) or "comms" in user_tag_set(user)
+    if show_comms:
+        comms_rows = (
+            db.query(CommsRow)
+            .order_by(CommsRow.updated_at.desc(), CommsRow.id.desc())
+            .limit(40)
+            .all()
+        )
+        for row in comms_rows:
+            linked = row.site
+            if linked is not None and linked.id not in focused_ids:
+                continue
+            if linked is None and focus_tags and "comms" not in focus_tags and not can_manage_comms(user):
+                continue
+            comms_preview.append(
+                {
+                    "id": row.id,
+                    "section": row.section,
+                    "site_id": row.site_id,
+                    "site_number": linked.site_number if linked else None,
+                    "road_name": linked.road_name if linked else None,
+                    "updated_at": _iso(row.updated_at),
+                }
+            )
+            if len(comms_preview) >= 8:
+                break
 
     return {
         "totals": {
@@ -111,4 +178,8 @@ def dashboard(db: Session = Depends(get_db)):
         "permits_priority_count": permits,
         "trims_priority_count": trims,
         "recent_tracking": recent_tracking,
+        "focus_tags": focus_tags,
+        "recent_approvals": recent_approvals,
+        "recent_status_changes": recent_status_changes,
+        "comms_preview": comms_preview,
     }

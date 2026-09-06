@@ -46,7 +46,7 @@ def _parse_iso(value: str | None) -> date | None:
 def _fmt(d: date | None) -> str:
     if not d:
         return "—"
-    return d.strftime("%d/%m/%Y")
+    return d.strftime("%a %d %b %Y")
 
 
 def clip_text(text: str, font: str, size: float, max_w: float) -> str:

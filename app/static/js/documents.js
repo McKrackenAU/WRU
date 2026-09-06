@@ -8,6 +8,7 @@ import {
   applyDocCategories,
   docCategorySelectHtml,
   downloadDocumentsZip,
+  openDocumentPreview,
   onLiveSitesChanged,
   syncLiveRevision,
 } from "./common.js";
@@ -48,16 +49,23 @@ async function load() {
           (d) => `<tr data-doc-id="${d.id}">
           <td class="doc-check-col"><input type="checkbox" data-doc-pick="${d.id}" aria-label="Select ${escapeHtml(d.original_filename)}" /></td>
           <td>${docCategorySelectHtml(d.id, d.category)}</td>
-          <td><a href="/api/documents/${d.id}/download">${escapeHtml(d.original_filename)}</a></td>
+          <td><a href="/api/documents/${d.id}/view" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">${escapeHtml(d.original_filename)}</a></td>
           <td class="mono">${escapeHtml(d.moa_number || "")}</td>
           <td>${escapeHtml(d.road_name || "")} <span class="mono">${escapeHtml(d.site_number || "")}</span></td>
           <td>${escapeHtml(d.description || "")}${
             d.source === "comms"
               ? ` <span class="hint">(${d.visibility === "comms" ? "comms only" : "from comms"})</span>`
               : ""
+          }${
+            d.share_with_combined
+              ? ` <span class="badge badge-combined">Shared with combined</span>`
+              : ""
           }</td>
           <td class="mono">${new Date(d.uploaded_at).toLocaleString()}</td>
-          <td><a class="btn" href="/api/documents/${d.id}/download">Download</a></td>
+          <td>
+            <button type="button" class="btn" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">View</button>
+            <a class="btn" href="/api/documents/${d.id}/download">Download</a>
+          </td>
         </tr>`
         )
         .join("")
@@ -103,6 +111,8 @@ async function downloadListed({ all = false } = {}) {
 
 async function init() {
   injectChrome({ active: "/documents" });
+  const incomingMoa = new URLSearchParams(location.search).get("moa_number");
+  if (incomingMoa && $("moaFilter") && !$("moaFilter").value) $("moaFilter").value = incomingMoa;
   const meta = await api("/api/meta");
   applyDocCategories(meta.doc_category_defs || meta.doc_categories);
   categories = meta.doc_category_defs?.length ? meta.doc_category_defs : (meta.doc_categories || []).map((c) => ({ key: c, label: c }));
@@ -124,6 +134,16 @@ async function init() {
     const on = ev.target.checked;
     document.querySelectorAll("#tbody input[data-doc-pick]").forEach((box) => {
       box.checked = on;
+    });
+  });
+  document.addEventListener("click", (ev) => {
+    const preview = ev.target.closest("[data-doc-preview]");
+    if (!preview) return;
+    ev.preventDefault();
+    openDocumentPreview({
+      id: Number(preview.dataset.docPreview),
+      original_filename: preview.dataset.docName,
+      content_type: preview.dataset.docType,
     });
   });
   document.addEventListener("change", (ev) => {

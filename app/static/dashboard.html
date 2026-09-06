@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Dashboard · WRU TGS Tracker</title>
+  <title>Home · WRU</title>
   <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
   <link rel="stylesheet" href="/static/css/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
@@ -25,36 +25,59 @@
     <main id="main-content" tabindex="-1" class="main">
       <div class="page-head">
         <div>
-          <h1>Program dashboard</h1>
-          <p>Overall TGS / MoA tracking health</p>
+          <h1>Home</h1>
+          <p id="dashFocusHint">Recently approved MoAs, status changes, and comms for your tags.</p>
         </div>
         <div class="toolbar">
-          <a class="btn" href="/api/export/permits-list.pdf">Permits PDF</a>
-          <a class="btn btn-primary" href="/api/export/trims-list.pdf">TRIMS PDF</a>
-          <a class="btn" href="/tracking">Open tracking</a>
+          <a class="btn" href="/">Sites</a>
+          <a class="btn" href="/generics">Generic MoAs</a>
+          <a class="btn btn-primary" href="/lists">Client lists</a>
         </div>
       </div>
-      <div class="stat-grid" id="statGrid"></div>
-      <div class="split-2">
+      <div class="landing-grid">
         <section class="panel-card">
-          <h2>Where jobs are up to</h2>
-          <div class="bar-list" id="stageBars"></div>
+          <h2>Recently approved MoAs</h2>
+          <ul class="event-list" id="approvalList"></ul>
         </section>
         <section class="panel-card">
-          <h2>Councils attributed</h2>
-          <div class="bar-list" id="councilBars"></div>
+          <h2>Status changes</h2>
+          <ul class="event-list" id="statusList"></ul>
+        </section>
+        <section class="panel-card landing-comms">
+          <div class="page-head lists-panel-head">
+            <div>
+              <h2>Comms</h2>
+              <p class="hint">Jobs that match your tags</p>
+            </div>
+            <a class="btn btn-sm" href="/comms">Open planner</a>
+          </div>
+          <ul class="event-list" id="commsPreview"></ul>
         </section>
       </div>
-      <div class="split-2">
-        <section class="panel-card">
-          <h2>Programs</h2>
-          <div class="bar-list" id="programBars"></div>
-        </section>
-        <section class="panel-card">
-          <h2>Recent activity</h2>
-          <ul class="event-list" id="recentList"></ul>
-        </section>
-      </div>
+      <details class="landing-more">
+        <summary>Program health</summary>
+        <div class="stat-grid" id="statGrid"></div>
+        <div class="split-2">
+          <section class="panel-card">
+            <h2>Where jobs are up to</h2>
+            <div class="bar-list" id="stageBars"></div>
+          </section>
+          <section class="panel-card">
+            <h2>Councils attributed</h2>
+            <div class="bar-list" id="councilBars"></div>
+          </section>
+        </div>
+        <div class="split-2">
+          <section class="panel-card">
+            <h2>Programs</h2>
+            <div class="bar-list" id="programBars"></div>
+          </section>
+          <section class="panel-card">
+            <h2>Recent activity</h2>
+            <ul class="event-list" id="recentList"></ul>
+          </section>
+        </div>
+      </details>
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>

@@ -17,7 +17,7 @@ function showError(msg) {
 }
 
 function nextUrl() {
-  return safeNextUrl(qs("next"), "/");
+  return safeNextUrl(qs("next"), "/dashboard");
 }
 
 async function init() {

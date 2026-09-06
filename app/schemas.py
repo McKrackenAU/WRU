@@ -37,12 +37,17 @@ class DocumentOut(BaseModel):
     visibility: str = "users"
     source: str = "site"
     comms_row_id: int | None = None
+    share_with_combined: bool = False
+    shared: bool = False
+    shared_from_site_id: int | None = None
+    shared_from_site_number: str | None = None
 
 
 class DocumentUpdate(BaseModel):
     category: str | None = None
     description: str | None = None
     visibility: str | None = None
+    share_with_combined: bool | None = None
 
 
 class TrackingEventOut(BaseModel):
@@ -373,3 +378,7 @@ class DashboardOut(BaseModel):
     permits_priority_count: int
     trims_priority_count: int = 0
     recent_tracking: list[dict[str, Any]]
+    focus_tags: list[str] = Field(default_factory=list)
+    recent_approvals: list[dict[str, Any]] = Field(default_factory=list)
+    recent_status_changes: list[dict[str, Any]] = Field(default_factory=list)
+    comms_preview: list[dict[str, Any]] = Field(default_factory=list)

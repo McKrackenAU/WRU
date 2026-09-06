@@ -14,8 +14,72 @@ function barRows(items, max) {
     .join("");
 }
 
+function fmtWhen(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString();
+}
+
+function fmtDay(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
+function emptyItem(text) {
+  return `<li><p class="meta">${escapeHtml(text)}</p></li>`;
+}
+
 async function loadDashboard() {
   const data = await api("/api/dashboard");
+  const tags = data.focus_tags || [];
+  const hint = $("dashFocusHint");
+  if (hint) {
+    hint.textContent = tags.length
+      ? `Showing work tagged ${tags.join(", ")}.`
+      : "Recently approved MoAs, status changes, and comms. Add tags on your account to focus this page.";
+  }
+
+  $("approvalList").innerHTML = (data.recent_approvals || []).length
+    ? data.recent_approvals
+        .map(
+          (s) => `
+      <li>
+        <div class="top">${escapeHtml(fmtDay(s.moa_received_date) || "Approved")}</div>
+        <p><a href="/?highlight=${s.id}">${escapeHtml(s.road_name || "")} <span class="mono">${escapeHtml(s.site_number || "")}</span></a>
+        ${s.moa_number ? ` · MoA ${escapeHtml(s.moa_number)}` : ""}
+        ${s.program ? ` · ${escapeHtml(s.program)}` : ""}</p>
+      </li>`
+        )
+        .join("")
+    : emptyItem("No recently approved MoAs for your tags.");
+
+  $("statusList").innerHTML = (data.recent_status_changes || []).length
+    ? data.recent_status_changes
+        .map(
+          (e) => `
+      <li>
+        <div class="top">${escapeHtml(fmtWhen(e.created_at))}${e.site_number ? ` · ${escapeHtml(e.site_number)}` : ""}</div>
+        <p>${e.site_id ? `<a href="/?highlight=${e.site_id}">${escapeHtml(e.message)}</a>` : escapeHtml(e.message)}</p>
+      </li>`
+        )
+        .join("")
+    : emptyItem("No recent status changes for your tags.");
+
+  $("commsPreview").innerHTML = (data.comms_preview || []).length
+    ? data.comms_preview
+        .map(
+          (row) => `
+      <li>
+        <div class="top">${escapeHtml(fmtWhen(row.updated_at))}</div>
+        <p><a href="/comms">${escapeHtml(row.section || row.road_name || "Comms job")}
+        ${row.site_number ? ` <span class="mono">${escapeHtml(row.site_number)}</span>` : ""}</a></p>
+      </li>`
+        )
+        .join("")
+    : emptyItem("No matching comms jobs.");
+
   $("statGrid").innerHTML = [
     ["Active sites", data.totals.active_sites],
     ["Archived", data.totals.archived_sites],
@@ -62,5 +126,6 @@ async function init() {
 }
 
 init().catch((err) => {
-  $("statGrid").innerHTML = `<p class="hint">${escapeHtml(err.message)}</p>`;
+  const host = $("approvalList") || $("statGrid");
+  if (host) host.innerHTML = `<p class="hint">${escapeHtml(err.message)}</p>`;
 });

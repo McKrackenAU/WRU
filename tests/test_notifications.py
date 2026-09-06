@@ -4,10 +4,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.notify import (
+    TRIGGER_EXTENSION_APPLIED,
+    TRIGGER_MOA_RECEIVED,
     normalize_tags,
+    parse_trigger,
     planned_notifications,
     render_body,
     rule_matches_event,
+    rule_matches_named_trigger,
+    site_matches_user_focus,
+    trigger_catalog,
     user_matches_rule,
 )
 
@@ -24,8 +30,8 @@ SITES = (ROOT / "app/routers/sites.py").read_text(encoding="utf-8")
 VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
-def test_version_is_212():
-    assert VERSION == "2.12"
+def test_version_is_213():
+    assert VERSION == "2.13"
 
 
 def test_normalize_tags_dedupes_and_caps():
@@ -101,6 +107,42 @@ def test_site_update_ignores_unknown_client_fields():
     payload = SiteUpdate.model_validate({"road_name": "Bridge Rd", "legacy_client_flag": True})
     assert payload.road_name == "Bridge Rd"
     assert not hasattr(payload, "legacy_client_flag")
+
+
+def test_trigger_catalog_includes_builtin_flags():
+    keys = {row["key"] for row in trigger_catalog()}
+    assert keys == {
+        "stage_entered",
+        "comms_due",
+        "calendar_note",
+        "moa_received",
+        "extension_applied",
+    }
+    assert parse_trigger("moa_received") == TRIGGER_MOA_RECEIVED
+    try:
+        parse_trigger("not-a-flag")
+        raise AssertionError("expected unknown trigger")
+    except ValueError:
+        pass
+
+
+def test_named_triggers_match_program():
+    rule = SimpleNamespace(enabled=True, trigger=TRIGGER_MOA_RECEIVED, program="Structures")
+    site = SimpleNamespace(program="Structures")
+    other = SimpleNamespace(program="Pavements")
+    assert rule_matches_named_trigger(rule, TRIGGER_MOA_RECEIVED, site)
+    assert not rule_matches_named_trigger(rule, TRIGGER_EXTENSION_APPLIED, site)
+    assert not rule_matches_named_trigger(rule, TRIGGER_MOA_RECEIVED, other)
+
+
+def test_site_matches_user_focus_by_job_or_program_tag():
+    user = SimpleNamespace(tags=["structures"])
+    site = SimpleNamespace(program="Structures", tags=["urgent"])
+    other = SimpleNamespace(program="Pavements", tags=[])
+    open_user = SimpleNamespace(tags=[])
+    assert site_matches_user_focus(site, user, db=None)
+    assert not site_matches_user_focus(other, user, db=None)
+    assert site_matches_user_focus(other, open_user, db=None)
 
 
 def test_bell_and_admin_wired():

@@ -271,6 +271,17 @@ def site_number_sort_key(value: str | None) -> tuple:
     return tuple(key)
 
 
+def combined_group_ids(db: Session, site: Site) -> list[int]:
+    """Site ids in this combined MoA group, including the source site."""
+    gid = getattr(site, "combined_application_id", None)
+    sid = int(site.id)
+    if not gid:
+        return [sid]
+    rows = db.query(Site.id).filter(Site.combined_application_id == int(gid)).all()
+    ids = [int(row[0]) for row in rows]
+    return ids or [sid]
+
+
 def sync_combined_application_from(db: Session, source: Site) -> list[int]:
     """Copy MoA / TGS application fields + stages onto the other sites in this group."""
     gid = getattr(source, "combined_application_id", None)
@@ -342,6 +353,14 @@ def apply_combined_application(db: Session, site: Site, other_ids: list[int] | N
                 row.combined_application_id = None
 
     sync_combined_application_from(db, site)
+    from .models import Document
+
+    member_ids = [int(s.id) for s in new_members]
+    if member_ids:
+        db.query(Document).filter(Document.site_id.in_(member_ids)).update(
+            {Document.share_with_combined: True},
+            synchronize_session=False,
+        )
     return [int(s.id) for s in others]
 
 

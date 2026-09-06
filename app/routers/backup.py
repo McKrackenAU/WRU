@@ -133,6 +133,28 @@ def export_backup():
     )
 
 
+@router.post("/export/session")
+def export_backup_session():
+    """JSON-chunked backup download so workplace filters do not block the zip."""
+    from ..routers.documents import _new_download_session
+
+    _cleanup_stale()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    filename = f"wru-backup-{stamp}.zip"
+    dest = STAGING_DIR / filename
+    try:
+        write_backup_zip(dest)
+        return _new_download_session(dest, filename, "application/zip")
+    except RuntimeError as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Could not build backup") from exc
+    finally:
+        dest.unlink(missing_ok=True)
+
+
 @router.post("/session")
 def begin_backup_session(payload: BackupBegin):
     _cleanup_stale()

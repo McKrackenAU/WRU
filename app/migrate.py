@@ -161,6 +161,11 @@ def run_migrations() -> None:
         "comms_row_id",
         "comms_row_id INTEGER REFERENCES comms_rows(id) ON DELETE SET NULL",
     )
+    ensure_column(
+        "documents",
+        "share_with_combined",
+        "share_with_combined BOOLEAN NOT NULL DEFAULT FALSE",
+    )
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE documents ALTER COLUMN category TYPE VARCHAR(64)"))
     insp = inspect(engine)
@@ -249,9 +254,7 @@ def run_migrations() -> None:
     from .auth import ensure_admin_user, ensure_root_user
     from .comms_seed import ensure_comms_resources, ensure_comms_seed
     from .notify import (
-        ensure_calendar_note_rule,
-        ensure_comms_due_rule,
-        ensure_default_notification_rules,
+        ensure_builtin_notification_rules,
         ensure_tag_seed,
     )
 
@@ -266,9 +269,7 @@ def run_migrations() -> None:
         ensure_root_user(db)
         ensure_comms_seed(db)
         ensure_comms_resources(db)
-        ensure_default_notification_rules(db)
-        ensure_comms_due_rule(db)
-        ensure_calendar_note_rule(db)
+        ensure_builtin_notification_rules(db)
         ensure_tag_seed(db)
     finally:
         db.close()
