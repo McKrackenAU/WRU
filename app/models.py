@@ -39,6 +39,8 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Lowercase tags used to route notification rules (e.g. "structures").
     tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # Per-user UI: theme colours, quick links, home widgets, comms view.
+    prefs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
 # Fallback constants — live config is WorkflowStageDef (seeded from these keys).
@@ -235,6 +237,9 @@ class Site(Base):
     )
     # Sites that share one MoA application (client lists collapse to one row).
     combined_application_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    paving_subcontractor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("asphalt_subcontractors.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     financial_year: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -923,6 +928,49 @@ class NotificationRule(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ShiftReport(Base):
+    """On-site shift report. Kept after the job is archived."""
+
+    __tablename__ = "shift_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    shift_type: Mapped[str] = mapped_column(String(16), nullable=False, default="day")
+    crew: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    weather: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    weather_log: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    works_done: Mapped[str | None] = mapped_column(Text, nullable=True)
+    issues: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    site: Mapped[Site] = relationship(lazy="selectin")
+
+
+class ImportSnapshot(Base):
+    """Undo buffer for bulk imports (MS Project → Gantt)."""
+
+    __tablename__ = "import_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    board_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

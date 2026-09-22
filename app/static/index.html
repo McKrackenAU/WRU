@@ -44,6 +44,7 @@
               <a class="filter-drop-tool" href="/api/export/permits-list.pdf">Permits PDF</a>
               <a class="filter-drop-tool" href="/api/export/trims-list.xlsx">TRIMS Excel</a>
               <a class="filter-drop-tool" href="/api/export/trims-list.pdf">TRIMS PDF</a>
+              <button type="button" class="filter-drop-tool" id="btnExportSelected">Selected sites…</button>
             </div>
           </div>
           <button type="button" class="btn" id="btnColumns">Columns</button>
@@ -119,6 +120,19 @@
               <div class="filter-drop-col" id="filterList"></div>
             </div>
           </div>
+          <div class="filter-drop" data-drop="cost">
+            <button type="button" class="filter-drop-btn" aria-expanded="false" aria-haspopup="true">
+              <span class="filter-drop-label">Traffic costs</span>
+              <span class="filter-drop-meta" data-drop-meta="cost"></span>
+            </button>
+            <div class="filter-drop-panel" role="group" aria-label="Traffic costs assigned">
+              <div class="filter-drop-tools">
+                <button type="button" class="filter-drop-tool" data-drop-select="all" data-drop-key="cost">All</button>
+                <button type="button" class="filter-drop-tool" data-drop-select="none" data-drop-key="cost">None</button>
+              </div>
+              <div class="filter-drop-col" id="filterCost"></div>
+            </div>
+          </div>
           <button type="button" class="btn btn-sm" id="btnFiltersAll">All</button>
           <button type="button" class="btn btn-sm" id="btnFiltersClear">Clear</button>
           <div class="filter-drop" data-drop="view">
@@ -143,6 +157,7 @@
         </label>
         <span class="bulk-count" id="bulkCount">0 selected</span>
         <button type="button" class="btn" id="btnClearSelection">Clear</button>
+        <button type="button" class="btn" id="btnBulkExport">Export selected</button>
         <button type="button" class="btn btn-primary" id="btnBulkArchive">Archive selected</button>
       </div>
 
@@ -205,7 +220,13 @@
               <label>Program
                 <select id="fProgram"><option value="">Select…</option></select>
               </label>
+              <label>Paving subcontractor
+                <select id="fPaving"><option value="">None</option></select>
+              </label>
               <label>TGS reference<input id="fTgs" maxlength="128" /></label>
+              <p class="hint full" id="drawMapWrap" hidden>
+                <a class="btn btn-sm" id="drawMapLink" href="/map">Draw / update polygon on map</a>
+              </p>
               <div class="full" id="jobTagsSection">
                 <p class="hint" style="margin:0 0 0.35rem">Job tags can also be set on the register. Category tags on a program heading apply to every job in that program.</p>
                 <div id="jobTagsPicker"></div>
@@ -346,9 +367,12 @@
             <div class="toolbar" style="margin-top:1rem">
               <a class="btn" id="btnOpenCosts" href="/costs">Cost calculator</a>
               <a class="btn" id="btnOpenSpend" href="/spend">Actual spend</a>
+              <a class="btn" id="btnOpenShifts" href="/shifts">Shift reports</a>
             </div>
             <p class="hint" id="spendSummary" style="margin:0.75rem 0 0.25rem"></p>
             <ul id="costList" class="event-list"></ul>
+            <h3 style="margin-top:1rem">Shift reports</h3>
+            <ul id="shiftHistory" class="event-list"></ul>
           </div>
         </section>
 
@@ -390,6 +414,36 @@
       </footer>
     </div>
   </aside>
+
+  <dialog id="exportDialog" class="panel">
+    <form id="exportForm" onsubmit="return false;">
+      <header class="panel-head">
+        <h2>Export selected sites</h2>
+        <button type="button" class="icon-btn" data-close-dialog="exportDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint" id="exportDialogHint">Choose the fields to include in the CSV.</p>
+        <div class="form-grid" id="exportFields">
+          <label class="check-row"><input type="checkbox" value="road_name" checked /> <span>Road</span></label>
+          <label class="check-row"><input type="checkbox" value="site_number" checked /> <span>Site</span></label>
+          <label class="check-row"><input type="checkbox" value="program" checked /> <span>Program</span></label>
+          <label class="check-row"><input type="checkbox" value="moa_number" checked /> <span>MoA</span></label>
+          <label class="check-row"><input type="checkbox" value="priority" checked /> <span>Priority</span></label>
+          <label class="check-row"><input type="checkbox" value="indicative_start" checked /> <span>Start</span></label>
+          <label class="check-row"><input type="checkbox" value="current_stage" checked /> <span>Stage</span></label>
+          <label class="check-row"><input type="checkbox" value="latest_cost_total" checked /> <span>Traffic estimate</span></label>
+          <label class="check-row"><input type="checkbox" value="has_traffic_cost" checked /> <span>Costs assigned</span></label>
+          <label class="check-row"><input type="checkbox" value="paving_subcontractor" checked /> <span>Paving subcontractor</span></label>
+          <label class="check-row"><input type="checkbox" value="comments" /> <span>Comments</span></label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-dialog="exportDialog">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnExportSelectionGo">Download CSV</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog id="columnsDialog" class="panel">
     <form id="columnsForm" onsubmit="return false;">

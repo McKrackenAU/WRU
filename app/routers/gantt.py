@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload
@@ -418,7 +418,12 @@ def export_board_pdf(
         sub = db.get(AsphaltSubcontractor, subcontractor_id)
         if not sub:
             raise HTTPException(status_code=404, detail="Asphalt subcontractor not found")
-        items = [i for i in items if i.get("subcontractor_id") == subcontractor_id]
+        items = [
+            i
+            for i in items
+            if i.get("subcontractor_id") == subcontractor_id
+            or i.get("paving_subcontractor_id") == subcontractor_id
+        ]
         filter_bits.append(f"Asphalt: {sub.name}")
     if traffic_contractor_id:
         traffic = db.get(TrafficContractor, traffic_contractor_id)
@@ -434,3 +439,117 @@ def export_board_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="gantt-{safe_prog}.pdf"'},
     )
+
+
+def _snapshot_board(board: GanttBoard) -> dict:
+    return {
+        "program": board.program,
+        "anchor_start": board.anchor_start.isoformat() if board.anchor_start else None,
+        "items": [
+            {
+                "id": item.id,
+                "site_id": item.site_id,
+                "position": item.position,
+                "shifts_count": item.shifts_count,
+                "shift_type": item.shift_type,
+                "link_mode": item.link_mode,
+                "fixed_start": item.fixed_start.isoformat() if item.fixed_start else None,
+                "subcontractor_id": item.subcontractor_id,
+                "planned_start": item.planned_start.isoformat() if item.planned_start else None,
+                "planned_end": item.planned_end.isoformat() if item.planned_end else None,
+            }
+            for item in (board.items if hasattr(board, "items") else [])
+        ],
+    }
+
+
+@router.post("/board/import-msp")
+async def import_msp(
+    request: Request,
+    program: str = Query(default=DEFAULT_GANTT_PROGRAM),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    from datetime import date as date_cls
+
+    from ..models import ImportSnapshot
+    from ..msp_import import match_tasks_to_sites, parse_msp_xml
+
+    content = await file.read(8 * 1024 * 1024)
+    try:
+        tasks = parse_msp_xml(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    board = _load_board(db, program)
+    items = (
+        db.query(GanttItem)
+        .filter(GanttItem.board_id == board.id)
+        .order_by(GanttItem.position.asc(), GanttItem.id.asc())
+        .all()
+    )
+    board.items = items
+    snap = ImportSnapshot(
+        kind="gantt_msp",
+        board_id=board.id,
+        payload=_snapshot_board(board),
+        created_by=getattr(request.state, "username", None),
+    )
+    db.add(snap)
+    sites = lean_sites_query(db).filter(Site.archived.is_(False), Site.program == program).all()
+    matched = match_tasks_to_sites(tasks, sites)
+    by_site = {item.site_id: item for item in items}
+    updated = 0
+    for row in matched:
+        item = by_site.get(row["site_id"])
+        if not item:
+            continue
+        item.shifts_count = row["shifts_count"]
+        if row.get("start"):
+            item.link_mode = "fixed_start"
+            item.fixed_start = date_cls.fromisoformat(row["start"])
+        updated += 1
+    db.commit()
+    out = _recompute_and_save(db, board, write_back_sites=True)
+    out["imported"] = updated
+    out["matched"] = matched
+    out["undo_id"] = snap.id
+    notify_from_request(request, reason="gantt")
+    return out
+
+
+@router.post("/board/undo-import")
+def undo_msp_import(
+    request: Request,
+    program: str = Query(default=DEFAULT_GANTT_PROGRAM),
+    db: Session = Depends(get_db),
+):
+    from datetime import date as date_cls
+
+    from ..models import ImportSnapshot
+
+    board = _load_board(db, program)
+    snap = (
+        db.query(ImportSnapshot)
+        .filter(ImportSnapshot.kind == "gantt_msp", ImportSnapshot.board_id == board.id)
+        .order_by(ImportSnapshot.id.desc())
+        .first()
+    )
+    if not snap:
+        raise HTTPException(status_code=404, detail="Nothing to undo")
+    items = db.query(GanttItem).filter(GanttItem.board_id == board.id).all()
+    by_id = {item.id: item for item in items}
+    for saved in snap.payload.get("items") or []:
+        item = by_id.get(saved.get("id"))
+        if not item:
+            continue
+        item.shifts_count = saved.get("shifts_count") or item.shifts_count
+        item.shift_type = saved.get("shift_type") or item.shift_type
+        item.link_mode = saved.get("link_mode") or item.link_mode
+        item.fixed_start = date_cls.fromisoformat(saved["fixed_start"]) if saved.get("fixed_start") else None
+        item.position = saved.get("position") or item.position
+    db.delete(snap)
+    db.commit()
+    out = _recompute_and_save(db, board, write_back_sites=True)
+    out["undone"] = True
+    notify_from_request(request, reason="gantt")
+    return out

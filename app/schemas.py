@@ -105,6 +105,7 @@ class SiteBase(BaseModel):
     is_generic_moa: bool = False
     linked_generic_moa_id: int | None = None
     combined_application_id: int | None = None
+    paving_subcontractor_id: int | None = None
     financial_year: str | None = None
     councils: list[str] = Field(default_factory=list)
     council_details: list[CouncilOut] = Field(default_factory=list)
@@ -140,6 +141,7 @@ class SiteCreate(BaseModel):
     is_generic_moa: bool = False
     linked_generic_moa_id: int | None = None
     combined_site_ids: list[int] = Field(default_factory=list)
+    paving_subcontractor_id: int | None = None
     financial_year: str | None = None
     councils: list[str | CouncilIn] = Field(default_factory=list)
     custom_fields: dict[str, Any] = Field(default_factory=dict)
@@ -181,6 +183,7 @@ class SiteUpdate(BaseModel):
     is_generic_moa: bool | None = None
     linked_generic_moa_id: int | None = None
     combined_site_ids: list[int] | None = None
+    paving_subcontractor_id: int | None = None
     financial_year: str | None = None
     councils: list[str | CouncilIn] | None = None
     custom_fields: dict[str, Any] | None = None
@@ -243,6 +246,7 @@ class SiteOut(SiteBase):
     tracking_count: int = 0
     cost_estimate_count: int = 0
     latest_cost_total: float | None = None
+    has_traffic_cost: bool = False
     tags: list[str] = Field(default_factory=list)
     category_tags: list[str] = Field(default_factory=list)
     effective_tags: list[str] = Field(default_factory=list)
@@ -382,3 +386,5 @@ class DashboardOut(BaseModel):
     recent_approvals: list[dict[str, Any]] = Field(default_factory=list)
     recent_status_changes: list[dict[str, Any]] = Field(default_factory=list)
     comms_preview: list[dict[str, Any]] = Field(default_factory=list)
+    cost_totals: dict[str, Any] = Field(default_factory=dict)
+    spend_totals: dict[str, Any] = Field(default_factory=dict)

@@ -9,6 +9,7 @@ import {
   docCategorySelectHtml,
   downloadDocumentsZip,
   openDocumentPreview,
+  openDocumentChooser,
   onLiveSitesChanged,
   syncLiveRevision,
 } from "./common.js";
@@ -49,7 +50,7 @@ async function load() {
           (d) => `<tr data-doc-id="${d.id}">
           <td class="doc-check-col"><input type="checkbox" data-doc-pick="${d.id}" aria-label="Select ${escapeHtml(d.original_filename)}" /></td>
           <td>${docCategorySelectHtml(d.id, d.category)}</td>
-          <td><a href="/api/documents/${d.id}/view" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">${escapeHtml(d.original_filename)}</a></td>
+          <td><a href="/api/documents/${d.id}/view" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}" data-doc-choose="1">${escapeHtml(d.original_filename)}</a></td>
           <td class="mono">${escapeHtml(d.moa_number || "")}</td>
           <td>${escapeHtml(d.road_name || "")} <span class="mono">${escapeHtml(d.site_number || "")}</span></td>
           <td>${escapeHtml(d.description || "")}${
@@ -63,8 +64,7 @@ async function load() {
           }</td>
           <td class="mono">${new Date(d.uploaded_at).toLocaleString()}</td>
           <td>
-            <button type="button" class="btn" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">View</button>
-            <a class="btn" href="/api/documents/${d.id}/download">Download</a>
+            <button type="button" class="btn btn-view" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}" data-doc-choose="1">View / download</button>
           </td>
         </tr>`
         )
@@ -140,11 +140,13 @@ async function init() {
     const preview = ev.target.closest("[data-doc-preview]");
     if (!preview) return;
     ev.preventDefault();
-    openDocumentPreview({
+    const doc = {
       id: Number(preview.dataset.docPreview),
       original_filename: preview.dataset.docName,
       content_type: preview.dataset.docType,
-    });
+    };
+    if (preview.tagName === "A" || preview.dataset.docChoose === "1") openDocumentChooser(doc, preview);
+    else openDocumentPreview(doc);
   });
   document.addEventListener("change", (ev) => {
     if (ev.target.closest("#tbody [data-doc-pick]")) {

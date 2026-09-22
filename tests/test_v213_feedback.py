@@ -30,8 +30,8 @@ GENERICS_HTML = (ROOT / "app/static/generics.html").read_text(encoding="utf-8")
 STYLE = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
 
 
-def test_version_is_213():
-    assert VERSION == "2.13"
+def test_version_is_current():
+    assert VERSION == "2.14"
 
 
 def test_login_lands_on_home_and_can_install():

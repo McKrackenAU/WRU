@@ -68,6 +68,7 @@ function renderRows(sites) {
           <td class="mono">${s.archived_at ? new Date(s.archived_at).toLocaleDateString() : ""}</td>
           <td class="row-actions">
             <button type="button" class="btn btn-primary" data-view="${s.id}">Open</button>
+            <a class="btn" href="/shifts?site_id=${s.id}">Shifts</a>
             <button type="button" class="btn" data-restore="${s.id}">Restore</button>
             <button type="button" class="btn btn-danger" data-purge="${s.id}" data-purge-name="${escapeHtml(s.road_name)}">Purge</button>
           </td>

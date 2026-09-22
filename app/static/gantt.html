@@ -31,6 +31,12 @@
         <div class="toolbar">
           <button type="button" class="btn" id="btnSyncSites">Refresh from sites</button>
           <button type="button" class="btn btn-primary" id="btnSaveBoard">Save Gantt</button>
+          <input type="file" id="mspFile" accept=".xml,text/xml" hidden />
+          <button type="button" class="btn" id="btnImportMsp">Import MS Project</button>
+          <button type="button" class="btn" id="btnUndoMsp" hidden>Undo import</button>
+          <label class="inline-field">Asphalt subcontractor
+            <select id="exportSubcontractor"><option value="">All subcontractors</option></select>
+          </label>
           <a class="btn btn-primary" id="btnExportPdf" href="#">Export PDF</a>
         </div>
       </div>

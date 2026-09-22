@@ -12,6 +12,8 @@ import {
   userName,
   errorMessage,
   onLiveSitesChanged,
+  currentUser,
+  saveUserPrefs,
 } from "./common.js";
 
 const JOB_FILTER_KEY = "job";
@@ -48,6 +50,9 @@ const state = {
   dirtyFields: new Set(),
   baseUpdatedAt: null,
   filterQuery: {},
+  visibleSheetIds: new Set(),
+  sheetBundles: {},
+  commsSort: "group",
 };
 
 function sheetIdFromUrl() {
@@ -279,7 +284,37 @@ function filteredRows() {
   });
 }
 
+function combinedVisibleRows() {
+  if (state.visibleSheetIds.size <= 1) return filteredRows();
+  const q = state.search.trim().toLowerCase();
+  const out = [];
+  for (const id of state.visibleSheetIds) {
+    const sheet = state.sheetBundles[id];
+    if (!sheet) continue;
+    for (const row of sheet.rows || []) {
+      const tagged = { ...row, _sheetId: id, _sheetTitle: sheet.title };
+      if (!q) {
+        out.push(tagged);
+        continue;
+      }
+      const hay = [sheet.title, row.section, row.site?.road_name, row.site?.site_number, row.site?.moa_number, ...Object.values(row.values || {})]
+        .filter((v) => v != null && v !== "")
+        .join(" ")
+        .toLowerCase();
+      if (hay.includes(q)) out.push(tagged);
+    }
+  }
+  return out;
+}
+
 function groupKey(row) {
+  if (state.visibleSheetIds.size > 1) {
+    const sheet = state.sheetBundles[row._sheetId];
+    const col = (sheet?.columns || []).find((c) => /work\s*pack/i.test(`${c.field_key} ${c.name || ""}`));
+    const val = col ? rowValue(row, col.field_key) : "";
+    const tab = row._sheetTitle || sheet?.title || "Tab";
+    return val && val !== BLANK ? `${tab} · ${val}` : tab;
+  }
   const col = groupColumn();
   return col ? rowValue(row, col.field_key) : BLANK;
 }
@@ -324,16 +359,41 @@ function renderSheetTabs() {
   const wrap = $("sheetTabs");
   if (!wrap) return;
   const planner = state.sheets
-    .map(
-      (s) =>
-        `<button type="button" data-sheet="${s.id}" class="${state.view === "planner" && state.sheet?.id === s.id ? "active" : ""}" role="tab" aria-selected="${
-          state.view === "planner" && state.sheet?.id === s.id
-        }">${escapeHtml(s.title)}</button>`
-    )
+    .map((s) => {
+      const on = state.visibleSheetIds.has(s.id);
+      return `<button type="button" data-sheet="${s.id}" class="sheet-toggle ${
+        on && state.view === "planner" ? "is-on active" : on ? "is-on" : ""
+      }" aria-pressed="${on}" title="Show or hide ${escapeHtml(s.title)}">${escapeHtml(s.title)}</button>`;
+    })
     .join("");
-  wrap.innerHTML = `${planner}<button type="button" data-view="resources" class="${
+  wrap.innerHTML = `${planner}
+    <button type="button" class="sheet-toggle ${state.commsSort === "group" ? "is-on active" : ""}" data-comms-sort="group" aria-pressed="${
+      state.commsSort === "group"
+    }">By group</button>
+    <button type="button" class="sheet-toggle ${state.commsSort === "date" ? "is-on active" : ""}" data-comms-sort="date" aria-pressed="${
+      state.commsSort === "date"
+    }">By date</button>
+    <button type="button" data-view="resources" class="${
     state.view === "resources" ? "active" : ""
   }" role="tab" aria-selected="${state.view === "resources"}">Templates</button>`;
+}
+
+async function persistCommsPrefs() {
+  try {
+    await saveUserPrefs({
+      comms_sheets: [...state.visibleSheetIds],
+      comms_sort: state.commsSort,
+    });
+  } catch {
+    /* keep local */
+  }
+}
+
+function rowDateValue(row) {
+  const sheet = state.sheetBundles[row._sheetId] || state.sheet;
+  const cols = sheet?.columns || [];
+  const col = cols.find((c) => /start|due|date|works_start|work_end/i.test(`${c.field_key} ${c.name || ""}`));
+  return (col && (row.values || {})[col.field_key]) || row.site?.indicative_site_start_date || "";
 }
 
 function setViewChrome() {
@@ -602,9 +662,13 @@ function renderTable({ refreshFilters = false } = {}) {
   }
   const secondary = secondaryColumn();
   const status = statusColumn();
-  const rows = filteredRows()
+  const rows = combinedVisibleRows()
     .map((row, index) => ({ row, index }))
     .sort((a, b) => {
+      if (state.commsSort === "date") {
+        const cmp = String(rowDateValue(a.row)).localeCompare(String(rowDateValue(b.row)));
+        return cmp || a.index - b.index;
+      }
       const cmp = groupKey(a.row).localeCompare(groupKey(b.row), undefined, { numeric: true, sensitivity: "base" });
       return cmp || a.index - b.index;
     })
@@ -1226,12 +1290,24 @@ async function openRow(rowId) {
 
 async function loadSheets(preferredId) {
   state.sheets = await api("/api/comms/sheets");
+  const prefs = currentUser()?.prefs || {};
+  state.commsSort = prefs.comms_sort === "date" ? "date" : "group";
   if (!preferredId && viewFromUrl() === "resources") {
     await showResourcesView();
     return;
   }
   const want = preferredId || sheetIdFromUrl() || state.sheet?.id;
-  const pick = state.sheets.find((s) => s.id === want) || state.sheets[0] || null;
+  const saved = (prefs.comms_sheets || []).filter((id) => state.sheets.some((s) => s.id === id));
+  state.visibleSheetIds = new Set(saved.length ? saved : want ? [want] : state.sheets[0] ? [state.sheets[0].id] : []);
+  if (want) state.visibleSheetIds.add(want);
+  for (const id of [...state.visibleSheetIds]) {
+    try {
+      state.sheetBundles[id] = await api(`/api/comms/sheets/${id}`);
+    } catch {
+      state.visibleSheetIds.delete(id);
+    }
+  }
+  const pick = state.sheets.find((s) => s.id === want) || state.sheets.find((s) => state.visibleSheetIds.has(s.id)) || state.sheets[0] || null;
   if (pick) await loadSheet(pick.id, { keepRow: rowIdFromUrl() });
   else {
     state.sheet = null;
@@ -1257,6 +1333,8 @@ async function loadSheet(id, { keepRow, skipDrawer } = {}) {
     }
   }
   state.sheet = incoming;
+  state.sheetBundles[id] = incoming;
+  state.visibleSheetIds.add(id);
   state.openRowId = openId;
   setSheetUrl(id, state.openRowId);
   renderSheetTabs();
@@ -1543,10 +1621,29 @@ async function init() {
       await showResourcesView();
       return;
     }
+    const sortBtn = ev.target.closest("[data-comms-sort]");
+    if (sortBtn) {
+      state.commsSort = sortBtn.dataset.commsSort === "date" ? "date" : "group";
+      await persistCommsPrefs();
+      renderSheetTabs();
+      renderTable();
+      return;
+    }
     const btn = ev.target.closest("[data-sheet]");
     if (!btn) return;
+    const id = Number(btn.dataset.sheet);
     closeDrawer();
-    await loadSheet(Number(btn.dataset.sheet));
+    if (state.visibleSheetIds.has(id) && state.visibleSheetIds.size > 1) {
+      state.visibleSheetIds.delete(id);
+      await persistCommsPrefs();
+      const next = state.sheets.find((s) => state.visibleSheetIds.has(s.id));
+      if (next) await loadSheet(next.id);
+      else renderSheetTabs();
+      renderTable({ refreshFilters: true });
+      return;
+    }
+    await loadSheet(id);
+    await persistCommsPrefs();
   });
 
   on("resourceSearch", "input", () => {

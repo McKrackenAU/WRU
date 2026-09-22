@@ -45,6 +45,63 @@ function selectedSite() {
   return id ? sites.find((s) => s.id === id) : null;
 }
 
+async function loadCombinedHint() {
+  const hint = $("combinedCostHint");
+  if (!hint) return;
+  const siteId = selectedSiteId();
+  if (!siteId) {
+    hint.hidden = true;
+    hint.textContent = "";
+    return;
+  }
+  try {
+    const data = await api(`/api/costs/combined/${siteId}`);
+    if (!data.items || data.items.length < 2) {
+      hint.hidden = true;
+      hint.textContent = "";
+      return;
+    }
+    hint.hidden = false;
+    hint.textContent = `Shared MoA costing: ${data.items
+      .map((i) => `${i.site_number} ${money(i.summary_total)}`)
+      .join(" · ")} · group total ${money(data.total)}`;
+  } catch {
+    hint.hidden = true;
+  }
+}
+
+async function exportSeasonPdf() {
+  const siteId = selectedSiteId();
+  const site = selectedSite();
+  const payload = {
+    site_ids: siteId ? [siteId] : [],
+    program: site?.program || null,
+    title: site?.program ? `${site.program} season traffic` : "Season traffic estimates",
+  };
+  if (!payload.site_ids.length && !payload.program) {
+    payload.program = null;
+  }
+  const res = await fetch("/api/costs/season.pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload.program || payload.site_ids.length ? payload : { title: payload.title }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Season export failed");
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "wru-season-traffic.pdf";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function updateSiteHint() {
   const site = selectedSite();
   const hint = $("costSiteHint");
@@ -65,6 +122,7 @@ function updateSiteHint() {
     parts.push(`${Math.round(shifts)} indicative shift${shifts === 1 ? "" : "s"}`);
   }
   hint.textContent = `Saving to: ${parts.join(" · ")}`;
+  loadCombinedHint().catch(() => {});
 }
 
 function fillSiteSelect(preselectId = null) {
@@ -934,6 +992,9 @@ async function init() {
     });
   });
 
+  $("btnSeasonExport")?.addEventListener("click", () =>
+    exportSeasonPdf().catch((e) => { alertDialog(e.message); })
+  );
   $("costSite").addEventListener("change", () => {
     applySiteScheduleDefaults(selectedSite());
     updateSiteHint();

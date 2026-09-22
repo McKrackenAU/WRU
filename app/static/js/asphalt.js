@@ -40,6 +40,12 @@ function fillSites(selected) {
       .join("");
 }
 
+function applySitePaving() {
+  const id = Number($("siteSelect")?.value || 0);
+  const site = state.sites.find((s) => s.id === id);
+  if (site?.paving_subcontractor_id) fillSubs(site.paving_subcontractor_id);
+}
+
 function fillSubs(selected) {
   const sel = $("subSelect");
   sel.innerHTML =
@@ -304,6 +310,7 @@ async function init() {
   state.rates = rates;
   fillSites(siteId);
   fillSubs();
+  applySitePaving();
   state.lines = [];
   renderLines();
   if (siteId) await loadHistory();
@@ -337,7 +344,10 @@ async function init() {
     });
     renderLines();
   });
-  on("siteSelect", "change", () => loadHistory().catch((e) => { alertDialog(e.message); }));
+  on("siteSelect", "change", () => {
+    applySitePaving();
+    loadHistory().catch((e) => { alertDialog(e.message); });
+  });
   on("btnCalculate", "click", () => calculate().catch((e) => { alertDialog(e.message); }));
   on("btnCompare", "click", () => compareAll().catch((e) => { alertDialog(e.message); }));
   on("btnSave", "click", () => saveEstimate().catch((e) => { alertDialog(e.message); }));

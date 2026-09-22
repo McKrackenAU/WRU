@@ -22,6 +22,7 @@ import {
   docCategorySelectHtml,
   downloadDocumentsZip,
   openDocumentPreview,
+  openDocumentChooser,
 } from "./common.js";
 import { categoryTagsFor, selectedTagsFrom, tagPickerHtml } from "./tag_picker.js";
 
@@ -54,6 +55,8 @@ const state = {
   selectedStages: new Set(),
   selectedCouncils: new Set(),
   selectedLists: new Set(["permits", "trims", "none"]),
+  selectedCosts: new Set(["yes", "no"]),
+  asphaltSubs: [],
   _filtersInitialized: false,
   _knownPrograms: new Set(),
   _knownStages: new Set(),
@@ -302,6 +305,15 @@ function fillFilterOptions() {
     "filter-council"
   );
   checkRow("filterList", lists, state.selectedLists, "filter-list");
+  checkRow(
+    "filterCost",
+    [
+      { key: "yes", label: "Costs assigned" },
+      { key: "no", label: "No costs yet" },
+    ],
+    state.selectedCosts,
+    "filter-cost"
+  );
   syncFilterDropLabels();
 }
 
@@ -339,6 +351,7 @@ function syncFilterDropLabels() {
     ["stage", state.selectedStages, state._knownStages.size],
     ["council", state.selectedCouncils, state._knownCouncils.size],
     ["list", state.selectedLists, 3],
+    ["cost", state.selectedCosts, 2],
   ];
   for (const [key, selected, total] of specs) {
     const meta = document.querySelector(`[data-drop-meta="${key}"]`);
@@ -360,6 +373,7 @@ function setFilterDropSelection(key, all) {
   else if (key === "stage") state.selectedStages = all ? new Set(state._knownStages) : new Set();
   else if (key === "council") state.selectedCouncils = all ? new Set(state._knownCouncils) : new Set();
   else if (key === "list") state.selectedLists = all ? new Set(["permits", "trims", "none"]) : new Set();
+  else if (key === "cost") state.selectedCosts = all ? new Set(["yes", "no"]) : new Set();
   else return;
   fillFilterOptions();
   renderRegister();
@@ -399,6 +413,8 @@ function siteMatchesFilters(site) {
   if (!councilHit) return false;
   const list = site.metrics?.client_list || "none";
   if (!state.selectedLists.has(list)) return false;
+  const hasCost = site.has_traffic_cost || Number(site.cost_estimate_count || 0) > 0 || site.latest_cost_total;
+  if (!state.selectedCosts.has(hasCost ? "yes" : "no")) return false;
   return true;
 }
 
@@ -1122,15 +1138,17 @@ async function loadAll() {
   if (q) params.set("q", q);
 
   setStatus("Loading active TGS / MoA jobs…");
-  const [meta, columns, sites, generics, tagData, programs] = await Promise.all([
+  const [meta, columns, sites, generics, tagData, programs, asphaltSubs] = await Promise.all([
     api("/api/meta"),
     api("/api/columns"),
     api(`/api/sites?${params}`),
     api("/api/sites/generic-moas").catch(() => []),
     api("/api/tags").catch(() => ({ items: [], program_tags: {} })),
     isAdminUser() ? api("/api/admin/programs").catch(() => []) : Promise.resolve([]),
+    api("/api/asphalt/subcontractors?active_only=true").catch(() => []),
   ]);
   state.meta = meta;
+  state.asphaltSubs = Array.isArray(asphaltSubs) ? asphaltSubs : [];
   state.tagLibrary = tagData.items || [];
   state.programTags = tagData.program_tags || {};
   state.programs = Array.isArray(programs) ? programs : [];
@@ -1141,6 +1159,7 @@ async function loadAll() {
   state.genericMoas = Array.isArray(generics) ? generics : [];
   fillFilterOptions();
   fillProgramSelect();
+  fillPavingSelect();
   const prevSuppress = state.suppressAutosave;
   state.suppressAutosave = true;
   try {
@@ -1374,6 +1393,22 @@ function fillProgramSelect(selected = "") {
   if (cur) sel.value = cur;
 }
 
+function fillPavingSelect(selected) {
+  const sel = $("fPaving");
+  if (!sel) return;
+  const cur = selected == null || selected === "" ? "" : String(selected);
+  const rows = state.asphaltSubs || [];
+  sel.innerHTML =
+    `<option value="">None</option>` +
+    rows
+      .map(
+        (s) =>
+          `<option value="${s.id}" ${cur && Number(cur) === s.id ? "selected" : ""}>${escapeHtml(s.name)}</option>`
+      )
+      .join("");
+  if (cur) sel.value = cur;
+}
+
 function renderJobTags(site = null) {
   const picker = $("jobTagsPicker");
   if (!picker) return;
@@ -1593,6 +1628,7 @@ async function openSiteDrawer(site = null) {
   fillRoadList(site?.road_name || "");
   $("fSiteNo").value = site?.site_number || "";
   fillProgramSelect(site?.program || "");
+  fillPavingSelect(site?.paving_subcontractor_id);
   renderJobTags(site);
   $("fTgs").value = site?.tgs_reference || "";
   $("fStart").value = site?.indicative_site_start_date || "";
@@ -1645,9 +1681,14 @@ async function openSiteDrawer(site = null) {
   if (site) {
     setSiteExtrasVisible(true);
     $("btnOpenCosts").href = `/costs?site_id=${site.id}`;
-    await Promise.all([refreshTracking(), refreshDocuments(), refreshCosts()]);
+    if ($("btnOpenShifts")) $("btnOpenShifts").href = `/shifts?site_id=${site.id}`;
+    if ($("drawMapLink")) $("drawMapLink").href = `/map?site_id=${site.id}`;
+    if ($("drawMapWrap")) $("drawMapWrap").hidden = false;
+    await Promise.all([refreshTracking(), refreshDocuments(), refreshCosts(), refreshShiftHistory()]);
   } else {
     setSiteExtrasVisible(false);
+    if ($("drawMapWrap")) $("drawMapWrap").hidden = true;
+    if ($("shiftHistory")) $("shiftHistory").innerHTML = "";
   }
   openDrawer();
   setDrawerReadOnly(archived);
@@ -1686,6 +1727,7 @@ function collectSitePayload() {
     road_name: collectedRoadName(),
     site_number: $("fSiteNo").value.trim(),
     program: $("fProgram").value.trim() || null,
+    paving_subcontractor_id: $("fPaving")?.value ? Number($("fPaving").value) : null,
     tags: selectedTagsFrom($("jobTagsPicker")),
     tgs_reference: $("fTgs").value.trim() || null,
     indicative_site_start_date: $("fStart").value || null,
@@ -1945,6 +1987,85 @@ async function refreshCosts() {
   $("costList").innerHTML = items.length
     ? items.join("")
     : `<li><p class="meta">No cost estimates yet.</p></li>`;
+
+  try {
+    const combined = await api(`/api/costs/combined/${sid}`);
+    if (combined?.items?.length > 1 && summary) {
+      const extra = combined.items
+        .map((row) => `${escapeHtml(row.site_number || "")} ${moneyFmt(row.summary_total)}`)
+        .join(" · ");
+      summary.innerHTML += `<br/>Combined MoA traffic ${moneyFmt(combined.total)} — ${extra}`;
+    }
+  } catch {
+    /* optional */
+  }
+}
+
+async function refreshShiftHistory() {
+  const host = $("shiftHistory");
+  if (!host || !state.detailSiteId) return;
+  if ($("btnOpenShifts")) $("btnOpenShifts").href = `/shifts?site_id=${state.detailSiteId}`;
+  try {
+    const rows = await api(`/api/shifts?site_id=${state.detailSiteId}&include_archived=true`);
+    host.innerHTML = rows.length
+      ? rows
+          .map(
+            (r) => `<li>
+        <div class="top">
+          <span>${escapeHtml(r.work_date || "")} · ${escapeHtml(r.shift_type || "day")}${
+            r.weather?.label ? ` · ${escapeHtml(r.weather.label)}` : ""
+          }</span>
+          <a class="btn btn-sm" href="/api/shifts/${r.id}/export.pdf">PDF</a>
+        </div>
+        <p>${escapeHtml(r.works_done || r.notes || "Shift report")}</p>
+      </li>`
+          )
+          .join("")
+      : `<li><p class="meta">No shift reports yet. Open Shift reports to add one — history stays after archive.</p></li>`;
+  } catch {
+    host.innerHTML = `<li><p class="meta">Could not load shift reports.</p></li>`;
+  }
+}
+
+async function openExportDialog() {
+  const ids = [...state.selectedIds];
+  if (!ids.length) {
+    await alertDialog("Select sites on the register first.");
+    return;
+  }
+  if ($("exportDialogHint")) {
+    $("exportDialogHint").textContent = `Export ${ids.length} selected site${ids.length === 1 ? "" : "s"}. Tick the fields to include.`;
+  }
+  $("exportDialog")?.showModal();
+}
+
+async function exportSelection() {
+  const ids = [...state.selectedIds];
+  if (!ids.length) {
+    await alertDialog("Select sites on the register first.");
+    return;
+  }
+  const fields = [...document.querySelectorAll("#exportFields input:checked")].map((el) => el.value);
+  const res = await fetch("/api/export/selection.csv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ site_ids: ids, fields }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Export failed");
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `WRU_selected_sites.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  $("exportDialog")?.close();
 }
 
 async function refreshTracking() {
@@ -2026,8 +2147,8 @@ async function refreshDocuments() {
           </span>
           ${canDelete ? `<button type="button" class="btn btn-sm" data-del-doc="${d.id}">Delete</button>` : ""}
         </div>
-        <p><a href="/api/documents/${d.id}/download" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">${escapeHtml(d.original_filename)}</a>
-          <button type="button" class="btn btn-sm" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}">View</button></p>
+        <p class="doc-file-row"><a href="/api/documents/${d.id}/download" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}" data-doc-choose="1">${escapeHtml(d.original_filename)}</a>
+          <button type="button" class="btn btn-sm btn-view" data-doc-preview="${d.id}" data-doc-name="${escapeHtml(d.original_filename)}" data-doc-type="${escapeHtml(d.content_type || "")}" data-doc-choose="1">View / download</button></p>
         ${d.description ? `<p class="meta">${escapeHtml(d.description)}</p>` : ""}
         ${shareToggle || shareBadge ? `<div class="doc-share-meta">${shareToggle}${shareBadge}</div>` : ""}
       </li>`;
@@ -2273,6 +2394,7 @@ function bindEvents() {
       ["filter-stage", "selectedStages"],
       ["filter-council", "selectedCouncils"],
       ["filter-list", "selectedLists"],
+      ["filter-cost", "selectedCosts"],
     ];
     for (const [attr, key] of map) {
       const box = ev.target.closest(`input[data-${attr}]`);
@@ -2291,6 +2413,7 @@ function bindEvents() {
     state.selectedStages = new Set(state._knownStages);
     state.selectedCouncils = new Set(state._knownCouncils);
     state.selectedLists = new Set(["permits", "trims", "none"]);
+    state.selectedCosts = new Set(["yes", "no"]);
     fillFilterOptions();
     renderRegister();
   });
@@ -2300,6 +2423,7 @@ function bindEvents() {
     state.selectedStages = new Set();
     state.selectedCouncils = new Set();
     state.selectedLists = new Set();
+    state.selectedCosts = new Set();
     fillFilterOptions();
     renderRegister();
   });
@@ -2446,6 +2570,11 @@ function bindEvents() {
     state.selectedIds.clear();
     renderRegister();
   });
+  on("btnExportSelected", "click", () => openExportDialog());
+  on("btnBulkExport", "click", () => openExportDialog());
+  on("btnExportSelectionGo", "click", () =>
+    exportSelection().catch((e) => alertDialog(errorMessage(e, "Could not export")))
+  );
   on("btnBulkArchive", "click", () => {
     bulkArchiveSelected().catch((e) => {
       alertDialog(e.message || String(e));
@@ -2504,11 +2633,13 @@ function bindEvents() {
     const preview = ev.target.closest("[data-doc-preview]");
     if (preview) {
       ev.preventDefault();
-      openDocumentPreview({
+      const doc = {
         id: Number(preview.dataset.docPreview),
         original_filename: preview.dataset.docName,
         content_type: preview.dataset.docType,
-      });
+      };
+      if (preview.tagName === "A" || preview.dataset.docChoose === "1") openDocumentChooser(doc, preview);
+      else openDocumentPreview(doc);
       return;
     }
     const btn = ev.target.closest("[data-del-doc]");

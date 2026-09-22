@@ -521,3 +521,62 @@ def build_cost_pdf(
 
     doc.build(story, onFirstPage=draw_branded_page, onLaterPages=draw_branded_page)
     return buf.getvalue()
+
+
+def build_season_cost_pdf(title: str, estimates: list[dict[str, Any]]) -> bytes:
+    """Cover page with totals, then one page per site estimate."""
+    from reportlab.platypus import PageBreak
+
+    buf = io.BytesIO()
+    styles = getSampleStyleSheet()
+    heading = ParagraphStyle("H", parent=styles["Heading1"], textColor=colors.HexColor(f"#{GREEN_HEX}"), fontSize=16)
+    body = ParagraphStyle("B", parent=styles["Normal"], fontSize=10, leading=14)
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm, topMargin=20 * mm, bottomMargin=16 * mm)
+    total = 0.0
+    for item in estimates:
+        try:
+            total += float(item.get("summary_total") or 0)
+        except (TypeError, ValueError):
+            pass
+    story = [
+        Paragraph(title or "Season traffic estimates", heading),
+        Spacer(1, 8),
+        Paragraph(f"Exported {datetime.now().strftime('%a %d %b %Y')}", body),
+        Paragraph(f"{len(estimates)} site costing{'s' if len(estimates) != 1 else ''}", body),
+        Paragraph(f"Total estimated traffic: {_money(total)}", body),
+        Spacer(1, 10),
+    ]
+    cover_rows = [["Site", "Road", "MoA", "Estimate"]]
+    for item in estimates:
+        cover_rows.append(
+            [
+                str(item.get("site_number") or ""),
+                str(item.get("road_name") or ""),
+                str(item.get("moa_number") or ""),
+                _money(item.get("summary_total")),
+            ]
+        )
+    table = Table(cover_rows, colWidths=[25 * mm, 70 * mm, 35 * mm, 35 * mm])
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(f"#{GREEN_HEX}")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cccccc")),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    story.append(table)
+    for item in estimates:
+        story.append(PageBreak())
+        story.append(Paragraph(f"{item.get('road_name') or ''} {item.get('site_number') or ''}", heading))
+        story.append(Paragraph(f"MoA {item.get('moa_number') or '—'} · {_money(item.get('summary_total'))}", body))
+        if item.get("notes"):
+            story.append(Paragraph(str(item["notes"]), body))
+        results = item.get("results") or {}
+        if results.get("site_traffic_total") is not None:
+            story.append(Paragraph(f"Site traffic total {_money(results.get('site_traffic_total'))}", body))
+    doc.build(story)
+    return buf.getvalue()

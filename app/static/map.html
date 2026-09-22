@@ -28,7 +28,7 @@
       <div class="page-head">
         <div>
           <h1>Works map</h1>
-          <p>Import KML, draw a site markup, and click through to that year’s TGS / MoA</p>
+          <p>Import KML or a QGIS GeoPackage, draw a polygon on an existing site, and click through to that year’s TGS / MoA</p>
         </div>
       </div>
       <div class="map-layout" id="mapLayout">
@@ -40,21 +40,32 @@
           </div>
           <p class="hint" id="basemapHint">Streets from OpenStreetMap. Nearmap needs an API key.</p>
 
-          <h2>Add site from map</h2>
-          <p class="hint">Draw a point, line, or polygon with the map tools, then save it to the register.</p>
+          <h2>Draw markup</h2>
+          <p class="hint">Draw a point, line, or polygon, then save it onto an existing register site or as a new site.</p>
           <div class="filters" style="margin:0 0 0.75rem; flex-direction:column; align-items:stretch">
-            <input id="drawRoad" type="text" placeholder="Road name" />
-            <input id="drawSiteNo" type="text" placeholder="Site number" />
-            <select id="drawProgram"><option value="">Program…</option></select>
-            <button type="button" class="btn btn-primary" id="btnSaveDrawn" disabled>Save drawn site</button>
+            <label class="check-row" for="drawAttachMode">
+              <input id="drawAttachMode" type="checkbox" />
+              <span>Attach to existing site</span>
+            </label>
+            <select id="drawExistingSite" hidden>
+              <option value="">Select a site…</option>
+            </select>
+            <div id="drawNewFields">
+              <input id="drawRoad" type="text" placeholder="Road name" />
+              <input id="drawSiteNo" type="text" placeholder="Site number" />
+              <select id="drawProgram"><option value="">Program…</option></select>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnSaveDrawn" disabled>Save drawing</button>
             <button type="button" class="btn" id="btnClearDrawn">Clear drawing</button>
           </div>
-          <h2>KML layers</h2>
+          <h2>KML / GeoPackage</h2>
           <div class="filters" style="margin:0 0 0.75rem; flex-direction:column; align-items:stretch">
             <select id="fyFilter"><option value="">All years</option></select>
             <input id="layerName" type="text" placeholder="Layer name (optional)" />
             <input id="kmlFile" type="file" accept=".kml,application/vnd.google-earth.kml+xml" />
             <button type="button" class="btn btn-primary" id="btnUploadKml">Upload KML</button>
+            <input id="gpkgFile" type="file" accept=".gpkg,.sqlite,application/geopackage+sqlite3" />
+            <button type="button" class="btn" id="btnUploadGpkg">Upload QGIS .gpkg</button>
           </div>
           <ul class="event-list" id="layerList"></ul>
           <p class="hint">Features auto-link when MoA # or site number appears in the KML name/properties. You can also link manually from the popup.</p>

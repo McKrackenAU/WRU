@@ -244,7 +244,8 @@ COMBINED_APPLICATION_FIELDS = (
     "extension_start_date",
     "extension_expiry_date",
 )
-# Application pipeline — not ready_for_works (those sites can still start on different days).
+# Combined jobs share the same application status, including ready_for_works.
+# Start dates stay per-site so works can still be sequenced separately.
 COMBINED_APPLICATION_STAGES = frozenset(
     {
         "tgs_markup_completed",
@@ -256,6 +257,7 @@ COMBINED_APPLICATION_STAGES = frozenset(
         "moa_with_trims",
         "revision_needed",
         "moa_received",
+        "ready_for_works",
     }
 )
 
@@ -537,6 +539,8 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "combined_application_id": getattr(site, "combined_application_id", None),
         "combined_site_ids": list(partners.get("ids") or []),
         "combined_site_numbers": list(partners.get("numbers") or []),
+        "paving_subcontractor_id": getattr(site, "paving_subcontractor_id", None),
+        "has_traffic_cost": bool(cost_count),
         "financial_year": fy,
         "archived": bool(site.archived),
         "archived_at": site.archived_at,

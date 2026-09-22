@@ -21,7 +21,7 @@ from ..cost_engine import (
     parse_date_list,
     preview_schedule_window,
 )
-from ..cost_export import build_cost_pdf, build_cost_workbook
+from ..cost_export import build_cost_pdf, build_cost_workbook, build_season_cost_pdf
 from ..database import get_db
 from ..file_store import materialize_original, write_stored_bytes
 from ..storage_paths import cost_estimates_dir
@@ -693,7 +693,11 @@ def list_estimates(
 ):
     query = db.query(CostEstimate)
     if site_id is not None:
-        query = query.filter(CostEstimate.site_id == site_id)
+        from ..services import combined_group_ids
+
+        site = db.get(Site, site_id)
+        ids = combined_group_ids(db, site) if site else [site_id]
+        query = query.filter(CostEstimate.site_id.in_(ids))
     elif not include_unassigned:
         query = query.filter(CostEstimate.site_id.isnot(None))
     if moa_number:
@@ -949,4 +953,85 @@ def export_saved_estimate_pdf(estimate_id: int, db: Session = Depends(get_db)):
         headers={
             "Content-Disposition": f'attachment; filename="wru-estimate-{estimate_id}.pdf"'
         },
+    )
+
+
+@router.get("/combined/{site_id}")
+def combined_costings(site_id: int, db: Session = Depends(get_db)):
+    from ..services import combined_group_ids
+
+    site = db.get(Site, site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    ids = combined_group_ids(db, site)
+    rows = (
+        db.query(CostEstimate)
+        .filter(CostEstimate.site_id.in_(ids))
+        .order_by(CostEstimate.created_at.desc())
+        .all()
+    )
+    latest: dict[int, CostEstimate] = {}
+    for row in rows:
+        latest.setdefault(int(row.site_id), row)
+    total = 0.0
+    items = []
+    for sid, row in latest.items():
+        amt = float(row.summary_total or 0)
+        total += amt
+        linked = db.get(Site, sid)
+        items.append(
+            {
+                "site_id": sid,
+                "site_number": linked.site_number if linked else None,
+                "road_name": linked.road_name if linked else None,
+                "estimate_id": row.id,
+                "name": row.name,
+                "summary_total": amt,
+            }
+        )
+    return {"site_ids": ids, "total": round(total, 2), "items": items}
+
+
+class SeasonExportIn(BaseModel):
+    site_ids: list[int] = Field(default_factory=list)
+    program: str | None = None
+    title: str | None = None
+
+
+@router.post("/season.pdf")
+def season_export(payload: SeasonExportIn, db: Session = Depends(get_db)):
+    q = db.query(Site).filter(Site.archived.is_(False))
+    if payload.site_ids:
+        q = q.filter(Site.id.in_(payload.site_ids))
+    elif payload.program:
+        q = q.filter(Site.program == payload.program)
+    sites = q.all()
+    latest = []
+    for site in sites:
+        row = (
+            db.query(CostEstimate)
+            .filter(CostEstimate.site_id == site.id)
+            .order_by(CostEstimate.created_at.desc())
+            .first()
+        )
+        if not row:
+            continue
+        latest.append(
+            {
+                "site_number": site.site_number,
+                "road_name": site.road_name,
+                "moa_number": site.moa_number,
+                "summary_total": row.summary_total,
+                "notes": row.notes,
+                "results": row.results or {},
+            }
+        )
+    if not latest:
+        raise HTTPException(status_code=400, detail="No traffic estimates for the selected sites")
+    title = payload.title or f"{payload.program or 'Selected sites'} traffic estimates"
+    pdf = build_season_cost_pdf(title, latest)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="wru-season-traffic.pdf"'},
     )

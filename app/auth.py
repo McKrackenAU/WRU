@@ -50,6 +50,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def user_to_public(user: User) -> dict:
     from .notify import normalize_tags
+    from .user_prefs import normalize_prefs
 
     return {
         "id": user.id,
@@ -61,6 +62,7 @@ def user_to_public(user: User) -> dict:
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
         "tags": normalize_tags(getattr(user, "tags", None)),
+        "prefs": normalize_prefs(getattr(user, "prefs", None)),
     }
 
 

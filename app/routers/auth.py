@@ -34,7 +34,8 @@ class PasswordChangeIn(BaseModel):
 
 
 class MeUpdateIn(BaseModel):
-    display_name: str = Field(min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    prefs: dict | None = None
 
 
 @router.post("/login")
@@ -64,12 +65,23 @@ def update_me(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    from ..user_prefs import normalize_prefs
+
     if is_hidden_user(user):
         raise HTTPException(status_code=400, detail="The recovery account cannot be edited here")
-    name = payload.display_name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Display name is required")
-    user.display_name = name
+    if payload.display_name is not None:
+        name = payload.display_name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Display name is required")
+        user.display_name = name
+    if payload.prefs is not None:
+        current = user.prefs if isinstance(user.prefs, dict) else {}
+        incoming = payload.prefs if isinstance(payload.prefs, dict) else {}
+        merged = {**current, **incoming}
+        cur_colors = current.get("colors") if isinstance(current.get("colors"), dict) else {}
+        in_colors = incoming.get("colors") if isinstance(incoming.get("colors"), dict) else {}
+        merged["colors"] = {**cur_colors, **in_colors}
+        user.prefs = normalize_prefs(merged)
     db.commit()
     db.refresh(user)
     set_session_user(request, user)

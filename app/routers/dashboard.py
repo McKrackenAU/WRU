@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..auth import can_manage_comms, get_current_user
 from ..calculations import must_have_status
 from ..database import get_db
-from ..models import CommsRow, Site, TrackingEvent, User
+from ..models import ActualSpend, CommsRow, CostEstimate, Site, TrackingEvent, User
 from ..notify import (
     category_tags_for_program,
     effective_job_tags,
@@ -20,6 +20,42 @@ from ..services import lean_sites_query, serialize_sites
 from ..stage_registry import active_stages
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+
+def _money_totals(db: Session, model, site_ids: set[int], kind=None) -> dict:
+    if not site_ids:
+        return {"estimated": 0, "sites_with_cost": 0}
+    q = db.query(model).filter(model.site_id.in_(list(site_ids)))
+    rows = q.all()
+    latest: dict[int, float] = {}
+    for row in rows:
+        try:
+            latest[int(row.site_id)] = float(row.summary_total or 0)
+        except (TypeError, ValueError):
+            continue
+    return {
+        "estimated": round(sum(latest.values()), 2),
+        "sites_with_cost": len(latest),
+    }
+
+
+def _spend_totals(db: Session, site_ids: set[int]) -> dict:
+    if not site_ids:
+        return {"traffic": 0, "asphalt": 0, "total": 0}
+    rows = db.query(ActualSpend).filter(ActualSpend.site_id.in_(list(site_ids))).all()
+    traffic = 0.0
+    asphalt = 0.0
+    for row in rows:
+        amt = float(row.amount or 0)
+        if (row.kind or "") == "asphalt":
+            asphalt += amt
+        else:
+            traffic += amt
+    return {
+        "traffic": round(traffic, 2),
+        "asphalt": round(asphalt, 2),
+        "total": round(traffic + asphalt, 2),
+    }
 
 
 def _iso(value) -> str | None:
@@ -182,4 +218,6 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         "recent_approvals": recent_approvals,
         "recent_status_changes": recent_status_changes,
         "comms_preview": comms_preview,
+        "cost_totals": _money_totals(db, CostEstimate, focused_ids, kind=None),
+        "spend_totals": _spend_totals(db, focused_ids),
     }

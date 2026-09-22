@@ -196,7 +196,7 @@ async function refreshLayers() {
         </li>`
         )
         .join("")
-    : `<li><p class="meta">No KML layers yet.</p></li>`;
+    : `<li><p class="meta">No KML or GeoPackage layers yet.</p></li>`;
 }
 
 async function refreshMap() {
@@ -234,41 +234,92 @@ async function refreshMap() {
   scheduleMapFix(true);
 }
 
-async function uploadKml() {
-  const file = $("kmlFile").files?.[0];
+async function uploadLayer(inputId, url, emptyMsg) {
+  const file = $(inputId)?.files?.[0];
   if (!file) {
-      alertDialog("Choose a KML file");
-      return;
-    }
+    alertDialog(emptyMsg);
+    return;
+  }
   const fd = new FormData();
   fd.append("file", file);
   if ($("layerName").value.trim()) fd.append("name", $("layerName").value.trim());
   if ($("fyFilter").value) fd.append("financial_year", $("fyFilter").value);
   if (userName()) fd.append("uploaded_by", userName());
-  const res = await fetch("/api/map/layers", { method: "POST", body: fd });
+  const res = await fetch(url, { method: "POST", body: fd });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     alertDialog(body.detail || "Upload failed");
     return;
   }
-  $("kmlFile").value = "";
+  if ($(inputId)) $(inputId).value = "";
   $("layerName").value = "";
   await refreshLayers();
   await refreshMap();
 }
 
+async function uploadKml() {
+  await uploadLayer("kmlFile", "/api/map/layers", "Choose a KML file");
+}
+
+async function uploadGpkg() {
+  await uploadLayer("gpkgFile", "/api/map/gpkg", "Choose a QGIS .gpkg file");
+}
+
+function fillExistingSites(selectedId) {
+  const sel = $("drawExistingSite");
+  if (!sel) return;
+  const active = sites.filter((s) => !s.archived);
+  sel.innerHTML =
+    `<option value="">Select a site…</option>` +
+    active
+      .map(
+        (s) =>
+          `<option value="${s.id}" ${Number(selectedId) === s.id ? "selected" : ""}>${escapeHtml(s.site_number)} · ${escapeHtml(s.road_name)}</option>`
+      )
+      .join("");
+}
+
+function syncAttachMode(force) {
+  const attach = force === true || $("drawAttachMode")?.checked;
+  if ($("drawAttachMode") && force === true) $("drawAttachMode").checked = true;
+  if ($("drawExistingSite")) $("drawExistingSite").hidden = !attach;
+  if ($("drawNewFields")) $("drawNewFields").hidden = attach;
+}
+
 async function saveDrawnSite() {
-  const road = $("drawRoad").value.trim();
-  const siteNo = $("drawSiteNo").value.trim();
-  if (!road || !siteNo) {
+  if (!drawnGeometry) {
+    alertDialog("Draw a point, line, or polygon first");
+    return;
+  }
+  const attach = Boolean($("drawAttachMode")?.checked);
+  try {
+    if (attach) {
+      const siteId = Number($("drawExistingSite")?.value || 0);
+      if (!siteId) {
+        alertDialog("Choose the register site to attach this drawing to");
+        return;
+      }
+      const site = sites.find((s) => s.id === siteId);
+      await api(`/api/sites/${siteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          geometry: drawnGeometry,
+          geometry_name: site?.road_name || site?.site_number || "Works area",
+        }),
+      });
+      clearDrawing();
+      await refreshLayers();
+      await refreshMap();
+      alertDialog("Polygon saved on the existing site. Shift reports can use this works area.");
+      return;
+    }
+    const road = $("drawRoad").value.trim();
+    const siteNo = $("drawSiteNo").value.trim();
+    if (!road || !siteNo) {
       alertDialog("Road name and site number are required");
       return;
     }
-  if (!drawnGeometry) {
-      alertDialog("Draw a point, line, or polygon first");
-      return;
-    }
-  try {
     await api("/api/sites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -286,6 +337,7 @@ async function saveDrawnSite() {
     sites = await api("/api/sites?archived=false");
     const archived = await api("/api/sites?archived=true");
     sites = [...sites, ...archived];
+    fillExistingSites();
     await refreshLayers();
     await refreshMap();
     alertDialog("Site added to the register and map.");
@@ -407,12 +459,25 @@ async function init() {
   sites = await api("/api/sites?archived=false");
   const archived = await api("/api/sites?archived=true");
   sites = [...sites, ...archived];
+  const attachId = Number(new URLSearchParams(location.search).get("site_id") || 0);
+  fillExistingSites(attachId || "");
+  if (attachId) {
+    syncAttachMode(true);
+    const site = sites.find((s) => s.id === attachId);
+    if (site) {
+      if ($("drawRoad")) $("drawRoad").value = site.road_name || "";
+      if ($("drawSiteNo")) $("drawSiteNo").value = site.site_number || "";
+      if ($("drawProgram") && site.program) $("drawProgram").value = site.program;
+    }
+  }
+  $("drawAttachMode")?.addEventListener("change", () => syncAttachMode());
 
   $("fyFilter").addEventListener("change", async () => {
     await refreshLayers();
     await refreshMap();
   });
   $("btnUploadKml").addEventListener("click", uploadKml);
+  $("btnUploadGpkg")?.addEventListener("click", () => uploadGpkg().catch((err) => alertDialog(err.message)));
   $("btnSaveDrawn").addEventListener("click", saveDrawnSite);
   $("btnClearDrawn").addEventListener("click", clearDrawing);
   $("layerList").addEventListener("click", async (ev) => {

@@ -201,6 +201,7 @@ def _item_public(item: Any, *, schedule: list[dict[str, Any]], error: str | None
         "site_road_name": site.road_name if site else None,
         "site_number": site.site_number if site else None,
         "site_program": site.program if site else None,
+        "paving_subcontractor_id": getattr(site, "paving_subcontractor_id", None) if site else None,
         "schedule": schedule,
         "error": error,
     }

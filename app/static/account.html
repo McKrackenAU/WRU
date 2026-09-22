@@ -25,8 +25,8 @@
     <main id="main-content" tabindex="-1" class="main">
       <div class="page-head">
         <div>
-          <h1>Account</h1>
-          <p>Your name on the tracker and in the activity log.</p>
+          <h1>Account &amp; look</h1>
+          <p>Your name, shortcuts, Home widgets, and colours stay on this login.</p>
         </div>
       </div>
       <section class="panel-card password-card">
@@ -45,8 +45,37 @@
             Display name
             <input id="accountDisplayName" name="display-name" type="text" maxlength="128" required />
           </label>
+          <label>
+            Theme
+            <select id="accountTheme">
+              <option value="system">Match device</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <fieldset class="prefs-fieldset">
+            <legend>Colours</legend>
+            <p class="hint">Leave a colour empty to use the default Ventia palette.</p>
+            <div class="form-grid">
+              <label>Accent <input id="colorAccent" type="color" /></label>
+              <label>Background <input id="colorBg" type="color" /></label>
+              <label>Text <input id="colorInk" type="color" /></label>
+              <label>Panels <input id="colorPanel" type="color" /></label>
+            </div>
+            <button type="button" class="btn btn-sm" id="btnClearColors">Reset colours</button>
+          </fieldset>
+          <fieldset class="prefs-fieldset">
+            <legend>Quick links</legend>
+            <p class="hint">Shown in the top bar on larger screens. Pick up to eight.</p>
+            <div id="quickLinkPicker" class="prefs-pills"></div>
+          </fieldset>
+          <fieldset class="prefs-fieldset">
+            <legend>Home widgets</legend>
+            <p class="hint">Cards on Home. Turn on only what you use.</p>
+            <div id="homeWidgetPicker" class="prefs-pills"></div>
+          </fieldset>
           <div class="toolbar">
-            <button type="submit" class="btn btn-primary" id="accountSaveBtn">Save name</button>
+            <button type="submit" class="btn btn-primary" id="accountSaveBtn">Save</button>
             <a class="btn" href="/password">Change password</a>
             <a class="btn" href="/tracking?mine=1">My activity</a>
           </div>

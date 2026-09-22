@@ -35,6 +35,8 @@ from .routers import (
     import_tracker,
     live,
     map_layers,
+    shifts,
+    weather,
     notifications,
     settings_admin,
     sites,
@@ -93,6 +95,8 @@ app.include_router(settings_admin.router)
 app.include_router(import_tracker.router)
 app.include_router(system.router)
 app.include_router(backup.router)
+app.include_router(shifts.router)
+app.include_router(weather.router)
 
 
 # Starlette runs last-added middleware first on the request.
@@ -297,6 +301,11 @@ def archive_page():
 @app.get("/map")
 def map_page():
     return _page("map.html")
+
+
+@app.get("/shifts")
+def shifts_page():
+    return _page("shifts.html")
 
 
 @app.get("/documents")

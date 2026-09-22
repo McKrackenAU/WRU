@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from reportlab.lib import colors
@@ -561,6 +562,63 @@ def export_sites_csv(archived: bool = False, db: Session = Depends(get_db)):
         )
     kind = "archive" if archived else "active"
     filename = f"WRU_TGS_{kind}_sites_{date.today().isoformat()}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class SelectionExportIn(BaseModel):
+    site_ids: list[int] = Field(min_length=1)
+    fields: list[str] = Field(default_factory=list)
+
+
+SELECTION_FIELDS = {
+    "road_name": "Road",
+    "site_number": "Site",
+    "program": "Program",
+    "moa_number": "MoA",
+    "priority": "Priority",
+    "indicative_start": "Start",
+    "current_stage": "Stage",
+    "latest_cost_total": "Traffic estimate",
+    "has_traffic_cost": "Costs assigned",
+    "paving_subcontractor": "Paving subcontractor",
+    "comments": "Comments",
+}
+
+
+@router.post("/selection.csv")
+def export_selection(payload: SelectionExportIn, db: Session = Depends(get_db)):
+    from ..models import AsphaltSubcontractor
+
+    sites = lean_sites_query(db).filter(Site.id.in_(payload.site_ids)).all()
+    if not sites:
+        raise HTTPException(status_code=404, detail="No matching sites")
+    wanted = [f for f in payload.fields if f in SELECTION_FIELDS] or list(SELECTION_FIELDS)
+    labels = stage_labels_map(db)
+    subs = {s.id: s.name for s in db.query(AsphaltSubcontractor).all()}
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=[SELECTION_FIELDS[k] for k in wanted])
+    writer.writeheader()
+    for site, data in zip(sites, serialize_sites(db, sites)):
+        m = data["metrics"]
+        values = {
+            "road_name": site.road_name,
+            "site_number": site.site_number,
+            "program": site.program or "",
+            "moa_number": site.moa_number or "",
+            "priority": data.get("today_priority"),
+            "indicative_start": site.indicative_site_start_date or "",
+            "current_stage": labels.get(m.get("current_stage") or "", m.get("current_stage") or ""),
+            "latest_cost_total": data.get("latest_cost_total") or "",
+            "has_traffic_cost": "Yes" if data.get("has_traffic_cost") else "No",
+            "paving_subcontractor": subs.get(getattr(site, "paving_subcontractor_id", None), ""),
+            "comments": (site.comments or "").replace("\n", " "),
+        }
+        writer.writerow({SELECTION_FIELDS[k]: values[k] for k in wanted})
+    filename = f"WRU_selected_sites_{date.today().isoformat()}.csv"
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",

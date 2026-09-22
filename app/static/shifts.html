@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Shift reports · WRU</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body class="shift-page">
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Shift reports</h1>
+          <p>Log a shift on a phone, capture live weather, and export a PDF. History stays on archived sites.</p>
+        </div>
+      </div>
+
+      <section class="panel-card">
+        <form id="shiftForm" class="form-grid">
+          <label>Site
+            <select id="shiftSite" required>
+              <option value="">Select a site…</option>
+            </select>
+          </label>
+          <label>Date
+            <input id="shiftDate" type="date" required />
+          </label>
+          <label>Day / night
+            <select id="shiftType">
+              <option value="day">Day</option>
+              <option value="night">Night</option>
+            </select>
+          </label>
+          <label>Crew
+            <input id="shiftCrew" maxlength="255" placeholder="Names / plant" />
+          </label>
+          <label class="full">Works done
+            <textarea id="shiftWorks" rows="4" placeholder="What was completed this shift"></textarea>
+          </label>
+          <label class="full">Issues
+            <textarea id="shiftIssues" rows="3" placeholder="Hold-ups, safety, public"></textarea>
+          </label>
+          <label class="full">Notes
+            <textarea id="shiftNotes" rows="3"></textarea>
+          </label>
+          <p class="hint full" id="shiftWeather">Weather will fill from your location when you save or tap Refresh weather.</p>
+          <div class="toolbar full">
+            <button type="button" class="btn" id="btnWeather">Refresh weather</button>
+            <button type="submit" class="btn btn-primary" id="btnSaveShift">Save shift</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel-card" style="margin-top:1rem">
+        <div class="page-head" style="margin-bottom:0.75rem">
+          <div>
+            <h2 style="margin:0">History</h2>
+            <p class="hint" id="shiftHint">Includes archived sites.</p>
+          </div>
+          <label class="check-row">
+            <input type="checkbox" id="shiftIncludeArchived" checked />
+            <span>Show archived sites</span>
+          </label>
+        </div>
+        <ul class="event-list" id="shiftList"></ul>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/shifts.js"></script>
+</body>
+</html>

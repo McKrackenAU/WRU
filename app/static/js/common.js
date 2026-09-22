@@ -384,6 +384,37 @@ export function canPreviewDocument(doc) {
   );
 }
 
+export function openDocumentChooser(doc, anchor) {
+  const id = Number(doc?.id || doc);
+  if (!id) return;
+  document.getElementById("docChooserPop")?.remove();
+  const pop = document.createElement("div");
+  pop.id = "docChooserPop";
+  pop.className = "doc-chooser";
+  pop.innerHTML = `
+    <p class="doc-chooser-name">${escapeHtml(doc?.original_filename || "Document")}</p>
+    <button type="button" class="btn btn-primary btn-sm" data-choose="view">View</button>
+    <button type="button" class="btn btn-sm" data-choose="download">Download</button>`;
+  document.body.appendChild(pop);
+  const rect = anchor?.getBoundingClientRect?.();
+  if (rect) {
+    pop.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    pop.style.top = `${rect.bottom + 6}px`;
+  }
+  const close = () => pop.remove();
+  pop.addEventListener("click", (ev) => {
+    const choice = ev.target.closest("[data-choose]")?.dataset.choose;
+    if (choice === "view") {
+      close();
+      openDocumentPreview({ ...doc, id });
+    } else if (choice === "download") {
+      close();
+      downloadDocumentById(id).catch(() => window.open(`/api/documents/${id}/download`, "_blank", "noopener"));
+    }
+  });
+  setTimeout(() => document.addEventListener("click", close, { once: true }), 0);
+}
+
 export function openDocumentPreview(doc) {
   const id = Number(doc?.id || doc);
   if (!id) return;
@@ -477,6 +508,21 @@ function currentTheme() {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+export function applyUserColors(colors) {
+  const root = document.documentElement;
+  const map = {
+    accent: "--user-accent",
+    bg: "--user-bg",
+    ink: "--user-ink",
+    panel: "--user-panel",
+  };
+  for (const [key, cssVar] of Object.entries(map)) {
+    const value = colors?.[key];
+    if (value) root.style.setProperty(cssVar, value);
+    else root.style.removeProperty(cssVar);
+  }
+}
+
 function applyTheme(mode) {
   const root = document.documentElement;
   if (mode === "dark") root.classList.add("dark");
@@ -492,6 +538,24 @@ function applyTheme(mode) {
   });
 }
 
+export async function saveUserPrefs(partial) {
+  const current = currentUser()?.prefs || {};
+  const next = { ...current, ...partial };
+  if (partial?.colors) next.colors = { ...(current.colors || {}), ...partial.colors };
+  const user = await api("/api/auth/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prefs: next }),
+  });
+  setSessionUser(user);
+  if (user?.prefs?.theme && user.prefs.theme !== "system") {
+    localStorage.setItem(THEME_KEY, user.prefs.theme);
+    applyTheme(user.prefs.theme);
+  }
+  applyUserColors(user?.prefs?.colors);
+  return user;
+}
+
 export function initThemeToggle() {
   applyTheme(currentTheme());
   document.querySelectorAll("#themeToggle, [data-theme-toggle]").forEach((btn) => {
@@ -501,8 +565,62 @@ export function initThemeToggle() {
       const next = currentTheme() === "dark" ? "light" : "dark";
       localStorage.setItem(THEME_KEY, next);
       applyTheme(next);
+      saveUserPrefs({ theme: next }).catch(() => {});
     });
   });
+}
+
+export function weatherLine(snap) {
+  if (!snap) return "";
+  const bits = [snap.label || "Weather"];
+  if (snap.temperature_c != null) bits.push(`${Math.round(snap.temperature_c)}°C`);
+  if (snap.wind_kmh != null) bits.push(`${Math.round(snap.wind_kmh)} km/h`);
+  if (snap.rain_mm) bits.push(`${snap.rain_mm} mm`);
+  return bits.join(" · ");
+}
+
+export async function fetchLiveWeather(lat, lng) {
+  const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+  return api(`/api/weather?${params}`);
+}
+
+export function initWeatherChip() {
+  const chip = document.getElementById("weatherChip");
+  if (!chip || chip.dataset.bound) return;
+  chip.dataset.bound = "1";
+  const apply = (snap) => {
+    chip.hidden = false;
+    chip.textContent = weatherLine(snap) || "Weather";
+    chip.title = snap?.observed_at ? `Observed ${snap.observed_at}` : "Live weather";
+    const prev = chip.dataset.label || "";
+    if (prev && snap?.label && prev !== snap.label) {
+      chip.classList.add("weather-changed");
+      chip.title = `Changed from ${prev} to ${snap.label}`;
+    }
+    if (snap?.label) chip.dataset.label = snap.label;
+  };
+  const locate = () => {
+    if (!navigator.geolocation) {
+      chip.hidden = true;
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        fetchLiveWeather(pos.coords.latitude, pos.coords.longitude)
+          .then(apply)
+          .catch(() => {
+            chip.hidden = true;
+          });
+      },
+      () => {
+        chip.hidden = true;
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
+    );
+  };
+  chip.addEventListener("click", locate);
+  locate();
+  setInterval(locate, 10 * 60 * 1000);
 }
 
 /** Day-to-day tracker navigation */
@@ -515,6 +633,7 @@ export const OPS_NAV = [
   { href: "/gantt", label: "Gantt", hint: "Works sequence", group: "Works" },
   { href: "/documents", label: "Documents", hint: "Files", group: "Works" },
   { href: "/map", label: "Map", hint: "Markups", group: "Works" },
+  { href: "/shifts", label: "Shift reports", hint: "On-site log", group: "Works" },
   { href: "/costs", label: "Traffic costs", hint: "TM estimates", group: "Costs" },
   { href: "/asphalt", label: "Asphalt costs", hint: "Subcontractors", group: "Costs" },
   { href: "/spend", label: "Actual spend", hint: "Traffic & pavements", group: "Costs" },
@@ -542,6 +661,20 @@ function isActivePath(href, path) {
   if (href === "/") return path === "/";
   if (href === "/admin") return path === "/admin";
   return path === href || path.startsWith(`${href}/`);
+}
+
+function quickLinksHtml() {
+  const prefs = currentUser()?.prefs || {};
+  const hrefs = prefs.quick_links || [];
+  if (!hrefs.length) return "";
+  const all = [...OPS_NAV, ...ADMIN_NAV];
+  const items = hrefs
+    .map((href) => {
+      const item = all.find((l) => l.href === href);
+      return `<a class="quick-link" href="${href}">${escapeHtml(item?.label || href)}</a>`;
+    })
+    .join("");
+  return `<nav class="quick-links" aria-label="Your shortcuts">${items}</nav>`;
 }
 
 function sideNavHtml(links, path) {
@@ -1221,6 +1354,11 @@ export async function injectChrome({ active, mode } = {}) {
   try {
     const me = await api("/api/auth/me", { timeoutMs: 8000 });
     setSessionUser(me);
+    if (me?.prefs?.theme && me.prefs.theme !== "system") {
+      localStorage.setItem(THEME_KEY, me.prefs.theme);
+      applyTheme(me.prefs.theme);
+    }
+    applyUserColors(me?.prefs?.colors);
   } catch {
     /* 401 redirects inside api() */
   }
@@ -1276,7 +1414,7 @@ export async function injectChrome({ active, mode } = {}) {
         <div class="user-menu-panel" id="userMenuPanel" hidden role="menu">
           <p class="user-menu-who">${who}${roleLabel ? ` <span class="hint">${roleLabel}</span>` : ""}</p>
           <a role="menuitem" href="/tracking?mine=1">My activity</a>
-          <a role="menuitem" href="/account">Account</a>
+          <a role="menuitem" href="/account">Account &amp; look</a>
           <a role="menuitem" href="/password" id="changePasswordLink">Change password</a>
           <div class="user-menu-row">
             <span>Dark mode</span>
@@ -1303,6 +1441,8 @@ export async function injectChrome({ active, mode } = {}) {
         </div>
       </div>
       <div class="topbar-end">
+        <button type="button" class="weather-chip" id="weatherChip" hidden title="Live weather">Weather</button>
+        ${quickLinksHtml()}
         ${who ? `<div class="notify-bell-wrap" id="notifyBellWrap">
           <button type="button" class="notify-bell-btn" id="notifyBellBtn" aria-expanded="false" aria-controls="notifyPanel" aria-label="Notifications">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22Zm7-6.2V11a7 7 0 0 0-5-6.7V3.8a2 2 0 1 0-4 0v.5A7 7 0 0 0 5 11v4.8L3.4 17.4A1 1 0 0 0 4.1 19h15.8a1 1 0 0 0 .7-1.6Z"/></svg>
@@ -1354,6 +1494,7 @@ export async function injectChrome({ active, mode } = {}) {
   wireNavToggle();
   wireUserMenu();
   initThemeToggle();
+  initWeatherChip();
   $("adminModeToggle")?.addEventListener("click", () => {
     location.href = isAdmin ? "/" : "/admin";
   });

@@ -91,7 +91,56 @@ function wireShiftPair(dayEl, nightEl) {
 }
 
 function pdfExportHref() {
-  return `/api/gantt/board/export.pdf?${new URLSearchParams({ program: program() })}`;
+  const params = new URLSearchParams({ program: program() });
+  const sub = $("exportSubcontractor")?.value;
+  if (sub) params.set("subcontractor_id", sub);
+  return `/api/gantt/board/export.pdf?${params}`;
+}
+
+async function fillSubcontractors() {
+  const rows = await api("/api/asphalt/subcontractors?active_only=true").catch(() => []);
+  const sel = $("exportSubcontractor");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML =
+    `<option value="">All subcontractors</option>` +
+    rows.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+  if (cur) sel.value = cur;
+}
+
+async function importMsp(file) {
+  if (!file) {
+    $("mspFile")?.click();
+    return;
+  }
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(`/api/gantt/board/import-msp?program=${encodeURIComponent(program())}`, {
+    method: "POST",
+    body: fd,
+    credentials: "include",
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || "Import failed");
+  state.board = body;
+  applyBoardForm();
+  fillAddControls();
+  renderItems();
+  syncPdfLink();
+  if ($("btnUndoMsp")) $("btnUndoMsp").hidden = false;
+  await alertDialog(`Updated ${body.imported || 0} Gantt row${body.imported === 1 ? "" : "s"} from MS Project. Use Undo import if this looks wrong.`);
+}
+
+async function undoMsp() {
+  if (!(await confirmDialog("Undo the last MS Project import on this Gantt?"))) return;
+  state.board = await api(`/api/gantt/board/undo-import?program=${encodeURIComponent(program())}`, {
+    method: "POST",
+  });
+  applyBoardForm();
+  fillAddControls();
+  renderItems();
+  syncPdfLink();
+  if ($("btnUndoMsp")) $("btnUndoMsp").hidden = true;
 }
 
 function syncPdfLink() {
@@ -316,6 +365,7 @@ async function init() {
   state.meta = meta;
   state.sites = sites;
   fillPrograms(prog);
+  await fillSubcontractors();
   syncPdfLink();
   wireShiftPair($("addShiftDay"), $("addShiftNight"));
   on("addSite", "change", () => syncAddShiftsFromSite());
@@ -329,6 +379,14 @@ async function init() {
     history.replaceState({}, "", url);
     loadBoard().catch((e) => { alertDialog(e.message); });
   });
+  on("exportSubcontractor", "change", () => syncPdfLink());
+  on("btnImportMsp", "click", () => importMsp().catch((e) => alertDialog(e.message)));
+  on("mspFile", "change", (ev) => {
+    const file = ev.target.files?.[0];
+    if (file) importMsp(file).catch((e) => alertDialog(e.message));
+    ev.target.value = "";
+  });
+  on("btnUndoMsp", "click", () => undoMsp().catch((e) => alertDialog(e.message)));
   on("btnSaveBoard", "click", () => saveBoard().catch((e) => { alertDialog(e.message); }));
   on("btnXmasShutdown", "click", () => addChristmasShutdown());
   on("btnSyncSites", "click", async () => {

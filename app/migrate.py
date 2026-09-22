@@ -44,6 +44,8 @@ from .models import (  # noqa: F401 — register metadata
     AppNotification,
     TagDef,
     CalendarItemNote,
+    ShiftReport,
+    ImportSnapshot,
 )
 
 
@@ -229,6 +231,12 @@ def run_migrations() -> None:
     ensure_column("sites", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
     ensure_column("program_categories", "tags", "tags JSONB NOT NULL DEFAULT '[]'::jsonb")
     ensure_column("sites", "combined_application_id", "combined_application_id INTEGER")
+    ensure_column(
+        "sites",
+        "paving_subcontractor_id",
+        "paving_subcontractor_id INTEGER REFERENCES asphalt_subcontractors(id) ON DELETE SET NULL",
+    )
+    ensure_column("users", "prefs", "prefs JSONB NOT NULL DEFAULT '{}'::jsonb")
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))

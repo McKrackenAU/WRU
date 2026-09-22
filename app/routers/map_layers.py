@@ -203,6 +203,87 @@ async def upload_kml(
     return layer
 
 
+@router.post("/gpkg", response_model=MapLayerOut, status_code=201)
+async def upload_gpkg(
+    file: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    financial_year: str | None = Form(default=None),
+    uploaded_by: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    from ..gpkg_parse import parse_gpkg_features
+
+    original = Path(file.filename or "layer.gpkg").name
+    if not original.lower().endswith((".gpkg", ".sqlite")):
+        raise HTTPException(status_code=400, detail="Upload a .gpkg file from QGIS")
+    content = await file.read(MAX_KML_BYTES + 1)
+    if len(content) > MAX_KML_BYTES:
+        raise HTTPException(status_code=413, detail="GeoPackage exceeds 50 MB limit")
+    try:
+        features = parse_gpkg_features(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not features:
+        raise HTTPException(status_code=400, detail="No features with geometry found in GeoPackage")
+    fy = (financial_year or "").strip() or australian_financial_year()
+    stored = f"gpkg_{uuid.uuid4().hex}_{original}"
+    dest = _kml_dir() / stored
+    async with aiofiles.open(dest, "wb") as out:
+        await out.write(content)
+    layer = MapLayer(
+        name=(name or original).strip(),
+        financial_year=fy,
+        original_filename=original,
+        stored_name=stored,
+        feature_count=len(features),
+        uploaded_by=uploaded_by,
+    )
+    db.add(layer)
+    db.flush()
+    sites = lean_sites_query(db).filter(Site.archived.is_(False)).all()
+    by_moa = {(s.moa_number or "").strip().upper(): s for s in sites if (s.moa_number or "").strip()}
+    by_site_no = {
+        (s.site_number or "").strip().upper(): s
+        for s in sites
+        if (s.site_number or "").strip() and len((s.site_number or "").strip()) >= 2
+    }
+    import re
+
+    for feat in features:
+        props = feat.get("properties") or {}
+        hay = " ".join(
+            [
+                feat.get("name") or "",
+                feat.get("description") or "",
+                " ".join(str(v) for v in props.values()),
+            ]
+        ).upper()
+        tokens = set(re.findall(r"[A-Z0-9][A-Z0-9._/-]{1,}", hay))
+        linked = None
+        for moa, site in by_moa.items():
+            if moa and moa in tokens:
+                linked = site
+                break
+        if linked is None:
+            for sno, site in by_site_no.items():
+                if sno and sno in tokens:
+                    linked = site
+                    break
+        db.add(
+            MapFeature(
+                layer_id=layer.id,
+                site_id=linked.id if linked else None,
+                name=feat.get("name"),
+                description=feat.get("description"),
+                geometry=feat["geometry"],
+                properties=props,
+            )
+        )
+    db.commit()
+    db.refresh(layer)
+    return layer
+
+
 @router.get("/features", response_model=list[MapFeatureOut])
 def list_features(
     financial_year: str | None = Query(default=None),
