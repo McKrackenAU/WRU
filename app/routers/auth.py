@@ -67,8 +67,8 @@ def update_me(
 ):
     from ..user_prefs import normalize_prefs
 
-    if is_hidden_user(user):
-        raise HTTPException(status_code=400, detail="The recovery account cannot be edited here")
+    if is_hidden_user(user) and payload.display_name is not None:
+        raise HTTPException(status_code=400, detail="The recovery account name cannot be edited here")
     if payload.display_name is not None:
         name = payload.display_name.strip()
         if not name:

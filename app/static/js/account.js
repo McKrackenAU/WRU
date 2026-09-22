@@ -123,18 +123,20 @@ on("accountForm", "submit", async (e) => {
   const btn = $("accountSaveBtn");
   btn.disabled = true;
   try {
+    const isRoot = String(currentUser()?.username || "").toLowerCase() === "root";
+    const body = {
+      prefs: {
+        theme: $("accountTheme").value,
+        colors: collectedColors(),
+        quick_links: selectedKeys("quick").slice(0, 8),
+        home_widgets: selectedKeys("widget"),
+      },
+    };
+    if (!isRoot) body.display_name = name;
     const user = await api("/api/auth/me", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        display_name: name,
-        prefs: {
-          theme: $("accountTheme").value,
-          colors: collectedColors(),
-          quick_links: selectedKeys("quick").slice(0, 8),
-          home_widgets: selectedKeys("widget"),
-        },
-      }),
+      body: JSON.stringify(body),
     });
     setSessionUser(user);
     applyUserColors(user?.prefs?.colors);
