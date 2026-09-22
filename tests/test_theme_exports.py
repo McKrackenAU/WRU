@@ -18,7 +18,8 @@ def test_user_menu_button_is_fluoro_green():
     assert "var(--ventia-green)" in btn
     assert "border: 1px solid var(--ventia-border)" not in btn
     assert "html.dark" in STYLE
-    assert "--ventia-green: #3dd68c" in STYLE
+    assert "#3dd68c" in STYLE
+    assert "--user-accent" in STYLE
 
 
 def test_program_title_has_no_floating_left_rule():

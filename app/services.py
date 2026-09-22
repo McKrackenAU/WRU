@@ -312,6 +312,23 @@ def sync_combined_application_from(db: Session, source: Site) -> list[int]:
     return [int(s.id) for s in siblings]
 
 
+def _merge_combined_application_status(db: Session, members: list[Site]) -> None:
+    """When jobs are first linked, take the most complete shared status across the group."""
+    completed: dict[str, object] = {}
+    for member in members:
+        ensure_workflow_steps(member, db)
+        for step in member.workflow_steps or []:
+            if step.stage not in COMBINED_APPLICATION_STAGES:
+                continue
+            if step.completed:
+                completed[step.stage] = step.completed_at
+    for member in members:
+        for step in member.workflow_steps or []:
+            if step.stage in completed:
+                step.completed = True
+                step.completed_at = step.completed_at or completed[step.stage]
+
+
 def apply_combined_application(db: Session, site: Site, other_ids: list[int] | None) -> list[int]:
     """Join / leave a combined MoA application. Returns other site ids now in the group."""
     if other_ids is None:
@@ -354,6 +371,7 @@ def apply_combined_application(db: Session, site: Site, other_ids: list[int] | N
             for row in leftover:
                 row.combined_application_id = None
 
+    _merge_combined_application_status(db, new_members)
     sync_combined_application_from(db, site)
     from .models import Document
 
