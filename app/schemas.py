@@ -309,6 +309,7 @@ class AppSettingsOut(BaseModel):
     permit_validity_critical_days: int
     auto_compute_must_have: bool
     auto_archive_on_job_complete: bool
+    holiday_region: str = "VIC"
 
 
 class AppSettingsUpdate(BaseModel):
@@ -322,6 +323,7 @@ class AppSettingsUpdate(BaseModel):
     permit_validity_critical_days: int | None = Field(default=None, ge=0, le=365)
     auto_compute_must_have: bool | None = None
     auto_archive_on_job_complete: bool | None = None
+    holiday_region: str | None = Field(default=None, max_length=8)
 
 
 class LookupIn(BaseModel):

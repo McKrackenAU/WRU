@@ -12,6 +12,7 @@ async function loadRules() {
   $("rValCrit").value = r.permit_validity_critical_days;
   $("rAutoMust").checked = !!r.auto_compute_must_have;
   $("rAutoArchive").checked = !!r.auto_archive_on_job_complete;
+  if ($("rHolidayRegion")) $("rHolidayRegion").value = r.holiday_region || "VIC";
 }
 
 async function saveRules(ev) {
@@ -30,6 +31,7 @@ async function saveRules(ev) {
       permit_validity_critical_days: Number($("rValCrit").value),
       auto_compute_must_have: $("rAutoMust").checked,
       auto_archive_on_job_complete: $("rAutoArchive").checked,
+      holiday_region: $("rHolidayRegion")?.value || "VIC",
     }),
   });
   $("rulesStatus").textContent = `Saved ${new Date().toLocaleTimeString()}`;

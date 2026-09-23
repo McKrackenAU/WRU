@@ -22,6 +22,7 @@ from ..cost_engine import (
     preview_schedule_window,
 )
 from ..cost_export import build_cost_pdf, build_cost_workbook, build_season_cost_pdf
+from ..public_holidays import holidays_between
 from ..database import get_db
 from ..file_store import materialize_original, write_stored_bytes
 from ..storage_paths import cost_estimates_dir
@@ -603,18 +604,26 @@ def delete_shift_extra(
 def list_public_holidays(
     start: str = Query(..., description="ISO date"),
     end: str = Query(..., description="ISO date"),
+    region: str = Query(default="VIC"),
 ):
-    """Victorian public holidays in an inclusive date range."""
+    """State public holidays in an inclusive date range."""
+    from ..public_holidays import JURISDICTION_LABELS, normalize_jurisdiction
+
     try:
         start_d = date.fromisoformat(start[:10])
         end_d = date.fromisoformat(end[:10])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="start/end must be YYYY-MM-DD") from exc
+    code = normalize_jurisdiction(region)
     items = [
         {"date": d.isoformat(), "name": name}
-        for d, name in sorted(holidays_between(start_d, end_d).items())
+        for d, name in sorted(holidays_between(start_d, end_d, code).items())
     ]
-    return {"jurisdiction": "VIC", "holidays": items}
+    return {
+        "jurisdiction": code,
+        "label": JURISDICTION_LABELS.get(code, code),
+        "holidays": items,
+    }
 
 
 @router.post("/schedule-preview")

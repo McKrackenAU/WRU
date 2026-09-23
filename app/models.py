@@ -167,6 +167,7 @@ class AppSettings(Base):
     permit_validity_critical_days: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
     auto_compute_must_have: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     auto_archive_on_job_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    holiday_region: Mapped[str] = mapped_column(String(8), nullable=False, default="VIC")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -845,6 +846,8 @@ class GanttBoard(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     anchor_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     work_weekdays: Mapped[list] = mapped_column(JSON, nullable=False, default=lambda: [0, 1, 2, 3, 4])
+    night_work_weekdays: Mapped[list] = mapped_column(JSON, nullable=False, default=lambda: [6, 0, 1, 2, 3])
+    holiday_region: Mapped[str] = mapped_column(String(8), nullable=False, default="VIC")
     skip_public_holidays: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     skip_sunday_before_monday_ph: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Board-level RDO / exclude / include ISO dates

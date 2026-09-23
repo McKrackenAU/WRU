@@ -237,6 +237,21 @@ def run_migrations() -> None:
         "paving_subcontractor_id INTEGER REFERENCES asphalt_subcontractors(id) ON DELETE SET NULL",
     )
     ensure_column("users", "prefs", "prefs JSONB NOT NULL DEFAULT '{}'::jsonb")
+    ensure_column(
+        "gantt_boards",
+        "night_work_weekdays",
+        "night_work_weekdays JSONB NOT NULL DEFAULT '[6, 0, 1, 2, 3]'::jsonb",
+    )
+    ensure_column(
+        "gantt_boards",
+        "holiday_region",
+        "holiday_region VARCHAR(8) NOT NULL DEFAULT 'VIC'",
+    )
+    ensure_column(
+        "app_settings",
+        "holiday_region",
+        "holiday_region VARCHAR(8) NOT NULL DEFAULT 'VIC'",
+    )
 
     with engine.begin() as conn:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sites_archived ON sites (archived)"))

@@ -11,7 +11,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..live_hub import notify_from_request
-from ..gantt_engine import normalize_shift_type, recompute_board_dates
+from ..gantt_engine import (
+    DEFAULT_DAY_WEEKDAYS,
+    DEFAULT_NIGHT_WEEKDAYS,
+    normalize_shift_type,
+    recompute_board_dates,
+)
+from ..public_holidays import normalize_jurisdiction
+from ..settings_store import get_rules
 from ..gantt_export import build_gantt_pdf
 from ..models import AsphaltSubcontractor, GanttBoard, GanttItem, Site, TrafficContractor
 from ..services import indicative_shifts_count, indicative_shift_type, lean_sites_query, sync_computed_fields
@@ -25,6 +32,8 @@ class BoardPatch(BaseModel):
     enabled: bool | None = None
     anchor_start: date | None = None
     work_weekdays: list[int] | None = None
+    night_work_weekdays: list[int] | None = None
+    holiday_region: str | None = None
     skip_public_holidays: bool | None = None
     skip_sunday_before_monday_ph: bool | None = None
     rdo_dates: list[str] | None = None
@@ -75,7 +84,9 @@ def _board_public(board: GanttBoard, items_out: list[dict]) -> dict:
         "program": board.program,
         "enabled": bool(board.enabled),
         "anchor_start": board.anchor_start.isoformat() if board.anchor_start else None,
-        "work_weekdays": list(board.work_weekdays or [0, 1, 2, 3, 4]),
+        "work_weekdays": list(board.work_weekdays or DEFAULT_DAY_WEEKDAYS),
+        "night_work_weekdays": list(getattr(board, "night_work_weekdays", None) or DEFAULT_NIGHT_WEEKDAYS),
+        "holiday_region": normalize_jurisdiction(getattr(board, "holiday_region", None)),
         "skip_public_holidays": bool(board.skip_public_holidays),
         "skip_sunday_before_monday_ph": bool(board.skip_sunday_before_monday_ph),
         "rdo_dates": list(board.rdo_dates or []),
@@ -92,7 +103,14 @@ def _load_board(db: Session, program: str) -> GanttBoard:
     board = db.query(GanttBoard).filter(GanttBoard.program == prog).first()
     if board:
         return board
-    board = GanttBoard(program=prog, enabled=True)
+    region = normalize_jurisdiction(get_rules(db).holiday_region)
+    board = GanttBoard(
+        program=prog,
+        enabled=True,
+        holiday_region=region,
+        work_weekdays=list(DEFAULT_DAY_WEEKDAYS),
+        night_work_weekdays=list(DEFAULT_NIGHT_WEEKDAYS),
+    )
     db.add(board)
     db.commit()
     db.refresh(board)
@@ -217,6 +235,16 @@ def patch_board(
         data["saved_at"] = datetime.now(timezone.utc)
     elif data.get("schedule_saved") is False:
         data["saved_at"] = None
+    if "holiday_region" in data:
+        data["holiday_region"] = normalize_jurisdiction(data.get("holiday_region"))
+    if "work_weekdays" in data:
+        data["work_weekdays"] = [d for d in (data.get("work_weekdays") or []) if isinstance(d, int) and 0 <= d <= 6] or list(
+            DEFAULT_DAY_WEEKDAYS
+        )
+    if "night_work_weekdays" in data:
+        data["night_work_weekdays"] = [
+            d for d in (data.get("night_work_weekdays") or []) if isinstance(d, int) and 0 <= d <= 6
+        ] or list(DEFAULT_NIGHT_WEEKDAYS)
     for key, value in data.items():
         setattr(board, key, value)
     db.commit()
