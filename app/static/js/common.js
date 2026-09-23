@@ -20,6 +20,7 @@ export function setSessionUser(user) {
   try {
     if (user) {
       localStorage.setItem("wru_user", user.display_name || user.username || "");
+      localStorage.setItem("wru_username", String(user.username || "").toLowerCase());
       localStorage.setItem("wru_role", user.role || "user");
     }
   } catch {
@@ -504,23 +505,50 @@ export async function logout() {
   location.href = "/login";
 }
 
+const COLOR_VARS = {
+  accent: "--user-accent",
+  bg: "--user-bg",
+  ink: "--user-ink",
+  panel: "--user-panel",
+  border: "--user-border",
+};
+
+const DEFAULT_WX = { lat: -37.8136, lng: 144.9631 };
+
 function currentTheme() {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
+function themeStorageKey(username) {
+  const who = String(username || currentUser()?.username || "").trim().toLowerCase();
+  return who ? `${THEME_KEY}:${who}` : THEME_KEY;
+}
+
+function persistTheme(mode, username) {
+  try {
+    localStorage.setItem(themeStorageKey(username), mode);
+    localStorage.setItem(THEME_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function paletteForTheme(prefs, theme) {
+  const mode = theme === "dark" ? "dark" : "light";
+  const themed = prefs?.[`colors_${mode}`];
+  if (themed && Object.values(themed).some(Boolean)) return themed;
+  return prefs?.colors || {};
+}
+
 export function applyUserColors(colors) {
   const root = document.documentElement;
-  const map = {
-    accent: "--user-accent",
-    bg: "--user-bg",
-    ink: "--user-ink",
-    panel: "--user-panel",
-  };
-  for (const [key, cssVar] of Object.entries(map)) {
+  for (const [key, cssVar] of Object.entries(COLOR_VARS)) {
     const value = colors?.[key];
     if (value) root.style.setProperty(cssVar, value);
     else root.style.removeProperty(cssVar);
   }
+  if (colors?.ink) root.style.setProperty("--foreground", colors.ink);
+  else root.style.removeProperty("--foreground");
 }
 
 function applyTheme(mode) {
@@ -538,33 +566,49 @@ function applyTheme(mode) {
   });
 }
 
+export function applyLook(prefs, theme) {
+  const mode = theme === "dark" || theme === "light" ? theme : currentTheme();
+  applyTheme(mode);
+  applyUserColors(paletteForTheme(prefs || currentUser()?.prefs, mode));
+}
+
+export function persistAndApplyLook(user) {
+  const prefs = user?.prefs || {};
+  if (prefs.theme === "light" || prefs.theme === "dark") {
+    persistTheme(prefs.theme, user?.username);
+    applyLook(prefs, prefs.theme);
+    return;
+  }
+  applyLook(prefs, currentTheme());
+}
+
 export async function saveUserPrefs(partial) {
   const current = currentUser()?.prefs || {};
   const next = { ...current, ...partial };
-  if (partial?.colors) next.colors = { ...(current.colors || {}), ...partial.colors };
+  for (const key of ["colors", "colors_light", "colors_dark"]) {
+    if (partial && Object.prototype.hasOwnProperty.call(partial, key)) {
+      next[key] = { ...(current[key] || {}), ...(partial[key] || {}) };
+    }
+  }
   const user = await api("/api/auth/me", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prefs: next }),
   });
   setSessionUser(user);
-  if (user?.prefs?.theme && user.prefs.theme !== "system") {
-    localStorage.setItem(THEME_KEY, user.prefs.theme);
-    applyTheme(user.prefs.theme);
-  }
-  applyUserColors(user?.prefs?.colors);
+  persistAndApplyLook(user);
   return user;
 }
 
 export function initThemeToggle() {
-  applyTheme(currentTheme());
+  applyLook(currentUser()?.prefs, currentTheme());
   document.querySelectorAll("#themeToggle, [data-theme-toggle]").forEach((btn) => {
     if (btn.dataset.bound) return;
     btn.dataset.bound = "1";
     btn.addEventListener("click", () => {
       const next = currentTheme() === "dark" ? "light" : "dark";
-      localStorage.setItem(THEME_KEY, next);
-      applyTheme(next);
+      persistTheme(next);
+      applyLook(currentUser()?.prefs, next);
       saveUserPrefs({ theme: next }).catch(() => {});
     });
   });
@@ -584,41 +628,99 @@ export async function fetchLiveWeather(lat, lng) {
   return api(`/api/weather?${params}`);
 }
 
+export function windyRadarUrl(lat, lng) {
+  const la = Number(lat).toFixed(4);
+  const lo = Number(lng).toFixed(4);
+  return `https://embed.windy.com/embed2.html?lat=${la}&lon=${lo}&detailLat=${la}&detailLon=${lo}&zoom=8&overlay=radar&level=surface&product=radar&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`;
+}
+
+export function rainViewerUrl(lat, lng) {
+  const la = Number(lat).toFixed(4);
+  const lo = Number(lng).toFixed(4);
+  return `https://www.rainviewer.com/map.html?loc=${la},${lo},8&oFa=0&oC=0&oU=0&oCS=1&oF=0&oAP=0&c=1&o=83&lm=1&layer=radar&sm=1&sn=1`;
+}
+
+export function openWeatherRadar(lat, lng) {
+  const la = Number.isFinite(Number(lat)) ? Number(lat) : DEFAULT_WX.lat;
+  const lo = Number.isFinite(Number(lng)) ? Number(lng) : DEFAULT_WX.lng;
+  let dialog = document.getElementById("weatherRadarDialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "weatherRadarDialog";
+    dialog.className = "weather-radar-dialog";
+    dialog.innerHTML = `
+      <div class="weather-radar-card">
+        <header class="weather-radar-head">
+          <strong>Live weather radar</strong>
+          <div class="weather-radar-actions">
+            <button type="button" class="btn btn-sm" id="radarWindy">Windy</button>
+            <button type="button" class="btn btn-sm" id="radarRain">RainViewer</button>
+            <button type="button" class="btn btn-sm" id="radarClose">Close</button>
+          </div>
+        </header>
+        <iframe id="weatherRadarFrame" class="weather-radar-frame" title="Live weather radar" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+      </div>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector("#radarClose")?.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("click", (ev) => {
+      if (ev.target === dialog) dialog.close();
+    });
+  }
+  const frame = dialog.querySelector("#weatherRadarFrame");
+  const show = (src) => {
+    if (frame) frame.src = src;
+  };
+  show(windyRadarUrl(la, lo));
+  const windyBtn = dialog.querySelector("#radarWindy");
+  const rainBtn = dialog.querySelector("#radarRain");
+  if (windyBtn) windyBtn.onclick = () => show(windyRadarUrl(la, lo));
+  if (rainBtn) rainBtn.onclick = () => show(rainViewerUrl(la, lo));
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+
 export function initWeatherChip() {
   const chip = document.getElementById("weatherChip");
   if (!chip || chip.dataset.bound) return;
   chip.dataset.bound = "1";
+  chip.hidden = false;
+  chip.dataset.lat = chip.dataset.lat || String(DEFAULT_WX.lat);
+  chip.dataset.lng = chip.dataset.lng || String(DEFAULT_WX.lng);
   const apply = (snap) => {
     chip.hidden = false;
     chip.textContent = weatherLine(snap) || "Weather";
-    chip.title = snap?.observed_at ? `Observed ${snap.observed_at}` : "Live weather";
+    chip.title = snap?.observed_at ? `Click for live radar · observed ${snap.observed_at}` : "Click for live weather radar";
     const prev = chip.dataset.label || "";
     if (prev && snap?.label && prev !== snap.label) {
       chip.classList.add("weather-changed");
-      chip.title = `Changed from ${prev} to ${snap.label}`;
+      chip.title = `Changed from ${prev} to ${snap.label}. Click for live radar.`;
     }
     if (snap?.label) chip.dataset.label = snap.label;
+    if (snap?.lat != null) chip.dataset.lat = String(snap.lat);
+    if (snap?.lng != null) chip.dataset.lng = String(snap.lng);
   };
   const locate = () => {
+    const done = (lat, lng) => {
+      chip.dataset.lat = String(lat);
+      chip.dataset.lng = String(lng);
+      fetchLiveWeather(lat, lng).then(apply).catch(() => {
+        chip.hidden = false;
+        if (!chip.textContent) chip.textContent = "Weather";
+      });
+    };
     if (!navigator.geolocation) {
-      chip.hidden = true;
+      done(Number(chip.dataset.lat), Number(chip.dataset.lng));
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        fetchLiveWeather(pos.coords.latitude, pos.coords.longitude)
-          .then(apply)
-          .catch(() => {
-            chip.hidden = true;
-          });
-      },
-      () => {
-        chip.hidden = true;
-      },
+      (pos) => done(pos.coords.latitude, pos.coords.longitude),
+      () => done(Number(chip.dataset.lat), Number(chip.dataset.lng)),
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
     );
   };
-  chip.addEventListener("click", locate);
+  chip.addEventListener("click", () => {
+    openWeatherRadar(Number(chip.dataset.lat), Number(chip.dataset.lng));
+  });
   locate();
   setInterval(locate, 10 * 60 * 1000);
 }
@@ -663,18 +765,122 @@ function isActivePath(href, path) {
   return path === href || path.startsWith(`${href}/`);
 }
 
+function availableQuickLinks() {
+  const canComms = isCommsUser();
+  return OPS_NAV.filter((l) => !l.commsOnly || canComms);
+}
+
 function quickLinksHtml() {
-  const prefs = currentUser()?.prefs || {};
-  const hrefs = prefs.quick_links || [];
-  if (!hrefs.length) return "";
-  const all = [...OPS_NAV, ...ADMIN_NAV];
+  const hrefs = currentUser()?.prefs?.quick_links || [];
+  const all = [...availableQuickLinks(), ...ADMIN_NAV];
   const items = hrefs
     .map((href) => {
       const item = all.find((l) => l.href === href);
-      return `<a class="quick-link" href="${href}">${escapeHtml(item?.label || href)}</a>`;
+      const label = escapeHtml(item?.label || href);
+      return `<span class="quick-link-wrap">
+        <a class="quick-link" href="${href}">${label}</a>
+        <button type="button" class="quick-link-remove" data-remove-link="${href}" aria-label="Remove ${label}" title="Remove">×</button>
+      </span>`;
     })
     .join("");
-  return `<nav class="quick-links" aria-label="Your shortcuts">${items}</nav>`;
+  return `<nav class="quick-links" aria-label="Your shortcuts">
+    ${items}
+    <button type="button" class="quick-link-add" id="quickLinkAdd" aria-label="Add a shortcut" title="Add a shortcut">+</button>
+  </nav>`;
+}
+
+function closeQuickLinkPicker() {
+  document.getElementById("quickLinkPickerPop")?.remove();
+}
+
+function positionQuickLinkPicker(pop, btn) {
+  const rect = btn.getBoundingClientRect();
+  const width = Math.min(260, window.innerWidth - 16);
+  let left = rect.right - width;
+  if (left < 8) left = 8;
+  pop.style.top = `${Math.round(rect.bottom + 6 + window.scrollY)}px`;
+  pop.style.left = `${Math.round(left + window.scrollX)}px`;
+  pop.style.width = `${width}px`;
+}
+
+function openQuickLinkPicker() {
+  closeQuickLinkPicker();
+  const btn = document.getElementById("quickLinkAdd");
+  if (!btn) return;
+  const used = new Set(currentUser()?.prefs?.quick_links || []);
+  const unused = availableQuickLinks().filter((l) => !used.has(l.href));
+  const pop = document.createElement("div");
+  pop.id = "quickLinkPickerPop";
+  pop.className = "quick-link-pop";
+  pop.setAttribute("role", "menu");
+  if (used.size >= 8) {
+    pop.innerHTML = `<p class="hint">You already have eight shortcuts. Remove one to add another.</p>`;
+  } else if (!unused.length) {
+    pop.innerHTML = `<p class="hint">Every page is already in your shortcuts.</p>`;
+  } else {
+    pop.innerHTML = unused
+      .map(
+        (l) =>
+          `<button type="button" class="quick-link-opt" role="menuitem" data-add-link="${l.href}">
+            <span>${escapeHtml(l.label)}</span>
+            ${l.hint ? `<span class="hint">${escapeHtml(l.hint)}</span>` : ""}
+          </button>`
+      )
+      .join("");
+  }
+  document.body.appendChild(pop);
+  positionQuickLinkPicker(pop, btn);
+  const onDoc = (ev) => {
+    if (ev.target.closest("#quickLinkPickerPop") || ev.target.closest("#quickLinkAdd")) return;
+    closeQuickLinkPicker();
+    document.removeEventListener("click", onDoc, true);
+  };
+  document.addEventListener("click", onDoc, true);
+  pop.addEventListener("click", async (ev) => {
+    const opt = ev.target.closest("[data-add-link]");
+    if (!opt) return;
+    const href = opt.getAttribute("data-add-link");
+    const next = [...(currentUser()?.prefs?.quick_links || [])];
+    if (!next.includes(href) && next.length < 8) next.push(href);
+    closeQuickLinkPicker();
+    await saveUserPrefs({ quick_links: next });
+    refreshQuickLinks();
+  });
+}
+
+export function refreshQuickLinks() {
+  const header = document.querySelector("[data-app-header] .topbar-end");
+  const existing = header?.querySelector(".quick-links");
+  if (!header || !existing) return;
+  closeQuickLinkPicker();
+  const tmp = document.createElement("div");
+  tmp.innerHTML = quickLinksHtml();
+  const next = tmp.firstElementChild;
+  if (next) existing.replaceWith(next);
+  initQuickLinks();
+}
+
+export function initQuickLinks() {
+  const nav = document.querySelector(".quick-links");
+  if (!nav || nav.dataset.bound) return;
+  nav.dataset.bound = "1";
+  nav.addEventListener("click", async (ev) => {
+    const remove = ev.target.closest("[data-remove-link]");
+    if (remove) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const href = remove.getAttribute("data-remove-link");
+      const next = (currentUser()?.prefs?.quick_links || []).filter((item) => item !== href);
+      await saveUserPrefs({ quick_links: next });
+      refreshQuickLinks();
+      return;
+    }
+    if (ev.target.closest("#quickLinkAdd")) {
+      ev.preventDefault();
+      if (document.getElementById("quickLinkPickerPop")) closeQuickLinkPicker();
+      else openQuickLinkPicker();
+    }
+  });
 }
 
 function sideNavHtml(links, path) {
@@ -1354,11 +1560,7 @@ export async function injectChrome({ active, mode } = {}) {
   try {
     const me = await api("/api/auth/me", { timeoutMs: 8000 });
     setSessionUser(me);
-    if (me?.prefs?.theme && me.prefs.theme !== "system") {
-      localStorage.setItem(THEME_KEY, me.prefs.theme);
-      applyTheme(me.prefs.theme);
-    }
-    applyUserColors(me?.prefs?.colors);
+    persistAndApplyLook(me);
   } catch {
     /* 401 redirects inside api() */
   }
@@ -1441,7 +1643,7 @@ export async function injectChrome({ active, mode } = {}) {
         </div>
       </div>
       <div class="topbar-end">
-        <button type="button" class="weather-chip" id="weatherChip" hidden title="Live weather">Weather</button>
+        <button type="button" class="weather-chip" id="weatherChip" hidden title="Click for live weather radar">Weather</button>
         ${quickLinksHtml()}
         ${who ? `<div class="notify-bell-wrap" id="notifyBellWrap">
           <button type="button" class="notify-bell-btn" id="notifyBellBtn" aria-expanded="false" aria-controls="notifyPanel" aria-label="Notifications">
@@ -1494,6 +1696,7 @@ export async function injectChrome({ active, mode } = {}) {
   wireNavToggle();
   wireUserMenu();
   initThemeToggle();
+  initQuickLinks();
   initWeatherChip();
   $("adminModeToggle")?.addEventListener("click", () => {
     location.href = isAdmin ? "/" : "/admin";

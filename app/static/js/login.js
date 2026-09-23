@@ -71,7 +71,13 @@ on("loginForm", "submit", async (e) => {
     const user = body.user || {};
     try {
       localStorage.setItem("wru_user", user.display_name || user.username || "");
+      localStorage.setItem("wru_username", String(user.username || "").toLowerCase());
       localStorage.setItem("wru_role", user.role || "user");
+      const theme = user.prefs?.theme;
+      if (theme === "light" || theme === "dark") {
+        localStorage.setItem(`wru-tgs-theme:${String(user.username || "").toLowerCase()}`, theme);
+        localStorage.setItem("wru-tgs-theme", theme);
+      }
     } catch {
       /* ignore */
     }

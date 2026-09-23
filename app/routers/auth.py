@@ -78,9 +78,11 @@ def update_me(
         current = user.prefs if isinstance(user.prefs, dict) else {}
         incoming = payload.prefs if isinstance(payload.prefs, dict) else {}
         merged = {**current, **incoming}
-        cur_colors = current.get("colors") if isinstance(current.get("colors"), dict) else {}
-        in_colors = incoming.get("colors") if isinstance(incoming.get("colors"), dict) else {}
-        merged["colors"] = {**cur_colors, **in_colors}
+        for key in ("colors", "colors_light", "colors_dark"):
+            cur_colors = current.get(key) if isinstance(current.get(key), dict) else {}
+            in_colors = incoming.get(key) if isinstance(incoming.get(key), dict) else {}
+            if key in incoming:
+                merged[key] = {**cur_colors, **in_colors}
         user.prefs = normalize_prefs(merged)
     db.commit()
     db.refresh(user)

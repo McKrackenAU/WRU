@@ -12,7 +12,8 @@
   <script>
     (function () {
       try {
-        var t = localStorage.getItem("wru-tgs-theme");
+        var user = localStorage.getItem("wru_username") || "";
+        var t = (user && localStorage.getItem("wru-tgs-theme:" + user)) || localStorage.getItem("wru-tgs-theme");
         if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
           document.documentElement.classList.add("dark");
           document.documentElement.style.colorScheme = "dark";
