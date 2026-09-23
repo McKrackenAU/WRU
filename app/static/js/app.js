@@ -1561,6 +1561,8 @@ function setSiteExtrasVisible(visible) {
   if ($("activityBody")) $("activityBody").hidden = !show;
   if ($("docsHint")) $("docsHint").hidden = show;
   if ($("docsBody")) $("docsBody").hidden = !show;
+  if ($("worksHint")) $("worksHint").hidden = show;
+  if ($("worksBody")) $("worksBody").hidden = !show;
 }
 
 function setTab(name) {
@@ -1571,6 +1573,7 @@ function setTab(name) {
   document.querySelectorAll(".tab-panel").forEach((p) => {
     p.classList.toggle("active", p.dataset.panel === name);
   });
+  if (name === "works") showWorksMap();
 }
 
 function openDrawer() {
@@ -1597,7 +1600,7 @@ function setDrawerReadOnly(readOnly) {
   const form = $("siteForm");
   if (form) form.classList.toggle("is-readonly", state.readOnlyArchive);
   for (const el of form?.querySelectorAll("input, select, textarea") || []) {
-    if (el.type === "hidden") continue;
+    if (el.type === "hidden" || el.closest("#worksBody")) continue;
     el.disabled = state.readOnlyArchive;
   }
   if ($("btnSaveSite")) $("btnSaveSite").hidden = state.readOnlyArchive;
@@ -1688,11 +1691,12 @@ async function openSiteDrawer(site = null) {
     if ($("btnOpenShifts")) $("btnOpenShifts").href = `/shifts?site_id=${site.id}`;
     if ($("drawMapLink")) $("drawMapLink").href = `/map?site_id=${site.id}`;
     if ($("drawMapWrap")) $("drawMapWrap").hidden = false;
-    await Promise.all([refreshTracking(), refreshDocuments(), refreshCosts(), refreshShiftHistory()]);
+    await Promise.all([refreshTracking(), refreshDocuments(), refreshCosts(), refreshShiftHistory(), refreshSiteWorks()]);
   } else {
     setSiteExtrasVisible(false);
     if ($("drawMapWrap")) $("drawMapWrap").hidden = true;
     if ($("shiftHistory")) $("shiftHistory").innerHTML = "";
+    clearSiteWorks();
   }
   openDrawer();
   setDrawerReadOnly(archived);
@@ -2084,10 +2088,11 @@ async function refreshShiftHistory() {
         </div>
         <p>${escapeHtml(r.works_done || r.details?.asphalting_notes || r.notes || "Shift report")}</p>
         ${
-          r.details?.asphalt_type || (r.polygons || []).length
+          r.details?.lot_number || r.details?.asphalt_type || (r.polygons || []).length
             ? `<p class="meta">${escapeHtml(
                 [
-                  r.details?.asphalt_type,
+                  r.details?.lot_number,
+                  r.details?.work_kind === "pro" ? "Profiling" : r.details?.asphalt_type,
                   r.details?.shift_area_m2 ? `${r.details.shift_area_m2} m²` : "",
                   (r.polygons || []).length ? `${r.polygons.length} polygon${r.polygons.length === 1 ? "" : "s"}` : "",
                 ]
@@ -2102,6 +2107,157 @@ async function refreshShiftHistory() {
       : `<li><p class="meta">No shift reports yet. Open Shift reports to add one — history stays after archive.</p></li>`;
   } catch {
     host.innerHTML = `<li><p class="meta">Could not load shift reports.</p></li>`;
+  }
+}
+
+const MIX_PALETTE = ["#0d8f4e", "#0a3254", "#c2410c", "#7c3aed", "#0369a1", "#b45309", "#be123c", "#0f766e"];
+
+function mixLabel(row) {
+  const kind = String(row.details?.work_kind || "hma").toLowerCase();
+  if (kind === "pro" || kind === "profiling" || kind === "profile") return "Profiling";
+  return String(row.details?.asphalt_type || "").trim() || "Unspecified mix";
+}
+
+function mixColor(label, labels) {
+  const index = Math.max(0, labels.indexOf(label));
+  return MIX_PALETTE[index % MIX_PALETTE.length];
+}
+
+function clearSiteWorks() {
+  state.worksShifts = [];
+  state.worksEnabled = null;
+  state.worksLayer?.clearLayers();
+  if ($("worksMixFilters")) $("worksMixFilters").innerHTML = "";
+  if ($("worksMapHint")) $("worksMapHint").textContent = "Every shift polygon for this site. Turn a mix off to compare base layers with the wearing course.";
+}
+
+async function worksBasemap() {
+  if (!state.worksMapConfig) {
+    state.worksMapConfig = await api("/api/map/config").catch(() => ({}));
+  }
+  const key = state.worksMapConfig?.nearmap_api_key;
+  if (key && typeof L !== "undefined") {
+    return L.tileLayer(
+      `https://api.nearmap.com/tiles/v3/Vert/{z}/{x}/{y}.jpg?apikey=${encodeURIComponent(key)}`,
+      { maxZoom: 21, attribution: "&copy; Nearmap" }
+    );
+  }
+  return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap",
+  });
+}
+
+async function ensureWorksMap() {
+  const canvas = $("siteWorksMap");
+  if (!canvas || state.worksMap || typeof L === "undefined") return;
+  state.worksMap = L.map(canvas, { zoomControl: true }).setView([-37.8136, 144.9631], 11);
+  (await worksBasemap()).addTo(state.worksMap);
+  state.worksLayer = L.featureGroup().addTo(state.worksMap);
+}
+
+function drawSiteWorks() {
+  if (!state.worksLayer || typeof L === "undefined") return;
+  state.worksLayer.clearLayers();
+  const labels = [...new Set((state.worksShifts || []).map(mixLabel))];
+  const enabled = state.worksEnabled;
+  let any = false;
+  for (const row of state.worksShifts || []) {
+    const label = mixLabel(row);
+    if (enabled && !enabled.has(label)) continue;
+    const color = mixColor(label, labels);
+    for (const feature of row.polygons || []) {
+      if (!feature || typeof feature !== "object") continue;
+      try {
+        const layer = L.geoJSON(feature, {
+          style: { color, weight: 2, fillColor: color, fillOpacity: 0.38 },
+        });
+        const lot = row.details?.lot_number || row.work_date || "Shift";
+        layer.bindTooltip(`${lot} · ${label}`, { sticky: true });
+        layer.addTo(state.worksLayer);
+        any = true;
+      } catch {
+        /* skip a polygon leaflet cannot draw */
+      }
+    }
+  }
+  const hint = $("worksMapHint");
+  if (hint) {
+    if (!(state.worksShifts || []).length) hint.textContent = "No shift reports for this site yet.";
+    else if (!any) hint.textContent = "No polygons are visible. Turn a mix back on, or draw the work on a shift report.";
+    else hint.textContent = "Polygons stay see-through so overlapping mixes show together. Turn a mix off to compare the base with the wearing course.";
+  }
+  if (any && state.worksMap) {
+    try {
+      state.worksMap.fitBounds(state.worksLayer.getBounds(), { padding: [36, 36], maxZoom: 18 });
+    } catch {
+      /* empty bounds */
+    }
+  }
+}
+
+function renderMixFilters() {
+  const host = $("worksMixFilters");
+  if (!host) return;
+  const labels = [...new Set((state.worksShifts || []).map(mixLabel))];
+  if (!state.worksEnabled) state.worksEnabled = new Set(labels);
+  const known = new Set(labels);
+  const stillRelevant = [...state.worksEnabled].some((item) => known.has(item));
+  if (!stillRelevant && labels.length) state.worksEnabled = new Set(labels);
+  host.innerHTML = labels.length
+    ? labels
+        .map((label) => {
+          const on = state.worksEnabled.has(label);
+          const color = mixColor(label, labels);
+          return `<label><input type="checkbox" data-mix="${escapeHtml(label)}" ${on ? "checked" : ""} /> <span class="mix-swatch" style="background:${color}"></span> ${escapeHtml(label)}</label>`;
+        })
+        .join("")
+    : "";
+  host.querySelectorAll("input[data-mix]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const label = input.dataset.mix;
+      if (input.checked) state.worksEnabled.add(label);
+      else state.worksEnabled.delete(label);
+      drawSiteWorks();
+      showWorksMap();
+    });
+  });
+}
+
+function showWorksMap() {
+  if (!state.worksMap) return;
+  setTimeout(() => {
+    state.worksMap.invalidateSize();
+    if (state.worksLayer?.getLayers().length) {
+      try {
+        state.worksMap.fitBounds(state.worksLayer.getBounds(), { padding: [36, 36], maxZoom: 18 });
+      } catch {
+        /* empty bounds */
+      }
+    }
+  }, 60);
+}
+
+async function refreshSiteWorks() {
+  if (!state.detailSiteId) {
+    clearSiteWorks();
+    return;
+  }
+  if ($("btnSiteLots")) $("btnSiteLots").href = `/lots?site_id=${state.detailSiteId}`;
+  if ($("btnSiteShifts")) $("btnSiteShifts").href = `/shifts?site_id=${state.detailSiteId}`;
+  try {
+    const rows = await api(`/api/shifts?site_id=${state.detailSiteId}&include_archived=true`);
+    if (state.worksSiteId !== state.detailSiteId) {
+      state.worksSiteId = state.detailSiteId;
+      state.worksEnabled = null;
+    }
+    state.worksShifts = rows || [];
+    await ensureWorksMap();
+    renderMixFilters();
+    drawSiteWorks();
+    if (document.querySelector('.drawer-tab[data-tab="works"]')?.classList.contains("active")) showWorksMap();
+  } catch {
+    if ($("worksMapHint")) $("worksMapHint").textContent = "Could not load the work polygons.";
   }
 }
 

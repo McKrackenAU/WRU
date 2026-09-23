@@ -736,6 +736,7 @@ export const OPS_NAV = [
   { href: "/documents", label: "Documents", hint: "Files", group: "Works" },
   { href: "/map", label: "Map", hint: "Markups", group: "Works" },
   { href: "/shifts", label: "Shift reports", hint: "On-site log", group: "Works" },
+  { href: "/lots", label: "Lot register", hint: "QA lots", group: "Works" },
   { href: "/costs", label: "Traffic costs", hint: "TM estimates", group: "Costs" },
   { href: "/asphalt", label: "Asphalt costs", hint: "Subcontractors", group: "Costs" },
   { href: "/spend", label: "Actual spend", hint: "Traffic & pavements", group: "Costs" },

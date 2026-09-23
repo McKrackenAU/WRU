@@ -59,8 +59,20 @@
               <option value="day">Day</option>
             </select>
           </label>
-          <label>Lot <input id="dLot" placeholder="2526-030" /></label>
-          <label>Report number <input id="dReportNo" placeholder="Fills from the date, site, lot, mix and initials" /></label>
+          <label>Road number <input id="dRoadNo" placeholder="5443" /></label>
+          <label>Work
+            <select id="dWorkKind">
+              <option value="hma">HMA — hot mix asphalt</option>
+              <option value="pro">PRO — profiling</option>
+            </select>
+          </label>
+          <label class="full">Lot number
+            <span class="lot-row">
+              <input id="dLot" placeholder="yyyymmdd-road-year-site-HMA-mix-initials" />
+              <button type="button" class="btn" id="btnRefreshLot">Refresh lot number</button>
+            </span>
+          </label>
+          <p class="hint full" id="lotHint">Hot mix lots are date, road number, FMRP year, site number, HMA, mix, and initials.</p>
           <label>Ventia supervisor <input id="dSupervisor" /></label>
           <label class="full">High risk activity <input id="dRisk" placeholder="Working near live traffic, working around mobile plant" /></label>
 

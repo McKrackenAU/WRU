@@ -6227,11 +6227,54 @@ html.dark .form-grid input[type="checkbox"] {
   font-size: 1.15rem;
 }
 
-.shift-map {
+.shift-map,
+.site-works-map {
   height: 320px;
   border: 1px solid var(--ventia-border);
   border-radius: 0.75rem;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
+}
+
+.site-works-map {
+  height: 340px;
+}
+
+.lot-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.lot-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.works-mix-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.6rem;
+}
+
+.works-mix-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  background: var(--panel);
+}
+
+.mix-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 0.2rem;
+  display: inline-block;
 }
 
 @media (max-width: 700px) {

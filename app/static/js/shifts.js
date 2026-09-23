@@ -22,7 +22,8 @@ const state = {
   siteLayer: null,
   measuredM2: 0,
   weatherTouched: false,
-  reportTouched: false,
+  lotTouched: false,
+  roadTouched: false,
 };
 
 function todayISO() {
@@ -106,7 +107,8 @@ function applySiteDefaults() {
   if ($("dTgs")) $("dTgs").value = site.tgs_reference || "";
   if ($("shiftType")) $("shiftType").value = site.indicative_shift_type === "night" ? "night" : "day";
   if ($("dSupervisor") && !$("dSupervisor").value.trim()) $("dSupervisor").value = userName();
-  refreshReportNumber();
+  fillRoadNumber();
+  refreshLotNumber();
   focusSiteOnMap(site.id);
 }
 
@@ -120,6 +122,8 @@ function selectSite(siteId) {
 function collectDetails() {
   return {
     fmrp_year: textOrNull("dFmrp"),
+    road_number: textOrNull("dRoadNo"),
+    work_kind: $("dWorkKind")?.value === "pro" ? "pro" : "hma",
     lot_number: textOrNull("dLot"),
     supervisor: textOrNull("dSupervisor"),
     high_risk: textOrNull("dRisk"),
@@ -163,7 +167,6 @@ function collectDetails() {
     non_compliance: textOrNull("dNonCompliance"),
     other_material: numOrNull("dOtherMaterial"),
     weather_condition: textOrNull("dWeather"),
-    report_number: textOrNull("dReportNo"),
     photos_url: textOrNull("dPhotos"),
   };
 }
@@ -177,18 +180,52 @@ function initials(name) {
     .toUpperCase();
 }
 
-function buildReportNumber() {
-  const date = ($("shiftDate")?.value || "").replaceAll("-", "");
-  const siteNo = selectedSite()?.site_number || "";
-  const lot = ($("dLot")?.value || "").trim();
-  const mix = ($("dMix")?.value || "").trim();
-  const who = initials($("dSupervisor")?.value);
-  return [date, siteNo, lot, mix ? `HMA-${mix}` : "", who].filter(Boolean).join("-");
+function compactFmrp(value) {
+  const years = String(value || "").match(/\d{2,4}/g) || [];
+  if (years.length >= 2) return `${years[0].slice(-2)}${years[1].slice(-2)}`;
+  if (!years.length) return "";
+  const token = years[0];
+  return token.length > 4 ? token.slice(-4) : token;
 }
 
-function refreshReportNumber() {
-  if (state.reportTouched || !$("dReportNo")) return;
-  $("dReportNo").value = buildReportNumber();
+function roadNumberFromName(name) {
+  const nums = String(name || "").match(/\d+/g) || [];
+  return nums.length ? nums[nums.length - 1] : "";
+}
+
+function fillRoadNumber() {
+  if (state.roadTouched || !$("dRoadNo")) return;
+  const road = $("shiftRoad")?.value || selectedSite()?.road_name || "";
+  $("dRoadNo").value = roadNumberFromName(road);
+}
+
+function buildLotNumber() {
+  const date = ($("shiftDate")?.value || "").replaceAll("-", "");
+  const roadNo = ($("dRoadNo")?.value || "").trim() || roadNumberFromName($("shiftRoad")?.value);
+  const year = compactFmrp($("dFmrp")?.value);
+  const siteNo = selectedSite()?.site_number || "";
+  const profiling = $("dWorkKind")?.value === "pro";
+  const mix = ($("dMix")?.value || "").trim();
+  const who = initials($("dSupervisor")?.value);
+  const parts = [date, roadNo, year, siteNo, profiling ? "PRO" : "HMA"];
+  if (!profiling && mix) parts.push(mix);
+  if (who) parts.push(who);
+  return parts.filter(Boolean).join("-");
+}
+
+function syncLotHint() {
+  const hint = $("lotHint");
+  if (!hint) return;
+  hint.textContent =
+    $("dWorkKind")?.value === "pro"
+      ? "Profiling lots are date, road number, FMRP year, site number, PRO, and initials."
+      : "Hot mix lots are date, road number, FMRP year, site number, HMA, mix, and initials.";
+}
+
+function refreshLotNumber() {
+  syncLotHint();
+  if (state.lotTouched || !$("dLot")) return;
+  $("dLot").value = buildLotNumber();
 }
 
 function ringOf(latlngs) {
@@ -242,14 +279,31 @@ function clearPolygons() {
   syncPolygons();
 }
 
-function setupMap() {
+async function basemapLayer() {
+  let key = "";
+  try {
+    const config = await api("/api/map/config");
+    key = config?.nearmap_api_key || "";
+  } catch {
+    key = "";
+  }
+  if (key) {
+    return L.tileLayer(
+      `https://api.nearmap.com/tiles/v3/Vert/{z}/{x}/{y}.jpg?apikey=${encodeURIComponent(key)}`,
+      { maxZoom: 21, attribution: "&copy; Nearmap" }
+    );
+  }
+  return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap",
+  });
+}
+
+async function setupMap() {
   const canvas = $("shiftMap");
   if (!canvas || state.map || typeof L === "undefined") return;
   state.map = L.map(canvas, { zoomControl: true }).setView([-37.8136, 144.9631], 11);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap",
-  }).addTo(state.map);
+  (await basemapLayer()).addTo(state.map);
   state.siteLayer = L.geoJSON(null, {
     style: { color: "#94a3b8", weight: 2, fillOpacity: 0.08 },
   }).addTo(state.map);
@@ -313,7 +367,8 @@ function renderList() {
           const weather = weatherLine(row.weather);
           const details = row.details || {};
           const summary = [
-            details.asphalt_type,
+            details.lot_number,
+            details.work_kind === "pro" ? "PRO" : details.asphalt_type,
             details.shift_area_m2 ? `${details.shift_area_m2} m²` : "",
             details.tonnage ? `${details.tonnage} t` : "",
             (row.polygons || []).length ? `${row.polygons.length} polygon${row.polygons.length === 1 ? "" : "s"}` : "",
@@ -457,7 +512,7 @@ async function saveShift(ev) {
       polygons: polygonsGeoJSON(),
     }),
   });
-  let hint = "Shift saved.";
+  let hint = created?.details?.lot_number ? `Lot ${created.details.lot_number} saved.` : "Shift saved.";
   if ($("dPostSpend")?.checked && created?.id) {
     const spend = await api(`/api/shifts/${created.id}/actual-spend`, { method: "POST" });
     const posted = [];
@@ -478,7 +533,7 @@ async function saveShift(ev) {
 
 async function init() {
   await injectChrome({ active: "/shifts" });
-  setupMap();
+  await setupMap();
   const preselect = Number(new URLSearchParams(location.search).get("site_id") || 0);
   const [active, archived, features] = await Promise.all([
     api("/api/sites?archived=false"),
@@ -489,19 +544,31 @@ async function init() {
   state.features = features || [];
   if ($("shiftDate")) $("shiftDate").value = todayISO();
   selectSite(preselect);
-  refreshReportNumber();
-  for (const id of ["shiftDate", "dLot", "dMix", "dSupervisor"]) {
-    on(id, "input", () => refreshReportNumber());
-    on(id, "change", () => refreshReportNumber());
+  fillRoadNumber();
+  refreshLotNumber();
+  for (const id of ["shiftDate", "dFmrp", "dMix", "dSupervisor", "dRoadNo"]) {
+    on(id, "input", () => refreshLotNumber());
+    on(id, "change", () => refreshLotNumber());
   }
-  on("dReportNo", "input", () => {
-    state.reportTouched = true;
+  on("dWorkKind", "change", () => refreshLotNumber());
+  on("dLot", "input", () => {
+    state.lotTouched = true;
+  });
+  on("dRoadNo", "input", () => {
+    state.roadTouched = true;
+  });
+  on("btnRefreshLot", "click", () => {
+    state.lotTouched = false;
+    refreshLotNumber();
   });
   on("dWeather", "input", () => {
     state.weatherTouched = true;
   });
   on("shiftRoad", "change", () => {
+    state.roadTouched = false;
     fillSites(0);
+    fillRoadNumber();
+    refreshLotNumber();
     state.siteLayer?.clearLayers();
     loadReports().catch((err) => alertDialog(err.message));
   });

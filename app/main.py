@@ -34,6 +34,7 @@ from .routers import (
     gantt,
     import_tracker,
     live,
+    lots,
     map_layers,
     shifts,
     weather,
@@ -96,6 +97,7 @@ app.include_router(import_tracker.router)
 app.include_router(system.router)
 app.include_router(backup.router)
 app.include_router(shifts.router)
+app.include_router(lots.router)
 app.include_router(weather.router)
 
 
@@ -323,6 +325,11 @@ def map_page():
 @app.get("/shifts")
 def shifts_page():
     return _page("shifts.html")
+
+
+@app.get("/lots")
+def lots_page():
+    return _page("lots.html")
 
 
 @app.get("/documents")

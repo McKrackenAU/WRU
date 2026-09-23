@@ -12,6 +12,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas as pdfcanvas
 
+from .lot_map import render_lot_map
+from .lot_numbers import build_lot_number, road_number_from_name
 from .pdf_brand import VENTIA_LOGO
 
 NAVY = colors.HexColor("#0A3254")
@@ -29,20 +31,21 @@ WIDTH = RIGHT - LEFT
 
 def report_reference(report: dict, site: dict | None = None) -> str:
     details = report.get("details") or {}
-    explicit = str(details.get("report_number") or "").strip()
-    if explicit:
+    explicit = str(details.get("lot_number") or details.get("report_number") or "").strip()
+    road_name = str((site or {}).get("road_name") or report.get("road_name") or "")
+    built = build_lot_number(
+        work_date=report.get("work_date"),
+        road_number=details.get("road_number") or road_number_from_name(road_name),
+        fmrp_year=details.get("fmrp_year"),
+        site_number=(site or {}).get("site_number") or report.get("site_number"),
+        work_kind=details.get("work_kind"),
+        mix=details.get("asphalt_type"),
+        supervisor=details.get("supervisor") or report.get("crew"),
+    )
+    # A stored lot that already contains the date is the register number.
+    if explicit and explicit[:8].isdigit():
         return explicit
-    work_date = str(report.get("work_date") or "").replace("-", "")
-    site_number = str((site or {}).get("site_number") or report.get("site_number") or "").strip()
-    lot = str(details.get("lot_number") or "").strip()
-    mix = str(details.get("asphalt_type") or "").strip()
-    initials = "".join(part[0] for part in str(details.get("supervisor") or "").split() if part).upper()
-    parts = [work_date, site_number, lot]
-    if mix:
-        parts.append(f"HMA-{mix}")
-    if initials:
-        parts.append(initials)
-    return "-".join(part for part in parts if part)
+    return built or explicit
 
 
 def pdf_filename(report: dict, site: dict | None = None) -> str:
@@ -105,12 +108,15 @@ def _weather_condition(report: dict) -> str:
 
 
 def _site_name(report: dict, site: dict | None) -> str:
-    road = (site or {}).get("road_name") or report.get("road_name") or ""
-    number = (site or {}).get("site_number") or report.get("site_number") or ""
-    lot = _text((report.get("details") or {}).get("lot_number"))
-    name = " - ".join(part for part in (str(road).strip(), str(number).strip()) if part)
-    if lot:
-        name = f"{name} Site:{lot}" if name else f"Site:{lot}"
+    details = report.get("details") or {}
+    road = str((site or {}).get("road_name") or report.get("road_name") or "").strip()
+    number = str((site or {}).get("site_number") or report.get("site_number") or "").strip()
+    road_no = str(details.get("road_number") or road_number_from_name(road)).strip()
+    name = road
+    if road_no and road_no not in road:
+        name = f"{road} - {road_no}" if road else road_no
+    if number and number not in name:
+        name = f"{name} Site:{number}" if name else f"Site:{number}"
     return name
 
 
@@ -256,17 +262,42 @@ def _rings(polygons: list) -> list[list[tuple[float, float]]]:
     return [ring for ring in rings if len(ring) >= 3]
 
 
-def _diagram(c: pdfcanvas.Canvas, y: float, polygons: list) -> float:
+def _diagram(c: pdfcanvas.Canvas, y: float, polygons: list, lot_number: str) -> float:
     height = 168
     c.setStrokeColor(LINE)
     c.setFillColor(DIAGRAM_BG)
     c.setLineWidth(0.6)
     c.rect(LEFT, y - height, WIDTH, height, fill=1, stroke=1)
+    image = None
+    try:
+        image = render_lot_map(polygons, lot_number, width=1100, height=420)
+    except Exception:
+        image = None
+    if image:
+        from io import BytesIO
+
+        from reportlab.lib.utils import ImageReader
+
+        c.drawImage(
+            ImageReader(BytesIO(image)),
+            LEFT,
+            y - height,
+            width=WIDTH,
+            height=height,
+            preserveAspectRatio=True,
+            anchor="c",
+            mask="auto",
+        )
+        return y - height
     rings = _rings(polygons)
     if not rings:
         c.setFillColor(MUTED)
         c.setFont("Helvetica-Oblique", 9)
-        c.drawCentredString(PAGE_W / 2, y - height / 2, "Lot diagram")
+        c.drawCentredString(PAGE_W / 2, y - height / 2 + 8, "Lot diagram")
+        if lot_number:
+            c.setFillColor(NAVY)
+            c.setFont("Helvetica-Bold", 8)
+            c.drawRightString(RIGHT - 8, y - height + 8, lot_number)
         return y - height
     points = [pt for ring in rings for pt in ring]
     min_x = min(pt[0] for pt in points)
@@ -297,6 +328,10 @@ def _diagram(c: pdfcanvas.Canvas, y: float, polygons: list) -> float:
         c.setStrokeColor(POLY_EDGE)
         c.setLineWidth(1.2)
         c.drawPath(path, fill=1, stroke=1)
+    if lot_number:
+        c.setFillColor(NAVY)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawRightString(RIGHT - 8, y - height + 8, lot_number)
     return y - height
 
 
@@ -317,7 +352,7 @@ def build_shift_report_pdf(report: dict, site: dict | None = None) -> bytes:
     c.setFillColor(NAVY)
     c.setFont("Helvetica-Bold", 8)
     c.drawString(LEFT + 2, y - 11, "Lot Diagram")
-    y = _diagram(c, y - 16, report.get("polygons") or [])
+    y = _diagram(c, y - 16, report.get("polygons") or [], ref)
 
     y -= 8
     y = _section(c, y, "Subcontractor Information")

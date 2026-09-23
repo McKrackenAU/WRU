@@ -14,8 +14,8 @@ def _sample():
     report = {
         "work_date": "2026-02-25",
         "shift_type": "night",
-        "road_name": "HEATHS RD",
-        "site_number": "5443",
+        "road_name": "HEATHS RD - 5443",
+        "site_number": "030",
         "weather": {"label": "Clear", "temperature_c": 22},
         "polygons": [
             {
@@ -28,7 +28,9 @@ def _sample():
         ],
         "details": {
             "fmrp_year": "FMRP 2025/26",
-            "lot_number": "2526-030",
+            "road_number": "5443",
+            "work_kind": "hma",
+            "lot_number": "20260225-5443-2526-030-HMA-14HP-WM",
             "supervisor": "William McClure",
             "high_risk": "WORKING NEAR LIVE TRAFFIC, WORKING AROUND MOBILE PLANT",
             "chainage": "CH1325R to CH1938R",
@@ -69,12 +71,12 @@ def _sample():
             "photos_url": "https://ventia.sharepoint.com/sites/HEATHS/2026-02-25",
         },
     }
-    site = {"road_name": "HEATHS RD", "site_number": "5443"}
+    site = {"road_name": "HEATHS RD - 5443", "site_number": "030"}
     return report, site
 
 
 def test_version_is_220():
-    assert VERSION == "2.20"
+    assert VERSION == "2.21"
 
 
 def test_form_has_every_printed_report_field():
@@ -82,7 +84,8 @@ def test_form_has_every_printed_report_field():
         "dWeather",
         "dFmrp",
         "dLot",
-        "dReportNo",
+        "dRoadNo",
+        "dWorkKind",
         "dSupervisor",
         "dRisk",
         "dPaver",
@@ -123,7 +126,7 @@ def test_form_has_every_printed_report_field():
         "dPhotos",
     ):
         assert f'id="{field_id}"' in SHIFTS_HTML
-    assert "buildReportNumber" in SHIFTS_JS
+    assert "buildLotNumber" in SHIFTS_JS
     assert "weather_condition" in SHIFTS_JS
     assert "vensafe_event" in SHIFTS_JS
 
@@ -183,7 +186,7 @@ def test_pdf_contains_the_printed_report_sections_and_values():
         "TMP Checks",
         "Non Conformance Reports",
         "Photos",
-        "HEATHS RD - 5443 Site:2526-030",
+        "HEATHS RD - 5443 Site:030",
         "William McClure",
         "22c Clear",
         "FMRP 2025/26",

@@ -9,6 +9,7 @@
   <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
   <link rel="stylesheet" href="/static/css/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
   <script>
     (function () {
       try {
@@ -200,6 +201,7 @@
         <button type="button" class="drawer-tab" data-tab="councils">Councils</button>
         <button type="button" class="drawer-tab" data-tab="workflow" hidden>Workflow</button>
         <button type="button" class="drawer-tab" data-tab="activity">Activity</button>
+        <button type="button" class="drawer-tab" data-tab="works">Works map</button>
         <button type="button" class="drawer-tab" data-tab="documents">Documents</button>
       </div>
       <form id="siteForm" class="drawer-body">
@@ -389,6 +391,19 @@
           </div>
         </section>
 
+        <section class="tab-panel" data-panel="works">
+          <p class="hint" id="worksHint">Save the site first to see the work polygons.</p>
+          <div id="worksBody" hidden>
+            <p class="hint" id="worksMapHint">Every shift polygon for this site. Turn a mix off to compare base layers with the wearing course.</p>
+            <div id="worksMixFilters" class="works-mix-filters"></div>
+            <div id="siteWorksMap" class="site-works-map"></div>
+            <div class="toolbar" style="margin-top:0.75rem">
+              <a class="btn" id="btnSiteLots" href="/lots">Lot register</a>
+              <a class="btn" id="btnSiteShifts" href="/shifts">Shift reports</a>
+            </div>
+          </div>
+        </section>
+
         <section class="tab-panel" data-panel="documents">
           <p class="hint" id="docsHint">Save the site first to upload documents.</p>
           <div id="docsBody" hidden>
@@ -524,6 +539,7 @@
     </form>
   </dialog>
 
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
   <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

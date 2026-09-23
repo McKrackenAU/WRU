@@ -970,6 +970,40 @@ class ShiftReport(Base):
     site: Mapped[Site] = relationship(lazy="selectin")
 
 
+class LotRegister(Base):
+    """One lot per shift, kept so QA can find what was laid and where."""
+
+    __tablename__ = "lot_register"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lot_number: Mapped[str] = mapped_column(String(160), unique=True, nullable=False, index=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    shift_id: Mapped[int | None] = mapped_column(
+        ForeignKey("shift_reports.id", ondelete="CASCADE"), unique=True, nullable=True, index=True
+    )
+    work_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    road_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    road_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fmrp_year: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    site_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # hma | pro
+    work_kind: Mapped[str] = mapped_column(String(8), nullable=False, default="hma")
+    mix: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    supervisor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # pending | accepted | hold
+    qa_status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", index=True)
+    qa_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    site: Mapped[Site] = relationship(lazy="selectin")
+    shift: Mapped[ShiftReport | None] = relationship(lazy="selectin")
+
+
 class ImportSnapshot(Base):
     """Undo buffer for bulk imports (MS Project → Gantt)."""
 

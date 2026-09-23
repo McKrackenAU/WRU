@@ -118,6 +118,10 @@ def create_shift(
         created_by=user.display_name or user.username,
     )
     db.add(row)
+    db.flush()
+    from ..lot_register import sync_lot
+
+    sync_lot(db, row)
     db.commit()
     db.refresh(row)
     return _public(row)
@@ -144,6 +148,9 @@ def update_shift(
         log.append(extra)
         row.weather_log = log
         row.weather = extra
+    from ..lot_register import sync_lot
+
+    sync_lot(db, row)
     db.commit()
     db.refresh(row)
     return _public(row)

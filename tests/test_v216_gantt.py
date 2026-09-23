@@ -17,7 +17,7 @@ ACCOUNT_HTML = (ROOT / "app/static/account.html").read_text(encoding="utf-8")
 
 
 def test_version_is_216():
-    assert VERSION == "2.20"
+    assert VERSION == "2.21"
 
 
 def test_form_checkboxes_are_not_touch_sized():

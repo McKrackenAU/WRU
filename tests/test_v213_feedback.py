@@ -31,7 +31,7 @@ STYLE = (ROOT / "app/static/css/style.css").read_text(encoding="utf-8")
 
 
 def test_version_is_current():
-    assert VERSION == "2.20"
+    assert VERSION == "2.21"
 
 
 def test_login_lands_on_home_and_can_install():
