@@ -65,7 +65,7 @@ def _lookup_out(
 
 @router.get("/lookups", response_model=list[LookupOut])
 def list_lookups(
-    kind: str | None = Query(default=None, pattern="^(road|council)$"),
+    kind: str | None = Query(default=None, pattern="^(road|council|archive_category)$"),
     active_only: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):

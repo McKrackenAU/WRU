@@ -245,6 +245,7 @@ class Site(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     archived_fy: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    archive_category: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     custom_fields: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     # Job-specific tags; category tags are merged at read time.
     tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)

@@ -563,6 +563,7 @@ def site_to_dict(site: Site, *, include_metrics: bool = True, db: Session | None
         "archived": bool(site.archived),
         "archived_at": site.archived_at,
         "archived_fy": site.archived_fy,
+        "archive_category": getattr(site, "archive_category", None),
         "councils": [c["council_name"] for c in council_details],
         "council_details": council_details,
         "custom_fields": site.custom_fields or {},

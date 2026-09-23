@@ -103,6 +103,17 @@
       </section>
 
       <section class="panel-card">
+        <h2>Archive categories</h2>
+        <p class="hint">Used when archiving a job. Add names here, or create them from the Archive dialog dropdown. Rename updates every archived site that uses that category.</p>
+        <div class="filters" style="margin-bottom:0.75rem">
+          <input id="archiveLookupValue" type="text" placeholder="Add a category, e.g. Completed works" maxlength="128" />
+          <button type="button" class="btn btn-primary" id="btnAddArchiveCat">Add category</button>
+        </div>
+        <p class="hint" id="archiveLookupStatus"></p>
+        <ul class="event-list lookup-list" id="archiveLookupList"></ul>
+      </section>
+
+      <section class="panel-card">
         <h2>Document types</h2>
         <p class="hint">These labels appear on the site Documents tab and the library. Add your own types, rename the ones you use, or remove unused ones. Documents on a removed type move to Other. Other cannot be removed — it is the fallback.</p>
         <div class="filters" style="margin-bottom:0.75rem">

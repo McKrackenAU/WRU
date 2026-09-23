@@ -479,6 +479,39 @@
     </form>
   </dialog>
 
+  <dialog id="archiveDialog" class="panel">
+    <form id="archiveForm" onsubmit="return false;">
+      <header class="panel-head">
+        <h2 id="archiveDialogTitle">Archive site</h2>
+        <button type="button" class="icon-btn" data-close-dialog="archiveDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">Pick a saved archive category or add a new one. It will appear in the dropdown next time.</p>
+        <input type="hidden" id="archiveSiteIds" />
+        <div class="form-grid">
+          <label>Financial year
+            <input id="archiveFy" type="text" placeholder="e.g. 2025-26 — leave blank to auto-detect" />
+          </label>
+          <label>Category
+            <select id="archiveCategory">
+              <option value="">No category</option>
+              <option value="__new__">Add a new category…</option>
+            </select>
+          </label>
+          <label class="full" id="archiveCategoryNewWrap" hidden>
+            New category
+            <input id="archiveCategoryNew" type="text" maxlength="128" placeholder="e.g. Completed works" />
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-dialog="archiveDialog">Cancel</button>
+        <button type="submit" class="btn btn-danger" id="archiveConfirm">Archive</button>
+      </footer>
+    </form>
+  </dialog>
+
   <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

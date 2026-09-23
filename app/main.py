@@ -150,6 +150,22 @@ def meta(db: Session = Depends(get_db)):
         .all()
     ]
     roads = list(dict.fromkeys(lookup_roads))
+    archive_categories = [
+        r.value
+        for r in db.query(LookupItem)
+        .filter(LookupItem.kind == "archive_category", LookupItem.active.is_(True))
+        .order_by(LookupItem.position.asc(), LookupItem.value.asc())
+        .all()
+    ]
+    used_archive = [
+        c
+        for (c,) in db.query(distinct(Site.archive_category))
+        .filter(Site.archive_category.isnot(None))
+        .order_by(Site.archive_category)
+        .all()
+        if c
+    ]
+    archive_categories = list(dict.fromkeys([*archive_categories, *used_archive]))
     return {
         "workflow_stages": stage_meta(db),
         "doc_categories": [d["key"] for d in doc_defs],
@@ -163,6 +179,7 @@ def meta(db: Session = Depends(get_db)):
         "programs": programs,
         "councils": councils,
         "roads": roads,
+        "archive_categories": archive_categories,
         "rules": rules.as_dict(),
         "asset_version": version_string(),
     }

@@ -21,7 +21,7 @@ from ..notify import (
     dispatch_stage_notifications,
     normalize_tags,
 )
-from ..lookups import ensure_lookup_value
+from ..lookups import ensure_lookup_value, set_archive_category
 from ..gantt_engine import recompute_board_dates
 from ..models import CostEstimate, GanttBoard, GanttItem, MapFeature, MapLayer, Site, SiteCouncil
 from ..schemas import (
@@ -158,6 +158,7 @@ def list_sites(
     council: str | None = Query(default=None),
     program: str | None = Query(default=None),
     financial_year: str | None = Query(default=None),
+    archive_category: str | None = Query(default=None),
     permits_priority: bool | None = Query(default=None),
     trims_priority: bool | None = Query(default=None),
     client_list: str | None = Query(default=None),
@@ -187,6 +188,8 @@ def list_sites(
                 Site.archived_fy == financial_year,
             )
         )
+    if archive_category:
+        query = query.filter(Site.archive_category.ilike(archive_category.strip()))
     if council:
         query = query.join(SiteCouncil).filter(SiteCouncil.council_name.ilike(council.strip()))
     if generic_moa is not None:
@@ -255,12 +258,14 @@ def bulk_archive_sites(
     now = datetime.now(timezone.utc)
     archived_ids: list[int] = []
     fy_used: str | None = (payload.financial_year or "").strip() or None
+    category = (payload.archive_category or "").strip() or None
     for site in sites:
         fy = fy_used or infer_financial_year(site)
         site.archived = True
         site.archived_at = now
         site.archived_fy = fy
         site.financial_year = site.financial_year or fy
+        set_archive_category(db, site, category)
         archived_ids.append(site.id)
     db.commit()
     notify_from_request(request, site_ids=archived_ids, reason="archive")
@@ -526,6 +531,7 @@ def archive_site(
     site.archived_at = datetime.now(timezone.utc)
     site.archived_fy = fy
     site.financial_year = site.financial_year or fy
+    set_archive_category(db, site, payload.archive_category if payload else None)
     who = actor_name(request)
     log_site_activity(
         db,
@@ -548,6 +554,7 @@ def restore_site(site_id: int, request: Request, db: Session = Depends(get_db)):
     site.archived = False
     site.archived_at = None
     site.archived_fy = None
+    site.archive_category = None
     who = actor_name(request)
     log_site_activity(
         db,
