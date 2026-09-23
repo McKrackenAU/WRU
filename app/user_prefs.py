@@ -26,6 +26,22 @@ ALLOWED_WIDGETS = {
     "councils",
 }
 
+ALLOWED_CHART_METRICS = {
+    "stages",
+    "programs",
+    "councils",
+    "priority",
+    "must_have",
+    "lists",
+    "costs",
+    "spend",
+    "sites",
+}
+
+ALLOWED_CHART_TYPES = {"bar", "pie"}
+
+MAX_HOME_CHARTS = 8
+
 ALLOWED_LINK_HREFS = {
     "/dashboard",
     "/",
@@ -60,9 +76,43 @@ def default_prefs() -> dict[str, Any]:
         "colors_dark": _empty_colors(),
         "quick_links": list(DEFAULT_QUICK_LINKS),
         "home_widgets": list(DEFAULT_HOME_WIDGETS),
+        "home_charts": [],
         "comms_sort": "group",
         "comms_sheets": [],
     }
+
+
+def _chart_id(raw, used: set[str]) -> str:
+    text = "".join(ch for ch in str(raw or "") if ch.isalnum() or ch in "-_")[:24]
+    if text and text not in used:
+        return text
+    n = 1
+    while True:
+        cid = f"c{n}"
+        if cid not in used:
+            return cid
+        n += 1
+
+
+def _normalize_charts(raw) -> list[dict[str, str]]:
+    charts: list[dict[str, str]] = []
+    used: set[str] = set()
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        metric = str(item.get("metric") or "").strip()
+        if metric not in ALLOWED_CHART_METRICS:
+            continue
+        kind = str(item.get("chart") or item.get("type") or "bar").strip().lower()
+        if kind not in ALLOWED_CHART_TYPES:
+            kind = "bar"
+        cid = _chart_id(item.get("id"), used)
+        used.add(cid)
+        title = str(item.get("title") or "").strip()[:80]
+        charts.append({"id": cid, "title": title, "metric": metric, "chart": kind})
+        if len(charts) >= MAX_HOME_CHARTS:
+            break
+    return charts
 
 
 def _hex(value: str | None) -> str:
@@ -118,6 +168,8 @@ def normalize_prefs(raw) -> dict[str, Any]:
         if slug in ALLOWED_WIDGETS and slug not in widgets:
             widgets.append(slug)
     base["home_widgets"] = widgets or list(DEFAULT_HOME_WIDGETS)
+    if "home_charts" in data:
+        base["home_charts"] = _normalize_charts(data.get("home_charts"))
     sort_mode = str(data.get("comms_sort") or "group").strip().lower()
     base["comms_sort"] = "date" if sort_mode == "date" else "group"
     sheets = []

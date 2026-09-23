@@ -1,17 +1,138 @@
-import { $, api, currentUser, escapeHtml, injectChrome, onLiveSitesChanged, syncLiveRevision } from "./common.js";
+import {
+  $,
+  api,
+  confirmDialog,
+  currentUser,
+  escapeHtml,
+  injectChrome,
+  on,
+  onLiveSitesChanged,
+  saveUserPrefs,
+  syncLiveRevision,
+} from "./common.js";
+
+const CHART_METRICS = {
+  stages: "Stages",
+  programs: "Programs",
+  councils: "Councils",
+  priority: "Priority",
+  must_have: "Must-have status",
+  lists: "Client lists",
+  costs: "Traffic estimates",
+  spend: "Actual spend",
+  sites: "Site totals",
+};
+
+const PIE_COLORS = ["#004825", "#3dd68c", "#2563eb", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#4b5563"];
+const MAX_HOME_CHARTS = 8;
 
 function barRows(items, max) {
-  const m = max || Math.max(1, ...items.map((i) => i.count));
+  const m = max || Math.max(1, ...items.map((i) => Number(i.count) || 0));
   return items
     .map(
       (i) => `
     <div class="bar-row">
       <span>${escapeHtml(i.label || i.name)}</span>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.round((100 * i.count) / m)}%"></div></div>
-      <strong>${i.count}</strong>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round((100 * (Number(i.count) || 0)) / m)}%"></div></div>
+      <strong>${formatChartValue(i)}</strong>
     </div>`
     )
     .join("");
+}
+
+function formatChartValue(item) {
+  const n = Number(item.count) || 0;
+  if (item.money) {
+    return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return String(n);
+}
+
+function pieSvg(items) {
+  const usable = items.filter((i) => (Number(i.count) || 0) > 0);
+  const total = usable.reduce((sum, i) => sum + (Number(i.count) || 0), 0);
+  if (!total) return `<p class="hint">No data yet.</p>`;
+  const r = 42;
+  const cx = 50;
+  const cy = 50;
+  let angle = -Math.PI / 2;
+  const slices = [];
+  usable.forEach((item, idx) => {
+    const value = Number(item.count) || 0;
+    const color = PIE_COLORS[idx % PIE_COLORS.length];
+    if (value === total) {
+      slices.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"></circle>`);
+      return;
+    }
+    const sweep = (value / total) * Math.PI * 2;
+    const end = angle + sweep;
+    const x1 = cx + r * Math.cos(angle);
+    const y1 = cy + r * Math.sin(angle);
+    const x2 = cx + r * Math.cos(end);
+    const y2 = cy + r * Math.sin(end);
+    const large = sweep > Math.PI ? 1 : 0;
+    slices.push(
+      `<path d="M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z" fill="${color}"></path>`
+    );
+    angle = end;
+  });
+  const legend = items
+    .map((item, idx) => {
+      const color = PIE_COLORS[idx % PIE_COLORS.length];
+      return `<div><span class="pie-swatch" style="background:${color}"></span>${escapeHtml(item.label)} <strong>${formatChartValue(item)}</strong></div>`;
+    })
+    .join("");
+  return `<div class="pie-chart">
+    <svg viewBox="0 0 100 100" class="pie-svg" role="img" aria-label="Pie chart">${slices.join("")}</svg>
+    <div class="pie-legend">${legend}</div>
+  </div>`;
+}
+
+function seriesFor(metric, data) {
+  switch (metric) {
+    case "stages":
+      return (data.by_stage || []).map((s) => ({ label: s.label, count: s.count }));
+    case "programs":
+      return (data.by_program || []).map((s) => ({ label: s.name, count: s.count }));
+    case "councils":
+      return (data.by_council || []).map((s) => ({ label: s.name, count: s.count }));
+    case "priority":
+      return [
+        { label: "Priority 1", count: data.priority?.priority_1 || 0 },
+        { label: "Priority 2", count: data.priority?.priority_2 || 0 },
+      ];
+    case "must_have":
+      return [
+        { label: "On time", count: data.must_have?.ok || 0 },
+        { label: "Not submitted", count: data.must_have?.late || 0 },
+        { label: "Overdue", count: data.must_have?.overdue || 0 },
+        { label: "None", count: data.must_have?.none || 0 },
+      ];
+    case "lists":
+      return [
+        { label: "Permits", count: data.permits_priority_count || 0 },
+        { label: "TRIMS", count: data.trims_priority_count || 0 },
+      ];
+    case "costs":
+      return [
+        { label: "Latest estimates", count: data.cost_totals?.estimated || 0, money: true },
+        { label: "Sites with costs", count: data.cost_totals?.sites_with_cost || 0 },
+      ];
+    case "spend":
+      return [
+        { label: "Traffic", count: data.spend_totals?.traffic || 0, money: true },
+        { label: "Pavements", count: data.spend_totals?.asphalt || 0, money: true },
+        { label: "Total", count: data.spend_totals?.total || 0, money: true },
+      ];
+    case "sites":
+      return [
+        { label: "Active", count: data.totals?.active_sites || 0 },
+        { label: "Archived", count: data.totals?.archived_sites || 0 },
+        { label: "Documents", count: data.totals?.documents || 0 },
+      ];
+    default:
+      return [];
+  }
 }
 
 function fmtWhen(value) {
@@ -41,6 +162,10 @@ function widgetSet() {
   return new Set(list);
 }
 
+function homeCharts() {
+  return [...(currentUser()?.prefs?.home_charts || [])];
+}
+
 function moneyCard(title, rows) {
   return `<section class="panel-card">
     <h2>${escapeHtml(title)}</h2>
@@ -55,6 +180,62 @@ function moneyCard(title, rows) {
         .join("")}
     </div>
   </section>`;
+}
+
+function chartCard(chart, data) {
+  const metricLabel = CHART_METRICS[chart.metric] || chart.metric;
+  const title = chart.title || metricLabel;
+  const kind = chart.chart === "pie" ? "pie" : "bar";
+  const series = seriesFor(chart.metric, data);
+  const body = !series.length
+    ? `<p class="hint">No data yet.</p>`
+    : kind === "pie"
+      ? pieSvg(series)
+      : barRows(series) || `<p class="hint">No data yet.</p>`;
+  return `<section class="panel-card home-chart-card" data-chart-id="${escapeHtml(chart.id)}">
+    <div class="page-head lists-panel-head">
+      <div>
+        <h2>${escapeHtml(title)}</h2>
+        <p class="hint">${kind === "pie" ? "Pie" : "Bar"} · ${escapeHtml(metricLabel)}</p>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="btn btn-sm" data-edit-chart="${escapeHtml(chart.id)}">Edit</button>
+        <button type="button" class="btn btn-sm" data-remove-chart="${escapeHtml(chart.id)}">Remove</button>
+      </div>
+    </div>
+    ${body}
+  </section>`;
+}
+
+function renderHomeCharts(data) {
+  const host = $("homeCharts");
+  if (!host) return;
+  const charts = homeCharts();
+  host.innerHTML = charts.length
+    ? charts.map((chart) => chartCard(chart, data)).join("")
+    : `<p class="hint">No custom graphs yet. Use Add graph to pick stages, programs, spend, or other totals.</p>`;
+}
+
+function closeChartDialog() {
+  const el = $("homeChartDialog");
+  if (!el) return;
+  if (typeof el.close === "function") el.close();
+  else el.removeAttribute("open");
+}
+
+function openChartDialog() {
+  const el = $("homeChartDialog");
+  if (!el) return;
+  if (typeof el.showModal === "function") el.showModal();
+  else el.setAttribute("open", "");
+}
+
+function fillChartForm(chart) {
+  $("chartEditId").value = chart?.id || "";
+  $("chartTitle").value = chart?.title || "";
+  $("chartMetric").value = chart?.metric && CHART_METRICS[chart.metric] ? chart.metric : "stages";
+  $("chartType").value = chart?.chart === "pie" ? "pie" : "bar";
+  $("homeChartDialogTitle").textContent = chart?.id ? "Edit graph" : "Add graph";
 }
 
 function renderHomeChrome() {
@@ -87,6 +268,10 @@ function renderHomeChrome() {
   if (more) more.hidden = !(on.has("stages") || on.has("programs") || on.has("councils"));
 }
 
+async function persistCharts(charts) {
+  await saveUserPrefs({ home_charts: charts });
+}
+
 async function loadDashboard() {
   const data = await api("/api/dashboard");
   const on = widgetSet();
@@ -95,7 +280,7 @@ async function loadDashboard() {
   if (hint) {
     hint.textContent = tags.length
       ? `Showing work tagged ${tags.join(", ")}.`
-      : "Recently approved MoAs, status changes, comms, and traffic costs. Customise widgets on Account.";
+      : "Recently approved MoAs, status changes, comms, and traffic costs. Add graphs below, or customise widgets on Account.";
   }
 
   if (on.has("approvals") && $("approvalList")) {
@@ -203,11 +388,87 @@ async function loadDashboard() {
           .join("")
       : `<li><p class="meta">No recent activity.</p></li>`;
   }
+
+  renderHomeCharts(data);
+}
+
+function newChartId() {
+  return `c${Date.now().toString(36)}${Math.floor(Math.random() * 36).toString(36)}`;
+}
+
+function bindChartUi() {
+  on("btnAddGraph", "click", () => {
+    if (homeCharts().length >= MAX_HOME_CHARTS) {
+      $("dashFocusHint").textContent = "You can pin up to eight graphs. Remove one before adding another.";
+      return;
+    }
+    fillChartForm(null);
+    openChartDialog();
+    $("chartTitle")?.focus();
+  });
+
+  async function saveChartFromForm(ev) {
+    if (ev) ev.preventDefault();
+    const metric = $("chartMetric")?.value || "stages";
+    const kind = $("chartType")?.value === "pie" ? "pie" : "bar";
+    const title = ($("chartTitle")?.value || "").trim();
+    const editId = $("chartEditId")?.value || "";
+    const next = homeCharts();
+    if (editId) {
+      const idx = next.findIndex((c) => c.id === editId);
+      if (idx >= 0) next[idx] = { ...next[idx], title, metric, chart: kind };
+    } else {
+      if (next.length >= MAX_HOME_CHARTS) return;
+      next.push({ id: newChartId(), title, metric, chart: kind });
+    }
+    const saveBtn = $("homeChartSave");
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await persistCharts(next);
+      closeChartDialog();
+      await loadDashboard();
+    } catch (err) {
+      if ($("dashFocusHint")) $("dashFocusHint").textContent = err.message || String(err);
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
+  on("homeChartForm", "submit", saveChartFromForm);
+  on("homeChartSave", "click", saveChartFromForm);
+
+  document.querySelectorAll("[data-close-dialog]").forEach((btn) => {
+    btn.addEventListener("click", () => closeChartDialog());
+  });
+
+  $("homeCharts")?.addEventListener("click", async (ev) => {
+    const edit = ev.target.closest("[data-edit-chart]");
+    if (edit) {
+      const chart = homeCharts().find((c) => c.id === edit.getAttribute("data-edit-chart"));
+      if (!chart) return;
+      fillChartForm(chart);
+      openChartDialog();
+      $("chartTitle")?.focus();
+      return;
+    }
+    const remove = ev.target.closest("[data-remove-chart]");
+    if (!remove) return;
+    const id = remove.getAttribute("data-remove-chart");
+    const ok = await confirmDialog("Remove this graph from Home? You can add it again later.", {
+      title: "Remove graph",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
+    await persistCharts(homeCharts().filter((c) => c.id !== id));
+    await loadDashboard();
+  });
 }
 
 async function init() {
   await injectChrome({ active: "/dashboard" });
   renderHomeChrome();
+  bindChartUi();
   onLiveSitesChanged(() => loadDashboard().catch(() => {}));
   await loadDashboard();
   await syncLiveRevision();

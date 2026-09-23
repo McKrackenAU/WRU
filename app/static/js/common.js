@@ -777,10 +777,7 @@ function quickLinksHtml() {
     .map((href) => {
       const item = all.find((l) => l.href === href);
       const label = escapeHtml(item?.label || href);
-      return `<span class="quick-link-wrap">
-        <a class="quick-link" href="${href}">${label}</a>
-        <button type="button" class="quick-link-remove" data-remove-link="${href}" aria-label="Remove ${label}" title="Remove">×</button>
-      </span>`;
+      return `<a class="quick-link" href="${href}">${label}</a>`;
     })
     .join("");
   return `<nav class="quick-links" aria-label="Your shortcuts">
@@ -814,7 +811,7 @@ function openQuickLinkPicker() {
   pop.className = "quick-link-pop";
   pop.setAttribute("role", "menu");
   if (used.size >= 8) {
-    pop.innerHTML = `<p class="hint">You already have eight shortcuts. Remove one to add another.</p>`;
+    pop.innerHTML = `<p class="hint">You already have eight shortcuts. Turn some off on Account &amp; look.</p>`;
   } else if (!unused.length) {
     pop.innerHTML = `<p class="hint">Every page is already in your shortcuts.</p>`;
   } else {
@@ -864,17 +861,7 @@ export function initQuickLinks() {
   const nav = document.querySelector(".quick-links");
   if (!nav || nav.dataset.bound) return;
   nav.dataset.bound = "1";
-  nav.addEventListener("click", async (ev) => {
-    const remove = ev.target.closest("[data-remove-link]");
-    if (remove) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const href = remove.getAttribute("data-remove-link");
-      const next = (currentUser()?.prefs?.quick_links || []).filter((item) => item !== href);
-      await saveUserPrefs({ quick_links: next });
-      refreshQuickLinks();
-      return;
-    }
+  nav.addEventListener("click", (ev) => {
     if (ev.target.closest("#quickLinkAdd")) {
       ev.preventDefault();
       if (document.getElementById("quickLinkPickerPop")) closeQuickLinkPicker();
