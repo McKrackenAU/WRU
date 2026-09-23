@@ -1,4 +1,15 @@
-import { $, api, applyUserColors, currentUser, injectChrome, on, OPS_NAV, setSessionUser } from "./common.js";
+import {
+  $,
+  api,
+  applyLook,
+  currentUser,
+  injectChrome,
+  on,
+  OPS_NAV,
+  persistAndApplyLook,
+  setSessionUser,
+  THEME_KEY,
+} from "./common.js";
 
 const WIDGETS = [
   { key: "approvals", label: "Approved MoAs" },
@@ -11,11 +22,37 @@ const WIDGETS = [
   { key: "councils", label: "Councils" },
 ];
 
-const COLOR_DEFAULTS = {
-  accent: "#0a7a45",
-  bg: "#f4f7f5",
-  ink: "#142018",
+const LIGHT_DEFAULTS = {
+  accent: "#004825",
+  bg: "#f3f6f2",
+  ink: "#1f2933",
   panel: "#ffffff",
+  border: "#d5ddd4",
+};
+
+const DARK_DEFAULTS = {
+  accent: "#3dd68c",
+  bg: "#070809",
+  ink: "#e6e8eb",
+  panel: "#0e1116",
+  border: "#252a31",
+};
+
+const COLOR_FIELDS = {
+  light: {
+    accent: "colorLightAccent",
+    bg: "colorLightBg",
+    ink: "colorLightInk",
+    panel: "colorLightPanel",
+    border: "colorLightBorder",
+  },
+  dark: {
+    accent: "colorDarkAccent",
+    bg: "colorDarkBg",
+    ink: "colorDarkInk",
+    panel: "colorDarkPanel",
+    border: "colorDarkBorder",
+  },
 };
 
 function show(el, msg) {
@@ -51,30 +88,34 @@ function selectedKeys(attr) {
   return [...document.querySelectorAll(`[data-${attr}]:checked`)].map((el) => el.getAttribute(`data-${attr}`));
 }
 
-function fillColors(colors) {
-  const map = {
-    colorAccent: colors?.accent || COLOR_DEFAULTS.accent,
-    colorBg: colors?.bg || COLOR_DEFAULTS.bg,
-    colorInk: colors?.ink || COLOR_DEFAULTS.ink,
-    colorPanel: colors?.panel || COLOR_DEFAULTS.panel,
-  };
-  for (const [id, value] of Object.entries(map)) {
-    if ($(id)) $(id).value = value;
+function fillPalette(mode, colors) {
+  const defaults = mode === "dark" ? DARK_DEFAULTS : LIGHT_DEFAULTS;
+  const fields = COLOR_FIELDS[mode];
+  for (const [key, id] of Object.entries(fields)) {
+    if ($(id)) $(id).value = colors?.[key] || defaults[key];
   }
 }
 
-function collectedColors() {
-  const raw = {
-    accent: $("colorAccent")?.value || "",
-    bg: $("colorBg")?.value || "",
-    ink: $("colorInk")?.value || "",
-    panel: $("colorPanel")?.value || "",
-  };
+function collectedPalette(mode) {
+  const fields = COLOR_FIELDS[mode];
   const out = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (value && value !== COLOR_DEFAULTS[key]) out[key] = value;
+  for (const [key, id] of Object.entries(fields)) {
+    out[key] = $(id)?.value || "";
   }
   return out;
+}
+
+function previewTheme() {
+  const theme = $("accountTheme")?.value || "system";
+  const mode = theme === "dark" || theme === "light" ? theme : document.documentElement.classList.contains("dark") ? "dark" : "light";
+  applyLook(
+    {
+      ...prefs(),
+      colors_light: collectedPalette("light"),
+      colors_dark: collectedPalette("dark"),
+    },
+    mode
+  );
 }
 
 async function init() {
@@ -84,8 +125,12 @@ async function init() {
   if ($("accountRole")) $("accountRole").value = user?.role || "";
   if ($("accountDisplayName")) $("accountDisplayName").value = user?.display_name || user?.username || "";
   if ($("accountTheme")) $("accountTheme").value = prefs().theme || "system";
-  fillColors(prefs().colors || {});
-  const links = OPS_NAV.map((l) => ({ key: l.href, label: l.label }));
+  fillPalette("light", prefs().colors_light || prefs().colors || {});
+  fillPalette("dark", prefs().colors_dark || {});
+  const links = OPS_NAV.filter((l) => !l.commsOnly || user?.role === "comms" || user?.role === "admin").map((l) => ({
+    key: l.href,
+    label: l.label,
+  }));
   renderPills("quickLinkPicker", links, prefs().quick_links || [], "quick");
   renderPills("homeWidgetPicker", WIDGETS, prefs().home_widgets || [], "widget");
   if (user?.username && String(user.username).toLowerCase() === "root") {
@@ -96,19 +141,37 @@ async function init() {
 on("accountTheme", "change", () => {
   const theme = $("accountTheme").value;
   if (theme === "dark" || theme === "light") {
-    localStorage.setItem("wru-tgs-theme", theme);
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    document.documentElement.style.colorScheme = theme;
+    try {
+      const who = String(currentUser()?.username || "").toLowerCase();
+      if (who) localStorage.setItem(`${THEME_KEY}:${who}`, theme);
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      /* ignore */
+    }
   }
+  previewTheme();
 });
 
-["colorAccent", "colorBg", "colorInk", "colorPanel"].forEach((id) => {
-  $(id)?.addEventListener("input", () => applyUserColors(collectedColors()));
+Object.values(COLOR_FIELDS.light).forEach((id) => {
+  $(id)?.addEventListener("input", () => {
+    applyLook({ ...prefs(), colors_light: collectedPalette("light") }, "light");
+  });
 });
 
-on("btnClearColors", "click", () => {
-  fillColors({});
-  applyUserColors({});
+Object.values(COLOR_FIELDS.dark).forEach((id) => {
+  $(id)?.addEventListener("input", () => {
+    applyLook({ ...prefs(), colors_dark: collectedPalette("dark") }, "dark");
+  });
+});
+
+on("btnClearLightColors", "click", () => {
+  fillPalette("light", {});
+  applyLook({ ...prefs(), colors_light: {} }, "light");
+});
+
+on("btnClearDarkColors", "click", () => {
+  fillPalette("dark", {});
+  applyLook({ ...prefs(), colors_dark: {} }, "dark");
 });
 
 on("accountForm", "submit", async (e) => {
@@ -127,7 +190,8 @@ on("accountForm", "submit", async (e) => {
     const body = {
       prefs: {
         theme: $("accountTheme").value,
-        colors: collectedColors(),
+        colors_light: collectedPalette("light"),
+        colors_dark: collectedPalette("dark"),
         quick_links: selectedKeys("quick").slice(0, 8),
         home_widgets: selectedKeys("widget"),
       },
@@ -139,11 +203,11 @@ on("accountForm", "submit", async (e) => {
       body: JSON.stringify(body),
     });
     setSessionUser(user);
-    applyUserColors(user?.prefs?.colors);
+    persistAndApplyLook(user);
     if ($("accountDisplayName")) $("accountDisplayName").value = user.display_name || name;
     const chip = document.querySelector(".session-user");
     if (chip) chip.textContent = user.display_name || user.username || name;
-    show($("accountSaved"), "Saved. Reload any open tab to refresh shortcuts.");
+    show($("accountSaved"), "Saved. These colours and shortcuts apply only to this login.");
   } catch (err) {
     show($("accountError"), err.message || String(err));
   } finally {

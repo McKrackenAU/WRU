@@ -24,6 +24,10 @@ function program() {
   return $("programSelect")?.value || DEFAULT_PROGRAM;
 }
 
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DEFAULT_DAY_WEEKDAYS = [0, 1, 2, 3, 4];
+const DEFAULT_NIGHT_WEEKDAYS = [6, 0, 1, 2, 3];
+
 function parseDates(raw) {
   return String(raw || "")
     .split(/[,\s]+/)
@@ -148,14 +152,62 @@ function syncPdfLink() {
   if (btn) btn.href = pdfExportHref();
 }
 
+function renderWeekdays(hostId, selected) {
+  const host = $(hostId);
+  if (!host) return;
+  const chosen = new Set((selected || []).map((n) => Number(n)));
+  host.innerHTML = WEEKDAY_LABELS.map(
+    (label, idx) =>
+      `<label><input type="checkbox" data-weekday="${idx}" ${chosen.has(idx) ? "checked" : ""} /> ${label}</label>`
+  ).join("");
+}
+
+function selectedWeekdays(hostId) {
+  return [...document.querySelectorAll(`#${hostId} [data-weekday]:checked`)].map((el) => Number(el.getAttribute("data-weekday")));
+}
+
+async function loadHolidayList() {
+  const region = $("holidayRegion")?.value || "VIC";
+  const year = Number(($("anchorStart")?.value || "").slice(0, 4)) || new Date().getFullYear();
+  const start = `${year}-01-01`;
+  const end = `${year + 1}-01-02`;
+  const data = await api(
+    `/api/costs/public-holidays?start=${start}&end=${end}&region=${encodeURIComponent(region)}`
+  ).catch(() => null);
+  const host = $("holidayList");
+  const hint = $("holidayHint");
+  if (host) {
+    const rows = data?.holidays || [];
+    host.innerHTML = rows.length
+      ? rows
+          .map(
+            (h) =>
+              `<span class="holiday-chip"><strong>${escapeHtml(h.date)}</strong><span>${escapeHtml(h.name)}</span></span>`
+          )
+          .join("")
+      : `<span class="hint">No holidays in this window.</span>`;
+  }
+  if (hint) {
+    const label = data?.label || region;
+    hint.textContent =
+      $("skipPh")?.value === "1"
+        ? `${label} public holidays are skipped automatically when you Save Gantt.`
+        : `${label} holidays are listed here. Turn Skip public holidays on to keep the chart off those dates.`;
+  }
+}
+
 function applyBoardForm() {
   const b = state.board;
   if (!b) return;
   $("anchorStart").value = b.anchor_start || "";
+  if ($("holidayRegion")) $("holidayRegion").value = b.holiday_region || "VIC";
   $("skipPh").value = b.skip_public_holidays ? "1" : "0";
   $("skipSun").value = b.skip_sunday_before_monday_ph ? "1" : "0";
   $("boardRdos").value = (b.rdo_dates || []).join(", ");
   if ($("boardExclude")) $("boardExclude").value = (b.exclude_dates || []).join(", ");
+  renderWeekdays("dayWeekdays", b.work_weekdays || DEFAULT_DAY_WEEKDAYS);
+  renderWeekdays("nightWeekdays", b.night_work_weekdays || DEFAULT_NIGHT_WEEKDAYS);
+  loadHolidayList().catch(() => {});
 }
 
 function wireReorderList(root) {
@@ -330,6 +382,9 @@ async function saveBoard() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       anchor_start: $("anchorStart").value || null,
+      holiday_region: $("holidayRegion")?.value || "VIC",
+      work_weekdays: selectedWeekdays("dayWeekdays"),
+      night_work_weekdays: selectedWeekdays("nightWeekdays"),
       skip_public_holidays: $("skipPh").value === "1",
       skip_sunday_before_monday_ph: $("skipSun").value === "1",
       rdo_dates: parseDates($("boardRdos").value),
@@ -389,6 +444,9 @@ async function init() {
   on("btnUndoMsp", "click", () => undoMsp().catch((e) => alertDialog(e.message)));
   on("btnSaveBoard", "click", () => saveBoard().catch((e) => { alertDialog(e.message); }));
   on("btnXmasShutdown", "click", () => addChristmasShutdown());
+  on("holidayRegion", "change", () => loadHolidayList().catch(() => {}));
+  on("skipPh", "change", () => loadHolidayList().catch(() => {}));
+  on("anchorStart", "change", () => loadHolidayList().catch(() => {}));
   on("btnSyncSites", "click", async () => {
     if (state.board?.schedule_saved) {
       if (

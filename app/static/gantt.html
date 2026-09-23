@@ -10,7 +10,8 @@
   <script>
     (function () {
       try {
-        var t = localStorage.getItem("wru-tgs-theme");
+        var user = localStorage.getItem("wru_username") || "";
+        var t = (user && localStorage.getItem("wru-tgs-theme:" + user)) || localStorage.getItem("wru-tgs-theme");
         if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
           document.documentElement.classList.add("dark");
           document.documentElement.style.colorScheme = "dark";
@@ -26,7 +27,7 @@
       <div class="page-head">
         <div>
           <h1>Works Gantt</h1>
-          <p>Sites load from their indicative start dates. Drag bars on the chart to reorder — later sites cascade after earlier ones (PH / RDOs applied).</p>
+          <p>Sites load from their indicative start dates. Day jobs use Mon–Fri; night jobs use Sun–Thu unless you change the ticks. Drag bars to reorder — later sites cascade (PH / RDOs applied).</p>
         </div>
         <div class="toolbar">
           <button type="button" class="btn" id="btnSyncSites">Refresh from sites</button>
@@ -51,9 +52,22 @@
           <input id="anchorStart" type="date" />
         </label>
         <label>
+          Holiday region
+          <select id="holidayRegion">
+            <option value="VIC">Victoria</option>
+            <option value="NSW">New South Wales</option>
+            <option value="QLD">Queensland</option>
+            <option value="SA">South Australia</option>
+            <option value="WA">Western Australia</option>
+            <option value="TAS">Tasmania</option>
+            <option value="ACT">ACT</option>
+            <option value="NT">Northern Territory</option>
+          </select>
+        </label>
+        <label>
           Skip public holidays
           <select id="skipPh">
-            <option value="1">Yes</option>
+            <option value="1">Yes — use the region calendar</option>
             <option value="0">No</option>
           </select>
         </label>
@@ -64,6 +78,20 @@
             <option value="0">No</option>
           </select>
         </label>
+        <fieldset class="full prefs-fieldset">
+          <legend>Day works</legend>
+          <p class="hint">Calendar days a day shift is on site. Default Monday–Friday.</p>
+          <div id="dayWeekdays" class="weekday-pills"></div>
+        </fieldset>
+        <fieldset class="full prefs-fieldset">
+          <legend>Night works</legend>
+          <p class="hint">Night shifts usually run Sunday through Thursday. Friday and Saturday stay off unless you tick them.</p>
+          <div id="nightWeekdays" class="weekday-pills"></div>
+        </fieldset>
+        <div class="full">
+          <p class="hint" id="holidayHint">Public holidays for this region load automatically when Skip public holidays is Yes.</p>
+          <div id="holidayList" class="holiday-chips"></div>
+        </div>
         <label class="full">
           Board RDO dates <span class="hint">(comma-separated ISO)</span>
           <input id="boardRdos" placeholder="2026-08-04, 2026-09-01" />

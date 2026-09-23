@@ -27,7 +27,7 @@ PREFS = (ROOT / "app/user_prefs.py").read_text(encoding="utf-8")
 
 
 def test_version_is_214():
-    assert VERSION == "2.14"
+    assert VERSION == "2.16"
 
 
 def test_filter_checkboxes_and_cost_filter():
@@ -70,9 +70,11 @@ def test_home_costs_and_account_prefs():
     assert "spend_totals" in DASH_JS
     assert "home_widgets" in DASH_JS
     assert 'id="accountTheme"' in ACCOUNT_HTML
+    assert 'id="colorLightAccent"' in ACCOUNT_HTML
     assert "quick_links" in ACCOUNT_JS
     assert "home_widgets" in ACCOUNT_JS
     assert "saveUserPrefs" in COMMON
+    assert "colors_light" in ACCOUNT_JS
 
 
 def test_shifts_weather_and_gantt_msp():

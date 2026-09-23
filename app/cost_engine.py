@@ -128,6 +128,7 @@ def build_work_schedule(
     include_dates: set[date] | None = None,
     exclude_dates: set[date] | None = None,
     max_span_days: int = 400,
+    jurisdiction: str = "VIC",
 ) -> list[dict[str, Any]]:
     """Expand a start date + target work-day count into concrete work dates.
 
@@ -143,7 +144,11 @@ def build_work_schedule(
     exclude = exclude_dates or set()
 
     horizon_end = works_start + timedelta(days=max_span_days)
-    holiday_names = holidays_between(works_start - timedelta(days=2), horizon_end + timedelta(days=2))
+    holiday_names = holidays_between(
+        works_start - timedelta(days=2),
+        horizon_end + timedelta(days=2),
+        jurisdiction,
+    )
 
     selected: list[dict[str, Any]] = []
     cursor = works_start
@@ -213,6 +218,7 @@ def preview_schedule_window(
     include_dates: set[date] | None = None,
     exclude_dates: set[date] | None = None,
     pad_days: int = 14,
+    jurisdiction: str = "VIC",
 ) -> list[dict[str, Any]]:
     """Calendar preview covering the scheduled span (+pad) with include flags."""
     work = build_work_schedule(
@@ -224,10 +230,11 @@ def preview_schedule_window(
         rdo_dates=rdo_dates,
         include_dates=include_dates,
         exclude_dates=exclude_dates,
+        jurisdiction=jurisdiction,
     )
     work_set = {date.fromisoformat(r["date"]) for r in work}
     end = date.fromisoformat(work[-1]["date"]) + timedelta(days=max(0, pad_days))
-    holiday_names = holidays_between(works_start, end)
+    holiday_names = holidays_between(works_start, end, jurisdiction)
     rdo = rdo_dates or set()
     rows: list[dict[str, Any]] = []
     cursor = works_start

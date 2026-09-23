@@ -34,8 +34,10 @@
 :root {
   --ventia-green: var(--user-accent, #004825);
   --ventia-ink: var(--user-ink, #1f2933);
+  --ventia-border: var(--user-border, #d5ddd4);
   --panel: var(--user-panel, var(--ventia-paper));
   --background: var(--user-bg, var(--ventia-green-tint));
+  --foreground: var(--user-ink, var(--ventia-ink));
 }
 
 html.dark {
@@ -47,9 +49,9 @@ html.dark {
   --ventia-ink: var(--user-ink, #e6e8eb);
   --ventia-muted: #8b949e;
   --ventia-paper: #12151a;
-  --ventia-border: #252a31;
+  --ventia-border: var(--user-border, #252a31);
   --background: var(--user-bg, #070809);
-  --foreground: #e6e8eb;
+  --foreground: var(--user-ink, #e6e8eb);
   --panel: var(--user-panel, #0e1116);
   --accent: var(--ventia-green);
   --nav-bg: rgba(7, 8, 9, 0.96);
@@ -1702,14 +1704,14 @@ html.dark .tabs button.active {
   align-items: center;
 }
 
-.toolbar input,
+.toolbar input:not([type="checkbox"]):not([type="radio"]),
 .toolbar select,
-.form-grid input,
+.form-grid input:not([type="checkbox"]):not([type="radio"]),
 .form-grid select,
 .form-grid textarea,
 .track-compose textarea,
 .track-compose select,
-.upload-row input,
+.upload-row input:not([type="checkbox"]):not([type="radio"]),
 .field-input {
   font: inherit;
   color: var(--ventia-ink);
@@ -4719,7 +4721,7 @@ html.pwa-standalone .notify-panel {
   color: var(--ventia-muted);
 }
 
-.password-form input {
+.password-form input:not([type="checkbox"]):not([type="radio"]) {
   min-height: var(--touch);
   border: 1px solid var(--ventia-border);
   border-radius: calc(var(--radius) - 0.15rem);
@@ -5857,20 +5859,109 @@ body.comms-page .app-footer {
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
-  max-width: min(42rem, 55vw);
+  max-width: min(48rem, 62vw);
+}
+
+.quick-link-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.85rem;
+  padding: 0 0.15rem 0 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ventia-green) 12%, var(--panel));
 }
 
 .quick-link {
   display: inline-flex;
   align-items: center;
   min-height: 1.85rem;
-  padding: 0 0.55rem;
+  padding: 0 0.4rem 0 0.55rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ventia-green) 12%, var(--panel));
+  background: transparent;
   color: var(--ventia-ink);
   text-decoration: none;
   font-size: 0.78rem;
   font-weight: 650;
+}
+
+.quick-link-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ventia-ink);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.quick-link-remove:hover,
+.quick-link-remove:focus-visible {
+  opacity: 1;
+  background: color-mix(in srgb, var(--ventia-ink) 10%, transparent);
+}
+
+.quick-link-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: 1.5px solid var(--ventia-border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ventia-ink);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.quick-link-add:hover,
+.quick-link-add:focus-visible {
+  border-color: var(--ventia-green);
+  color: var(--ventia-green);
+  background: color-mix(in srgb, var(--ventia-green) 12%, var(--panel));
+}
+
+.quick-link-pop {
+  position: absolute;
+  z-index: 80;
+  display: grid;
+  gap: 0.2rem;
+  max-height: min(22rem, 70vh);
+  overflow: auto;
+  padding: 0.45rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.75rem;
+  background: var(--panel);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.quick-link-opt {
+  display: grid;
+  justify-items: start;
+  gap: 0.05rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--ventia-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.quick-link-opt:hover,
+.quick-link-opt:focus-visible {
+  background: color-mix(in srgb, var(--ventia-green) 12%, var(--panel));
 }
 
 .doc-chooser {
@@ -5942,6 +6033,49 @@ body.comms-page .app-footer {
   color: var(--ventia-green);
 }
 
+.weather-radar-dialog {
+  width: min(96vw, 64rem);
+  height: min(90vh, 48rem);
+  max-width: none;
+  padding: 0;
+  border: 1px solid var(--ventia-border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--foreground);
+}
+
+.weather-radar-dialog::backdrop {
+  background: rgba(8, 12, 10, 0.55);
+}
+
+.weather-radar-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.weather-radar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--ventia-border);
+}
+
+.weather-radar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.weather-radar-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #111;
+}
+
 .prefs-fieldset {
   margin: 1rem 0 0;
   padding: 0.75rem 0 0;
@@ -5966,10 +6100,93 @@ body.comms-page .app-footer {
   background: var(--panel);
 }
 
+.prefs-pill input[type="checkbox"],
+.weekday-pills input[type="checkbox"],
+.password-form input[type="checkbox"],
+.form-grid input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--ventia-ink) 45%, var(--ventia-border));
+  border-radius: 4px;
+  background-color: var(--panel);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px 10px;
+  vertical-align: middle;
+  cursor: pointer;
+  accent-color: var(--ventia-green);
+}
+
+.prefs-pill input[type="checkbox"]:checked,
+.weekday-pills input[type="checkbox"]:checked,
+.password-form input[type="checkbox"]:checked,
+.form-grid input[type="checkbox"]:checked {
+  background-color: var(--ventia-green);
+  border-color: var(--ventia-green);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M2.2 6.2 4.8 8.8 9.8 3.2'/%3E%3C/svg%3E");
+}
+
+html.dark .prefs-pill input[type="checkbox"],
+html.dark .weekday-pills input[type="checkbox"],
+html.dark .password-form input[type="checkbox"],
+html.dark .form-grid input[type="checkbox"] {
+  background-color: #1b2330;
+  border-color: #8b9bb4;
+}
+
 .prefs-pill.is-on,
 .prefs-pill:has(input:checked) {
   border-color: var(--ventia-green);
   background: color-mix(in srgb, var(--ventia-green) 12%, var(--panel));
+}
+
+.weekday-pills,
+.holiday-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.weekday-pills label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.weekday-pills label:has(input:checked) {
+  border-color: var(--ventia-green);
+  background: color-mix(in srgb, var(--ventia-green) 12%, var(--panel));
+}
+
+.holiday-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--ventia-border);
+  border-radius: 0.55rem;
+  background: var(--panel);
+  font-size: 0.75rem;
+}
+
+.holiday-chip strong {
+  font-size: 0.78rem;
 }
 
 .money-grid .value {
@@ -5977,7 +6194,7 @@ body.comms-page .app-footer {
 }
 
 @media (max-width: 700px) {
-  .quick-links { display: none; }
+  .quick-links { max-width: none; }
   .form-grid { grid-template-columns: 1fr 1fr; }
   .form-grid .full,
   .form-grid label.full { grid-column: 1 / -1; }
@@ -5987,7 +6204,6 @@ body.comms-page .app-footer {
   .shift-page .toolbar { position: sticky; bottom: 0.4rem; }
   .split-2 { grid-template-columns: 1fr; }
   .map-layout { grid-template-columns: 1fr; }
-  .weather-chip { display: none; }
 }
 
 @media (max-width: 520px) {

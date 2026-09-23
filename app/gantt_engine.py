@@ -6,6 +6,10 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from .cost_engine import build_work_schedule
+from .public_holidays import normalize_jurisdiction
+
+DEFAULT_DAY_WEEKDAYS = [0, 1, 2, 3, 4]
+DEFAULT_NIGHT_WEEKDAYS = [6, 0, 1, 2, 3]  # Sunday night through Thursday night
 
 
 def _parse_dates(values: list | None) -> set[date]:
@@ -23,6 +27,27 @@ def _parse_dates(values: list | None) -> set[date]:
     return out
 
 
+def _weekday_list(raw, fallback: list[int]) -> list[int]:
+    out: list[int] = []
+    for item in raw or []:
+        try:
+            day = int(item)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= day <= 6 and day not in out:
+            out.append(day)
+    return out or list(fallback)
+
+
+def weekdays_for_shift(board: Any, *, shift_type: str, sub: Any = None) -> list[int]:
+    night = normalize_shift_type(shift_type) == "night"
+    if night:
+        board_nights = getattr(board, "night_work_weekdays", None)
+        return _weekday_list(board_nights, DEFAULT_NIGHT_WEEKDAYS)
+    board_days = list((sub.work_weekdays if sub and sub.work_weekdays else None) or board.work_weekdays or DEFAULT_DAY_WEEKDAYS)
+    return _weekday_list(board_days, DEFAULT_DAY_WEEKDAYS)
+
+
 def next_work_day_after(
     last_end: date,
     *,
@@ -32,6 +57,7 @@ def next_work_day_after(
     rdo_dates: set[date],
     include_dates: set[date],
     exclude_dates: set[date],
+    jurisdiction: str = "VIC",
 ) -> date:
     """First schedulable work day strictly after ``last_end``."""
     probe = last_end + timedelta(days=1)
@@ -45,6 +71,7 @@ def next_work_day_after(
         rdo_dates=rdo_dates,
         include_dates=include_dates,
         exclude_dates=exclude_dates,
+        jurisdiction=jurisdiction,
     )
     return date.fromisoformat(scheduled[0]["date"])
 
@@ -65,6 +92,7 @@ def compute_item_window(
     include_dates: set[date],
     exclude_dates: set[date],
     shift_type: str = "day",
+    jurisdiction: str = "VIC",
 ) -> tuple[date, date, list[dict[str, Any]]]:
     shifts = max(1, int(shifts_count))
     schedule = build_work_schedule(
@@ -76,6 +104,7 @@ def compute_item_window(
         rdo_dates=rdo_dates,
         include_dates=include_dates,
         exclude_dates=exclude_dates,
+        jurisdiction=jurisdiction,
     )
     planned_start = date.fromisoformat(schedule[0]["date"])
     last_work = date.fromisoformat(schedule[-1]["date"])
@@ -97,10 +126,10 @@ def recompute_board_dates(
     Returns a list of public dicts with schedule detail for the API response.
     """
     subs = subcontractors_by_id or {}
-    board_weekdays = list(board.work_weekdays or [0, 1, 2, 3, 4])
     board_rdo = _parse_dates(board.rdo_dates)
     board_exclude = _parse_dates(board.exclude_dates)
     board_include = _parse_dates(board.include_dates)
+    jurisdiction = normalize_jurisdiction(getattr(board, "holiday_region", None))
 
     ordered = sorted(items, key=lambda i: (i.position, i.id or 0))
     cursor_start = board.anchor_start
@@ -109,7 +138,7 @@ def recompute_board_dates(
 
     for item in ordered:
         sub = subs.get(item.subcontractor_id) if item.subcontractor_id else None
-        weekdays = list((sub.work_weekdays if sub and sub.work_weekdays else None) or board_weekdays)
+        weekdays = weekdays_for_shift(board, shift_type=getattr(item, "shift_type", "day"), sub=sub)
         skip_ph = bool(sub.skip_public_holidays) if sub is not None else bool(board.skip_public_holidays)
         skip_sun = (
             bool(sub.skip_sunday_before_monday_ph)
@@ -134,6 +163,7 @@ def recompute_board_dates(
                 rdo_dates=rdo,
                 include_dates=include,
                 exclude_dates=exclude,
+                jurisdiction=jurisdiction,
             )
         elif cursor_start:
             start = cursor_start
@@ -157,6 +187,7 @@ def recompute_board_dates(
                 include_dates=include,
                 exclude_dates=exclude,
                 shift_type=getattr(item, "shift_type", "day"),
+                jurisdiction=jurisdiction,
             )
         except ValueError:
             item.planned_start = start

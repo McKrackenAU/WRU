@@ -10,7 +10,8 @@
   <script>
     (function () {
       try {
-        var t = localStorage.getItem("wru-tgs-theme");
+        var user = localStorage.getItem("wru_username") || "";
+        var t = (user && localStorage.getItem("wru-tgs-theme:" + user)) || localStorage.getItem("wru-tgs-theme");
         if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
           document.documentElement.classList.add("dark");
           document.documentElement.style.colorScheme = "dark";
@@ -57,6 +58,18 @@
           </label>
           <label>Permit validity critical (calendar days)
             <input id="rValCrit" type="number" min="0" max="365" />
+          </label>
+          <label>Public holiday region
+            <select id="rHolidayRegion">
+              <option value="VIC">Victoria</option>
+              <option value="NSW">New South Wales</option>
+              <option value="QLD">Queensland</option>
+              <option value="SA">South Australia</option>
+              <option value="WA">Western Australia</option>
+              <option value="TAS">Tasmania</option>
+              <option value="ACT">ACT</option>
+              <option value="NT">Northern Territory</option>
+            </select>
           </label>
           <label class="full"><span><input id="rAutoMust" type="checkbox" /> Auto-compute must-have from site start</span></label>
           <label class="full"><span><input id="rAutoArchive" type="checkbox" /> Auto-archive when job completed date is set</span></label>

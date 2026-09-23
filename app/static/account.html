@@ -10,7 +10,8 @@
   <script>
     (function () {
       try {
-        var t = localStorage.getItem("wru-tgs-theme");
+        var user = localStorage.getItem("wru_username") || "";
+        var t = (user && localStorage.getItem("wru-tgs-theme:" + user)) || localStorage.getItem("wru-tgs-theme");
         if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
           document.documentElement.classList.add("dark");
           document.documentElement.style.colorScheme = "dark";
@@ -26,7 +27,7 @@
       <div class="page-head">
         <div>
           <h1>Account &amp; look</h1>
-          <p>Your name, shortcuts, Home widgets, and colours stay on this login.</p>
+          <p>Your name, shortcuts, Home widgets, and colours stay on this login only.</p>
         </div>
       </div>
       <section class="panel-card password-card">
@@ -54,19 +55,32 @@
             </select>
           </label>
           <fieldset class="prefs-fieldset">
-            <legend>Colours</legend>
-            <p class="hint">Leave a colour empty to use the default Ventia palette.</p>
+            <legend>Light look</legend>
+            <p class="hint">Used when this login is in light mode. Pickers preview light immediately.</p>
             <div class="form-grid">
-              <label>Accent <input id="colorAccent" type="color" /></label>
-              <label>Background <input id="colorBg" type="color" /></label>
-              <label>Text <input id="colorInk" type="color" /></label>
-              <label>Panels <input id="colorPanel" type="color" /></label>
+              <label>Accent <input id="colorLightAccent" type="color" /></label>
+              <label>Background <input id="colorLightBg" type="color" /></label>
+              <label>Text <input id="colorLightInk" type="color" /></label>
+              <label>Panels <input id="colorLightPanel" type="color" /></label>
+              <label>Borders <input id="colorLightBorder" type="color" /></label>
             </div>
-            <button type="button" class="btn btn-sm" id="btnClearColors">Reset colours</button>
+            <button type="button" class="btn btn-sm" id="btnClearLightColors">Reset light colours</button>
+          </fieldset>
+          <fieldset class="prefs-fieldset">
+            <legend>Dark look</legend>
+            <p class="hint">Used when this login is in dark mode. Pickers preview dark immediately.</p>
+            <div class="form-grid">
+              <label>Accent <input id="colorDarkAccent" type="color" /></label>
+              <label>Background <input id="colorDarkBg" type="color" /></label>
+              <label>Text <input id="colorDarkInk" type="color" /></label>
+              <label>Panels <input id="colorDarkPanel" type="color" /></label>
+              <label>Borders <input id="colorDarkBorder" type="color" /></label>
+            </div>
+            <button type="button" class="btn btn-sm" id="btnClearDarkColors">Reset dark colours</button>
           </fieldset>
           <fieldset class="prefs-fieldset">
             <legend>Quick links</legend>
-            <p class="hint">Shown in the top bar on larger screens. Pick up to eight.</p>
+            <p class="hint">Shown as pills in the top bar. You can also tap the + circle there. Up to eight.</p>
             <div id="quickLinkPicker" class="prefs-pills"></div>
           </fieldset>
           <fieldset class="prefs-fieldset">

@@ -20,6 +20,7 @@ DEFAULTS = {
     "permit_validity_critical_days": 20,
     "auto_compute_must_have": True,
     "auto_archive_on_job_complete": True,
+    "holiday_region": "VIC",
 }
 
 
@@ -35,6 +36,7 @@ class Rules:
     permit_validity_critical_days: int = 20
     auto_compute_must_have: bool = True
     auto_archive_on_job_complete: bool = True
+    holiday_region: str = "VIC"
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -65,13 +67,18 @@ def get_rules(db: Session | None = None) -> Rules:
         permit_validity_critical_days=int(row.permit_validity_critical_days),
         auto_compute_must_have=bool(row.auto_compute_must_have),
         auto_archive_on_job_complete=bool(row.auto_archive_on_job_complete),
+        holiday_region=str(getattr(row, "holiday_region", None) or "VIC"),
     )
 
 
 def update_settings(db: Session, data: dict) -> AppSettings:
+    from .public_holidays import normalize_jurisdiction
+
     row = ensure_settings(db)
     for key, value in data.items():
         if hasattr(row, key) and value is not None:
+            if key == "holiday_region":
+                value = normalize_jurisdiction(value)
             setattr(row, key, value)
     db.commit()
     db.refresh(row)

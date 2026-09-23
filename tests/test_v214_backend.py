@@ -14,6 +14,8 @@ def test_normalize_prefs_defaults_and_theme():
     assert merged["theme"] == "dark"
     assert merged["comms_sort"] == "date"
     assert merged["quick_links"] == ["/shifts"]
+    assert "colors_light" in prefs
+    assert "colors_dark" in prefs
 
 
 def test_weather_label_thunderstorm():
