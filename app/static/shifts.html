@@ -7,6 +7,8 @@
   <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
   <link rel="stylesheet" href="/static/css/fonts.css" />
   <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/static/vendor/leaflet-draw/leaflet.draw.css" />
   <script>
     (function () {
       try {
@@ -27,13 +29,19 @@
       <div class="page-head">
         <div>
           <h1>Shift reports</h1>
-          <p>Log a shift on a phone, capture live weather, and export a PDF. History stays on archived sites.</p>
+          <p>Log a lifecycle shift: pick the road, then the site, draw the work, and post traffic and asphalt actuals from the rates.</p>
         </div>
       </div>
 
       <section class="panel-card">
         <form id="shiftForm" class="form-grid">
-          <label>Site
+          <h2 class="full">General</h2>
+          <label>Road
+            <select id="shiftRoad" required>
+              <option value="">Select a road…</option>
+            </select>
+          </label>
+          <label>Site number
             <select id="shiftSite" required>
               <option value="">Select a site…</option>
             </select>
@@ -41,29 +49,76 @@
           <label>Date
             <input id="shiftDate" type="date" required />
           </label>
-          <label>Day / night
+          <label>Shift type
             <select id="shiftType">
-              <option value="day">Day</option>
               <option value="night">Night</option>
+              <option value="day">Day</option>
             </select>
           </label>
-          <label>Crew
-            <input id="shiftCrew" maxlength="255" placeholder="Names / plant" />
-          </label>
-          <label class="full">Works done
-            <textarea id="shiftWorks" rows="4" placeholder="What was completed this shift"></textarea>
-          </label>
-          <label class="full">Issues
-            <textarea id="shiftIssues" rows="3" placeholder="Hold-ups, safety, public"></textarea>
-          </label>
-          <label class="full">Notes
-            <textarea id="shiftNotes" rows="3"></textarea>
-          </label>
-          <p class="hint full" id="shiftWeather">Weather will fill from your location when you save or tap Refresh weather.</p>
+          <label>FMRP year <input id="dFmrp" placeholder="FMRP 2025/26" /></label>
+          <label>Lot number <input id="dLot" /></label>
+          <label>Ventia supervisor <input id="dSupervisor" /></label>
+          <label>Asphalt type <input id="dMix" placeholder="14HP" /></label>
+          <label>High risk activity <input id="dRisk" placeholder="Working near live traffic" /></label>
+          <label>Chainage <input id="dChainage" placeholder="CH1325R to CH1938R" /></label>
+          <label class="full">Description <textarea id="dDescription" rows="2"></textarea></label>
+          <label>Road closed <input id="dRoadClosed" type="datetime-local" /></label>
+          <label>Road opened <input id="dRoadOpened" type="datetime-local" /></label>
+
+          <h2 class="full">Traffic</h2>
+          <label>Traffic contractor <input id="dTrafficContractor" placeholder="MIEPOL" /></label>
+          <label>TGS number <input id="dTgs" /></label>
+          <label>MoA number <input id="dMoa" /></label>
+          <label>Total TC <input id="dTotalTc" type="number" min="0" step="1" /></label>
+          <label>Vehicles <input id="dVehicles" type="number" min="0" step="1" /></label>
+          <label>Arrow boards <input id="dArrows" type="number" min="0" step="1" /></label>
+          <label>Spotters <input id="dSpotters" type="number" min="0" step="1" /></label>
+          <label>Traffic crew start <input id="dCrewStart" type="datetime-local" /></label>
+          <label>Traffic crew end <input id="dCrewEnd" type="datetime-local" /></label>
+          <label>MoA start <input id="dMoaStart" type="datetime-local" /></label>
+          <label>MoA end <input id="dMoaEnd" type="datetime-local" /></label>
+
+          <h2 class="full">Paving</h2>
+          <label>Paving contractor <input id="dPaver" placeholder="Boral" /></label>
+          <label>Other contractors <input id="dOthers" placeholder="J&amp;A Bobcats, Sweep Wright" /></label>
+          <label>Thickness (mm) <input id="dThickness" type="number" min="0" step="1" placeholder="50" /></label>
+          <label>m² laid this shift <input id="dShiftArea" type="number" min="0" step="0.1" /></label>
+          <label>Site total m² <input id="dSiteArea" type="number" min="0" step="0.1" placeholder="Used for the rate band" /></label>
+          <label>Tonnage <input id="dTonnes" type="number" min="0" step="0.1" /></label>
+          <label>Pits to raise <input id="dPits" type="number" min="0" step="1" /></label>
+          <label>Valves to raise <input id="dValves" type="number" min="0" step="1" /></label>
+          <label>Loops present <input id="dLoops" type="number" min="0" step="1" /></label>
+          <p class="hint full">The asphalt rate uses the site’s overall m² band (for example 5,000–10,000) even when this shift only lays part of it. Tonne mixes are priced per tonne; m² mixes use the thickness on the rate card.</p>
+
+          <h2 class="full">Work done on the map</h2>
+          <p class="hint full">Draw one or more polygons for the area completed this shift. The measured m² fills “laid this shift” when that box is empty.</p>
+          <div id="shiftMap" class="shift-map full"></div>
+          <div class="toolbar full">
+            <button type="button" class="btn" id="btnClearPolygons">Clear polygons</button>
+            <span class="hint" id="polygonHint">No polygons yet.</span>
+          </div>
+
+          <h2 class="full">Site notes</h2>
+          <label class="full">Prestart notes <textarea id="dPrestart" rows="3"></textarea></label>
+          <label class="full">Profiling notes <textarea id="dProfiling" rows="3"></textarea></label>
+          <label class="full">Asphalting notes <textarea id="dAsphaltNotes" rows="3"></textarea></label>
+          <label class="full">General observations <textarea id="dObservations" rows="2"></textarea></label>
+          <label class="full">Incident / issues <textarea id="dIncidents" rows="2"></textarea></label>
+          <label class="full">Comments <textarea id="dComments" rows="2"></textarea></label>
+          <label class="check-row"><input id="dPrestartDone" type="checkbox" /> <span>Prestart done</span></label>
+          <label class="check-row"><input id="dPlantPrestart" type="checkbox" /> <span>Plant prestart done</span></label>
+          <label class="check-row"><input id="dTmOk" type="checkbox" /> <span>TM implementation</span></label>
+          <label class="check-row"><input id="dAftercare" type="checkbox" /> <span>After care check</span></label>
+          <label class="check-row"><input id="dNcr" type="checkbox" /> <span>NCR raised</span></label>
+          <label class="full">SharePoint / photos URL <input id="dPhotos" type="url" /></label>
+
+          <p class="hint full" id="shiftWeather">Weather fills from your location when you save or tap Refresh weather.</p>
+          <label class="check-row full"><input id="dPostSpend" type="checkbox" checked /> <span>Post actual traffic and asphalt spend from this shift</span></label>
           <div class="toolbar full">
             <button type="button" class="btn" id="btnWeather">Refresh weather</button>
             <button type="submit" class="btn btn-primary" id="btnSaveShift">Save shift</button>
           </div>
+          <p class="hint full" id="shiftCostHint"></p>
         </form>
       </section>
 
@@ -83,6 +138,8 @@
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>
+  <script src="/static/vendor/leaflet/leaflet.js"></script>
+  <script src="/static/vendor/leaflet-draw/leaflet.draw.js"></script>
   <script type="module" src="/static/js/shifts.js"></script>
 </body>
 </html>

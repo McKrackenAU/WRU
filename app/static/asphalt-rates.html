@@ -91,6 +91,16 @@
           <label id="unitRateWrap">Unit rate ($)
             <input id="rateUnitAmt" type="number" min="0" step="0.01" value="0" />
           </label>
+          <label>Area band from (m²)
+            <input id="rateAreaMin" type="number" min="0" step="1" placeholder="5000" />
+          </label>
+          <label>Area band to (m²)
+            <input id="rateAreaMax" type="number" min="0" step="1" placeholder="10000" />
+          </label>
+          <label>Thickness (mm)
+            <input id="rateThickness" type="number" min="0" step="1" placeholder="50" />
+          </label>
+          <p class="hint full">Leave the band blank when the rate applies to any site size. A 6,000 m² site uses the 5,000–10,000 band even when a shift only lays part of it. Thickness separates mixes that share a name but a different depth.</p>
           <div id="shiftRateWrap" class="full form-grid compact" hidden style="margin:0">
             <label>Day <input id="rateDay" type="number" min="0" step="0.01" value="0" /></label>
             <label>Night <input id="rateNight" type="number" min="0" step="0.01" value="0" /></label>

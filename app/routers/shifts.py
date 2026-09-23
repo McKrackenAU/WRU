@@ -27,6 +27,8 @@ class ShiftIn(BaseModel):
     lat: float | None = None
     lng: float | None = None
     weather: dict | None = None
+    details: dict | None = None
+    polygons: list | None = None
 
 
 class ShiftPatch(BaseModel):
@@ -38,6 +40,8 @@ class ShiftPatch(BaseModel):
     issues: str | None = None
     weather: dict | None = None
     append_weather: dict | None = None
+    details: dict | None = None
+    polygons: list | None = None
 
 
 def _public(row: ShiftReport) -> dict:
@@ -58,6 +62,8 @@ def _public(row: ShiftReport) -> dict:
         "issues": row.issues,
         "lat": row.lat,
         "lng": row.lng,
+        "details": row.details or {},
+        "polygons": row.polygons or [],
         "created_by": row.created_by,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -107,6 +113,8 @@ def create_shift(
         weather_log=[weather] if weather else [],
         lat=payload.lat,
         lng=payload.lng,
+        details=payload.details or {},
+        polygons=payload.polygons or [],
         created_by=user.display_name or user.username,
     )
     db.add(row)
@@ -139,6 +147,22 @@ def update_shift(
     db.commit()
     db.refresh(row)
     return _public(row)
+
+
+@router.post("/{shift_id}/actual-spend")
+def post_actual_spend(
+    shift_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from ..shift_costs import post_shift_spend
+
+    row = db.get(ShiftReport, shift_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Shift report not found")
+    result = post_shift_spend(db, row, created_by=user.display_name or user.username)
+    result["shift"] = _public(row)
+    return result
 
 
 @router.get("/{shift_id}/export.pdf")

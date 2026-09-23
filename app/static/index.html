@@ -270,8 +270,20 @@
           </div>
           <div class="form-section">
             <h3>Notes</h3>
+            <p class="hint">Save each note on its own. The time, date, and author stay on the note, and the same note is listed on Activity.</p>
+            <div class="form-grid note-compose">
+              <label class="full">New note
+                <textarea id="noteDraft" rows="3" placeholder="Type a note…"></textarea>
+              </label>
+              <div class="toolbar full">
+                <button type="button" class="btn btn-primary" id="btnSaveNote">Save note</button>
+              </div>
+            </div>
+            <ul class="event-list" id="noteLog"></ul>
             <div class="form-grid">
-              <label class="full">Comments<textarea id="fComments" rows="6" placeholder="Ops notes / correspondence summary"></textarea></label>
+              <label class="full">Pinned summary
+                <textarea id="fComments" rows="3" placeholder="Short running summary. Dated notes live in the log above."></textarea>
+              </label>
             </div>
           </div>
           <div class="form-section">

@@ -66,6 +66,9 @@ class RateIn(BaseModel):
     public_holiday_rate: float = 0
     active: bool = True
     position: int | None = None
+    area_min_m2: float | None = None
+    area_max_m2: float | None = None
+    thickness_mm: float | None = None
 
 
 class RateOut(BaseModel):
@@ -142,6 +145,9 @@ def _rate_public(row: AsphaltRate) -> dict:
         "public_holiday_rate": float(row.public_holiday_rate or 0),
         "active": row.active,
         "position": row.position,
+        "area_min_m2": row.area_min_m2,
+        "area_max_m2": row.area_max_m2,
+        "thickness_mm": row.thickness_mm,
     }
     data["weekend_rate"] = weekend_rate(data)
     return data
@@ -177,6 +183,9 @@ def _apply_rate_payload(row: AsphaltRate, payload: RateIn) -> None:
     row.sunday_rate = stored["sunday_rate"]
     row.public_holiday_rate = stored["public_holiday_rate"]
     row.active = payload.active
+    row.area_min_m2 = payload.area_min_m2
+    row.area_max_m2 = payload.area_max_m2
+    row.thickness_mm = payload.thickness_mm
     if payload.position is not None:
         row.position = payload.position
 

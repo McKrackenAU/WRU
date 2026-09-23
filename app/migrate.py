@@ -74,6 +74,15 @@ def run_migrations() -> None:
     ensure_column("sites", "archived_at", "archived_at TIMESTAMPTZ")
     ensure_column("sites", "archived_fy", "archived_fy VARCHAR(16)")
     ensure_column("sites", "archive_category", "archive_category VARCHAR(128)")
+    ensure_column("asphalt_rates", "area_min_m2", "area_min_m2 DOUBLE PRECISION")
+    ensure_column("asphalt_rates", "area_max_m2", "area_max_m2 DOUBLE PRECISION")
+    ensure_column("asphalt_rates", "thickness_mm", "thickness_mm DOUBLE PRECISION")
+    if engine.dialect.name == "sqlite":
+        ensure_column("shift_reports", "details", "details JSON NOT NULL DEFAULT '{}'")
+        ensure_column("shift_reports", "polygons", "polygons JSON NOT NULL DEFAULT '[]'")
+    else:
+        ensure_column("shift_reports", "details", "details JSONB NOT NULL DEFAULT '{}'::jsonb")
+        ensure_column("shift_reports", "polygons", "polygons JSONB NOT NULL DEFAULT '[]'::jsonb")
     ensure_column("sites", "must_have_manual", "must_have_manual BOOLEAN NOT NULL DEFAULT FALSE")
     ensure_column("sites", "priority_manual", "priority_manual INTEGER")
     ensure_column("sites", "moa_received_date", "moa_received_date DATE")

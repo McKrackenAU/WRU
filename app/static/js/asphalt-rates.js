@@ -7,6 +7,20 @@ function money(n) {
   return `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function optionalNumber(id) {
+  const raw = $(id)?.value;
+  if (raw == null || String(raw).trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function bandLabel(rate) {
+  if (rate.area_min_m2 == null && rate.area_max_m2 == null) return "Any size";
+  const min = Number(rate.area_min_m2 || 0).toLocaleString();
+  const max = rate.area_max_m2 == null ? "∞" : Number(rate.area_max_m2).toLocaleString();
+  return `${min}–${max} m²`;
+}
+
 function parseDates(raw) {
   return String(raw || "")
     .split(/[,\s]+/)
@@ -105,7 +119,7 @@ async function reload() {
 
   $("rateList").innerHTML = rates.length
     ? `<div class="table-scroll"><table class="data-table">
-        <thead><tr><th>Subcontractor</th><th>Treatment</th><th>Unit</th><th>Type</th><th>Unit / day</th><th>Night</th><th>Weekend</th><th>PH</th><th></th></tr></thead>
+        <thead><tr><th>Subcontractor</th><th>Treatment</th><th>Unit</th><th>Band</th><th>mm</th><th>Type</th><th>Unit / day</th><th>Night</th><th>Weekend</th><th>PH</th><th></th></tr></thead>
         <tbody>
           ${rates
             .map((r) => {
@@ -115,6 +129,8 @@ async function reload() {
                 <td>${escapeHtml(sub?.name || "—")}</td>
                 <td>${escapeHtml(r.name)}</td>
                 <td>${escapeHtml(r.unit)}</td>
+                <td>${escapeHtml(bandLabel(r))}</td>
+                <td>${r.thickness_mm == null || r.thickness_mm === "" ? "—" : escapeHtml(String(r.thickness_mm))}</td>
                 <td>${isUnit ? "Unit" : "Shift"}</td>
                 <td>${money(isUnit ? r.day_rate : r.day_rate)}</td>
                 <td>${isUnit ? "—" : money(r.night_rate)}</td>
@@ -174,9 +190,15 @@ async function init() {
         sunday_rate: rateType === "unit" ? unitRate : weekend,
         saturday_rate: rateType === "unit" ? unitRate : weekend,
         public_holiday_rate: rateType === "unit" ? unitRate : Number($("ratePh").value || 0),
+        area_min_m2: optionalNumber("rateAreaMin"),
+        area_max_m2: optionalNumber("rateAreaMax"),
+        thickness_mm: optionalNumber("rateThickness"),
       }),
     });
     $("rateName").value = "";
+    if ($("rateAreaMin")) $("rateAreaMin").value = "";
+    if ($("rateAreaMax")) $("rateAreaMax").value = "";
+    if ($("rateThickness")) $("rateThickness").value = "";
     await reload();
   });
 

@@ -591,6 +591,10 @@ class AsphaltRate(Base):
     public_holiday_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Job-size band. A 6,000 m² site uses the 5,000–10,000 rate even if this shift only lays 2,000 m².
+    area_min_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    area_max_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thickness_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     subcontractor: Mapped[AsphaltSubcontractor] = relationship(back_populates="rates")
 
@@ -952,6 +956,9 @@ class ShiftReport(Base):
     issues: Mapped[str | None] = mapped_column(Text, nullable=True)
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Lifecycle shift-report fields (traffic, paving, checks) and drawn work polygons.
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    polygons: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

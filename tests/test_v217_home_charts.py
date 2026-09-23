@@ -16,7 +16,7 @@ PREFS = (ROOT / "app/user_prefs.py").read_text(encoding="utf-8")
 
 
 def test_version_is_217():
-    assert VERSION == "2.18"
+    assert VERSION == "2.19"
 
 
 def test_quick_link_pills_have_no_remove_cross():

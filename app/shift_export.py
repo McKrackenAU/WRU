@@ -61,6 +61,48 @@ def build_shift_report_pdf(report: dict, site: dict | None = None) -> bytes:
             story.append(Spacer(1, 6))
             story.append(Paragraph(f"<b>{label}</b>", body))
             story.append(Paragraph(value.replace("\n", "<br/>"), body))
+    details = report.get("details") or {}
+    labels = [
+        ("FMRP year", "fmrp_year"),
+        ("Lot", "lot_number"),
+        ("Supervisor", "supervisor"),
+        ("High risk", "high_risk"),
+        ("Chainage", "chainage"),
+        ("Road closed", "road_closed"),
+        ("Road opened", "road_opened"),
+        ("Traffic contractor", "traffic_contractor"),
+        ("TGS", "tgs_number"),
+        ("MoA", "moa_number"),
+        ("MoA start", "moa_start"),
+        ("MoA end", "moa_end"),
+        ("Traffic crew start", "traffic_crew_start"),
+        ("Traffic crew end", "traffic_crew_end"),
+        ("Total TC", "total_tc"),
+        ("Vehicles", "vehicles"),
+        ("Arrow boards", "arrow_boards"),
+        ("Paving contractor", "paving_contractor"),
+        ("Asphalt type", "asphalt_type"),
+        ("Thickness mm", "thickness_mm"),
+        ("Area this shift m²", "shift_area_m2"),
+        ("Site total m²", "site_area_m2"),
+        ("Tonnage", "tonnage"),
+        ("Prestart notes", "prestart_notes"),
+        ("Profiling notes", "profiling_notes"),
+        ("Asphalting notes", "asphalting_notes"),
+        ("Observations", "observations"),
+        ("Incidents", "incidents"),
+        ("Comments", "comments"),
+    ]
+    for label, key in labels:
+        value = details.get(key)
+        if value in (None, "", False):
+            continue
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(f"<b>{label}</b> — {str(value).replace(chr(10), '<br/>')}", body))
+    polygons = report.get("polygons") or []
+    if polygons:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"<b>Work polygons</b> — {len(polygons)}", body))
     story.append(Spacer(1, 10))
     story.append(Paragraph(f"Logged by {report.get('created_by') or '—'}", body))
     doc.build(story)

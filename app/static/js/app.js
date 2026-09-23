@@ -1604,6 +1604,8 @@ function setDrawerReadOnly(readOnly) {
   if ($("btnArchiveSite")) $("btnArchiveSite").hidden = state.readOnlyArchive || !$("siteId")?.value;
   const compose = document.querySelector(".track-compose");
   if (compose) compose.hidden = state.readOnlyArchive;
+  const notes = document.querySelector(".note-compose");
+  if (notes) notes.hidden = state.readOnlyArchive;
   const upload = document.querySelector("#docDropzone .upload-row");
   if (upload) upload.hidden = state.readOnlyArchive;
   const dropzone = $("docDropzone");
@@ -1662,6 +1664,8 @@ async function openSiteDrawer(site = null) {
   syncDocShareCombinedUi(site);
   renderCouncilRows(site?.council_details || []);
   $("fComments").value = site?.comments || "";
+  if ($("noteDraft")) $("noteDraft").value = "";
+  if (!site?.id && $("noteLog")) $("noteLog").innerHTML = `<li><p class="meta">Save the site, then add dated notes.</p></li>`;
   $("fKml").value = "";
   const days = state.meta.council_no_objection_business_days ?? 10;
   if ($("councilHint")) {
@@ -2078,7 +2082,20 @@ async function refreshShiftHistory() {
           }</span>
           <a class="btn btn-sm" href="/api/shifts/${r.id}/export.pdf">PDF</a>
         </div>
-        <p>${escapeHtml(r.works_done || r.notes || "Shift report")}</p>
+        <p>${escapeHtml(r.works_done || r.details?.asphalting_notes || r.notes || "Shift report")}</p>
+        ${
+          r.details?.asphalt_type || (r.polygons || []).length
+            ? `<p class="meta">${escapeHtml(
+                [
+                  r.details?.asphalt_type,
+                  r.details?.shift_area_m2 ? `${r.details.shift_area_m2} m²` : "",
+                  (r.polygons || []).length ? `${r.polygons.length} polygon${r.polygons.length === 1 ? "" : "s"}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              )}</p>`
+            : ""
+        }
       </li>`
           )
           .join("")
@@ -2129,17 +2146,41 @@ async function exportSelection() {
   $("exportDialog")?.close();
 }
 
+function isNoteEvent(event) {
+  return String(event?.event_type || "note").toLowerCase() === "note";
+}
+
+function renderNoteLog(events) {
+  const host = $("noteLog");
+  if (!host) return;
+  const notes = (events || []).filter(isNoteEvent);
+  host.innerHTML = notes.length
+    ? notes
+        .map(
+          (e) => `
+      <li>
+        <div class="top">
+          <span>${new Date(e.created_at).toLocaleString()}${e.created_by ? ` · ${escapeHtml(e.created_by)}` : ""}</span>
+        </div>
+        <p>${escapeHtml(e.message)}</p>
+      </li>`
+        )
+        .join("")
+    : `<li><p class="meta">No dated notes yet.</p></li>`;
+}
+
 async function refreshTracking() {
   if (!state.detailSiteId) return;
   const events = await api(`/api/sites/${state.detailSiteId}/tracking`);
   const canDelete = !state.readOnlyArchive;
+  renderNoteLog(events);
   $("trackList").innerHTML = events.length
     ? events
         .map(
           (e) => `
       <li>
         <div class="top">
-          <span>${new Date(e.created_at).toLocaleString()}</span>
+          <span>${new Date(e.created_at).toLocaleString()} · ${escapeHtml(String(e.event_type || "note"))}</span>
           ${canDelete ? `<button type="button" class="btn btn-sm" data-del-track="${e.id}">Delete</button>` : ""}
         </div>
         <p>${escapeHtml(e.message)}</p>
@@ -2373,6 +2414,29 @@ async function uploadDoc(incomingFiles) {
   setDocUploadStatus(files.length === 1 ? "Uploaded." : `Uploaded ${files.length} files.`);
 }
 
+async function saveSiteNote() {
+  const message = $("noteDraft")?.value.trim();
+  if (!state.detailSiteId) {
+    await alertDialog("Save the site first, then add a dated note.");
+    return;
+  }
+  if (!message) {
+    await alertDialog("Type a note before saving.");
+    return;
+  }
+  await api(`/api/sites/${state.detailSiteId}/tracking`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      event_type: "note",
+      message,
+      created_by: userName(),
+    }),
+  });
+  $("noteDraft").value = "";
+  await refreshTracking();
+}
+
 async function addTracking() {
   const message = $("trackMessage").value.trim();
   if (!message || !state.detailSiteId) return;
@@ -2413,6 +2477,7 @@ function bindEvents() {
     submitArchiveForm().catch((e) => { alertDialog(e.message); });
   });
   on("btnAddTrack", "click", () => addTracking().catch((e) => { alertDialog(e.message); }));
+  on("btnSaveNote", "click", () => saveSiteNote().catch((e) => { alertDialog(e.message); }));
   on("btnUploadDoc", "click", () => uploadDoc().catch((e) => { alertDialog(e.message); }));
   on("btnDownloadDocs", "click", () => downloadSiteDocs().catch((e) => { alertDialog(errorMessage(e, "Could not download")); }));
   on("btnDownloadAllDocs", "click", () => downloadSiteDocs({ all: true }).catch((e) => { alertDialog(errorMessage(e, "Could not download")); }));
