@@ -407,8 +407,8 @@ function bindChartUi() {
     $("chartTitle")?.focus();
   });
 
-  on("homeChartForm", "submit", async (ev) => {
-    ev.preventDefault();
+  async function saveChartFromForm(ev) {
+    if (ev) ev.preventDefault();
     const metric = $("chartMetric")?.value || "stages";
     const kind = $("chartType")?.value === "pie" ? "pie" : "bar";
     const title = ($("chartTitle")?.value || "").trim();
@@ -421,10 +421,21 @@ function bindChartUi() {
       if (next.length >= MAX_HOME_CHARTS) return;
       next.push({ id: newChartId(), title, metric, chart: kind });
     }
-    closeChartDialog();
-    await persistCharts(next);
-    await loadDashboard();
-  });
+    const saveBtn = $("homeChartSave");
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      await persistCharts(next);
+      closeChartDialog();
+      await loadDashboard();
+    } catch (err) {
+      if ($("dashFocusHint")) $("dashFocusHint").textContent = err.message || String(err);
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
+  on("homeChartForm", "submit", saveChartFromForm);
+  on("homeChartSave", "click", saveChartFromForm);
 
   document.querySelectorAll("[data-close-dialog]").forEach((btn) => {
     btn.addEventListener("click", () => closeChartDialog());
