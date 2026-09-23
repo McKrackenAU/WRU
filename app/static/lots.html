@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Lot register · WRU</title>
+  <link rel="icon" href="/static/brand/veninspect-mark.png" type="image/png" />
+  <link rel="stylesheet" href="/static/css/fonts.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script>
+    (function () {
+      try {
+        var user = localStorage.getItem("wru_username") || "";
+        var t = (user && localStorage.getItem("wru-tgs-theme:" + user)) || localStorage.getItem("wru-tgs-theme");
+        if (t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else document.documentElement.style.colorScheme = "light";
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar" data-app-header></header>
+    <main id="main-content" tabindex="-1" class="main">
+      <div class="page-head">
+        <div>
+          <h1>Lot register</h1>
+          <p>Each shift gets a lot number. Mark lots accepted or on hold as QA moves through them.</p>
+        </div>
+      </div>
+
+      <section class="panel-card form-grid">
+        <label>Site
+          <select id="filterSite">
+            <option value="">All sites</option>
+          </select>
+        </label>
+        <label>Work
+          <select id="filterKind">
+            <option value="">HMA and profiling</option>
+            <option value="hma">HMA</option>
+            <option value="pro">Profiling</option>
+          </select>
+        </label>
+        <label>Mix <input id="filterMix" placeholder="14HP" /></label>
+        <label>QA
+          <select id="filterQa">
+            <option value="">Any status</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="hold">Hold</option>
+          </select>
+        </label>
+        <div class="full">
+          <button type="button" class="btn" id="btnApplyLots">Apply</button>
+          <span class="hint" id="lotsStatus"></span>
+        </div>
+      </section>
+
+      <section class="panel-card table-card" style="margin-top:1rem">
+        <div class="table-scroll">
+          <table class="data-table" id="lotsTable">
+            <thead>
+              <tr>
+                <th>Lot number</th>
+                <th>Date</th>
+                <th>Road</th>
+                <th>Site</th>
+                <th>Work</th>
+                <th>Mix</th>
+                <th>Supervisor</th>
+                <th>QA</th>
+                <th>QA notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="lotsBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <footer class="app-footer" data-app-footer></footer>
+  </div>
+  <script type="module" src="/static/js/lots.js"></script>
+</body>
+</html>

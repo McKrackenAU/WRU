@@ -170,6 +170,57 @@ def _norm_name(name: str | None) -> str:
     return " ".join((name or "").strip().lower().split())
 
 
+def _blank(value) -> bool:
+    return value is None or value == ""
+
+
+def pick_area_band_rate(
+    rates: list[dict[str, Any]],
+    *,
+    mix: str,
+    unit: str,
+    thickness_mm: float | None = None,
+    site_area_m2: float | None = None,
+) -> dict[str, Any] | None:
+    """Pick the rate for this mix, unit, thickness, and the site's overall size.
+
+    A shift that lays 2,000 m² on a 6,000 m² site uses the 5,000–10,000 m² band.
+    Rates with no band apply to any size and lose to a matching band.
+    """
+    want = _norm_name(mix)
+    unit_n = normalize_unit(unit)
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for rate in rates:
+        if rate.get("active") is False:
+            continue
+        if normalize_unit(rate.get("unit")) != unit_n:
+            continue
+        name = _norm_name(rate.get("name"))
+        if want and want not in name and name not in want:
+            continue
+        thick = rate.get("thickness_mm")
+        if not _blank(thick):
+            if _blank(thickness_mm) or abs(float(thick) - float(thickness_mm)) > 1:
+                continue
+        amin = rate.get("area_min_m2")
+        amax = rate.get("area_max_m2")
+        banded = not _blank(amin) or not _blank(amax)
+        if banded:
+            if _blank(site_area_m2):
+                continue
+            area = float(site_area_m2)
+            if not _blank(amin) and area < float(amin):
+                continue
+            if not _blank(amax) and area > float(amax):
+                continue
+        score = (2 if banded else 0) + (1 if not _blank(thick) else 0)
+        scored.append((score, rate))
+    if not scored:
+        return None
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored[0][1]
+
+
 def match_rate_for_line(line: dict[str, Any], rates: list[dict[str, Any]]) -> dict[str, Any] | None:
     rate_id = line.get("rate_id")
     if rate_id:

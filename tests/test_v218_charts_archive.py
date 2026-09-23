@@ -25,7 +25,7 @@ MAIN = (ROOT / "app/main.py").read_text(encoding="utf-8")
 
 
 def test_version_is_218():
-    assert VERSION == "2.18"
+    assert VERSION == "2.21"
 
 
 def test_pie_uses_same_colors_for_slices_and_legend():

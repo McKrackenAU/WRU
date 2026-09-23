@@ -591,6 +591,10 @@ class AsphaltRate(Base):
     public_holiday_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Job-size band. A 6,000 m² site uses the 5,000–10,000 rate even if this shift only lays 2,000 m².
+    area_min_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    area_max_m2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thickness_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     subcontractor: Mapped[AsphaltSubcontractor] = relationship(back_populates="rates")
 
@@ -952,6 +956,9 @@ class ShiftReport(Base):
     issues: Mapped[str | None] = mapped_column(Text, nullable=True)
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Lifecycle shift-report fields (traffic, paving, checks) and drawn work polygons.
+    details: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    polygons: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     created_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -961,6 +968,40 @@ class ShiftReport(Base):
     )
 
     site: Mapped[Site] = relationship(lazy="selectin")
+
+
+class LotRegister(Base):
+    """One lot per shift, kept so QA can find what was laid and where."""
+
+    __tablename__ = "lot_register"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lot_number: Mapped[str] = mapped_column(String(160), unique=True, nullable=False, index=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    shift_id: Mapped[int | None] = mapped_column(
+        ForeignKey("shift_reports.id", ondelete="CASCADE"), unique=True, nullable=True, index=True
+    )
+    work_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    road_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    road_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fmrp_year: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    site_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # hma | pro
+    work_kind: Mapped[str] = mapped_column(String(8), nullable=False, default="hma")
+    mix: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    supervisor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # pending | accepted | hold
+    qa_status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", index=True)
+    qa_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    site: Mapped[Site] = relationship(lazy="selectin")
+    shift: Mapped[ShiftReport | None] = relationship(lazy="selectin")
 
 
 class ImportSnapshot(Base):
