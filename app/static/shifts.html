@@ -35,7 +35,7 @@
 
       <section class="panel-card">
         <form id="shiftForm" class="form-grid">
-          <h2 class="full">General</h2>
+          <h2 class="full">General information</h2>
           <label>Road
             <select id="shiftRoad" required>
               <option value="">Select a road…</option>
@@ -49,68 +49,84 @@
           <label>Date
             <input id="shiftDate" type="date" required />
           </label>
+          <label>Weather condition
+            <input id="dWeather" placeholder="22c Clear" />
+          </label>
+          <label>FMRP year <input id="dFmrp" placeholder="FMRP 2025/26" /></label>
           <label>Shift type
             <select id="shiftType">
               <option value="night">Night</option>
               <option value="day">Day</option>
             </select>
           </label>
-          <label>FMRP year <input id="dFmrp" placeholder="FMRP 2025/26" /></label>
-          <label>Lot number <input id="dLot" /></label>
+          <label>Lot <input id="dLot" placeholder="2526-030" /></label>
+          <label>Report number <input id="dReportNo" placeholder="Fills from the date, site, lot, mix and initials" /></label>
           <label>Ventia supervisor <input id="dSupervisor" /></label>
-          <label>Asphalt type <input id="dMix" placeholder="14HP" /></label>
-          <label>High risk activity <input id="dRisk" placeholder="Working near live traffic" /></label>
-          <label>Chainage <input id="dChainage" placeholder="CH1325R to CH1938R" /></label>
-          <label class="full">Description <textarea id="dDescription" rows="2"></textarea></label>
-          <label>Road closed <input id="dRoadClosed" type="datetime-local" /></label>
-          <label>Road opened <input id="dRoadOpened" type="datetime-local" /></label>
+          <label class="full">High risk activity <input id="dRisk" placeholder="Working near live traffic, working around mobile plant" /></label>
 
-          <h2 class="full">Traffic</h2>
-          <label>Traffic contractor <input id="dTrafficContractor" placeholder="MIEPOL" /></label>
-          <label>TGS number <input id="dTgs" /></label>
-          <label>MoA number <input id="dMoa" /></label>
-          <label>Total TC <input id="dTotalTc" type="number" min="0" step="1" /></label>
-          <label>Vehicles <input id="dVehicles" type="number" min="0" step="1" /></label>
-          <label>Arrow boards <input id="dArrows" type="number" min="0" step="1" /></label>
-          <label>Spotters <input id="dSpotters" type="number" min="0" step="1" /></label>
-          <label>Traffic crew start <input id="dCrewStart" type="datetime-local" /></label>
-          <label>Traffic crew end <input id="dCrewEnd" type="datetime-local" /></label>
-          <label>MoA start <input id="dMoaStart" type="datetime-local" /></label>
-          <label>MoA end <input id="dMoaEnd" type="datetime-local" /></label>
-
-          <h2 class="full">Paving</h2>
-          <label>Paving contractor <input id="dPaver" placeholder="Boral" /></label>
-          <label>Other contractors <input id="dOthers" placeholder="J&amp;A Bobcats, Sweep Wright" /></label>
-          <label>Thickness (mm) <input id="dThickness" type="number" min="0" step="1" placeholder="50" /></label>
-          <label>m² laid this shift <input id="dShiftArea" type="number" min="0" step="0.1" /></label>
-          <label>Site total m² <input id="dSiteArea" type="number" min="0" step="0.1" placeholder="Used for the rate band" /></label>
-          <label>Tonnage <input id="dTonnes" type="number" min="0" step="0.1" /></label>
-          <label>Pits to raise <input id="dPits" type="number" min="0" step="1" /></label>
-          <label>Valves to raise <input id="dValves" type="number" min="0" step="1" /></label>
-          <label>Loops present <input id="dLoops" type="number" min="0" step="1" /></label>
-          <p class="hint full">The asphalt rate uses the site’s overall m² band (for example 5,000–10,000) even when this shift only lays part of it. Tonne mixes are priced per tonne; m² mixes use the thickness on the rate card.</p>
-
-          <h2 class="full">Work done on the map</h2>
-          <p class="hint full">Draw one or more polygons for the area completed this shift. The measured m² fills “laid this shift” when that box is empty.</p>
+          <h2 class="full">Lot diagram</h2>
+          <p class="hint full">Draw one or more polygons for the work completed this shift. They print in the lot diagram on the PDF. Measured m² fills “area” when that box is empty.</p>
           <div id="shiftMap" class="shift-map full"></div>
           <div class="toolbar full">
             <button type="button" class="btn" id="btnClearPolygons">Clear polygons</button>
             <span class="hint" id="polygonHint">No polygons yet.</span>
           </div>
 
-          <h2 class="full">Site notes</h2>
+          <h2 class="full">Subcontractor information</h2>
+          <label>Paving contractor <input id="dPaver" placeholder="Boral" /></label>
+          <label>Traffic contractor <input id="dTrafficContractor" placeholder="MIEPOL" /></label>
+          <label class="full">Other contractor <input id="dOthers" placeholder="J&amp;A Bobcats, Sweep Wright, Bitu-mill" /></label>
+
+          <h2 class="full">Traffic information</h2>
+          <label>Road closed <input id="dRoadClosed" type="datetime-local" /></label>
+          <label>Road opened <input id="dRoadOpened" type="datetime-local" /></label>
+          <label>Traffic crew start <input id="dCrewStart" type="datetime-local" /></label>
+          <label>Traffic crew end <input id="dCrewEnd" type="datetime-local" /></label>
+          <label>TGS number <input id="dTgs" placeholder="TGS-TMR-MIE-5443-412" /></label>
+          <label>MoA number <input id="dMoa" /></label>
+          <label>MoA start <input id="dMoaStart" type="datetime-local" /></label>
+          <label>MoA end <input id="dMoaEnd" type="datetime-local" /></label>
+          <label>Total TC <input id="dTotalTc" type="number" min="0" step="1" /></label>
+          <label>No of arrow boards <input id="dArrows" type="number" min="0" step="1" /></label>
+          <label>Vehicles <input id="dVehicles" type="number" min="0" step="1" /></label>
+          <label>Spotters <input id="dSpotters" type="number" min="0" step="1" /></label>
+          <p class="hint full">Vehicles and spotters are used for the actual traffic cost. The printed report shows total TC and arrow boards.</p>
+
+          <h2 class="full">Paving information</h2>
+          <label>Asphalt type <input id="dMix" placeholder="14HP" /></label>
+          <label>Other material used <input id="dOtherMaterial" type="number" min="0" step="1" placeholder="0" /></label>
+          <label>Area (m² this shift) <input id="dShiftArea" type="number" min="0" step="0.1" /></label>
+          <label>Tonnage <input id="dTonnes" type="number" min="0" step="0.1" /></label>
+          <label>Thickness (mm) <input id="dThickness" type="number" min="0" step="1" placeholder="50" /></label>
+          <label>Site total m² <input id="dSiteArea" type="number" min="0" step="0.1" placeholder="Used for the rate band" /></label>
+          <label>Chainage <input id="dChainage" placeholder="CH1325R to CH1938R" /></label>
+          <label class="full">Description <textarea id="dDescription" rows="2"></textarea></label>
+          <label># Pits to be raised <input id="dPits" type="number" min="0" step="1" /></label>
+          <label># Valves to be raised <input id="dValves" type="number" min="0" step="1" /></label>
+          <label># Loops present <input id="dLoops" type="number" min="0" step="1" /></label>
+          <p class="hint full">The asphalt rate uses the site’s overall m² band (for example 5,000–10,000) even when this shift only lays part of it. Tonne mixes are priced per tonne; m² mixes use the thickness on the rate card. Thickness and site total m² feed the cost and stay on the saved shift.</p>
+
+          <h2 class="full">Site observations</h2>
           <label class="full">Prestart notes <textarea id="dPrestart" rows="3"></textarea></label>
           <label class="full">Profiling notes <textarea id="dProfiling" rows="3"></textarea></label>
           <label class="full">Asphalting notes <textarea id="dAsphaltNotes" rows="3"></textarea></label>
           <label class="full">General observations <textarea id="dObservations" rows="2"></textarea></label>
-          <label class="full">Incident / issues <textarea id="dIncidents" rows="2"></textarea></label>
+          <label class="full">Incident issues <textarea id="dIncidents" rows="2"></textarea></label>
           <label class="full">Comments <textarea id="dComments" rows="2"></textarea></label>
+
+          <h2 class="full">TMP checks</h2>
           <label class="check-row"><input id="dPrestartDone" type="checkbox" /> <span>Prestart done</span></label>
           <label class="check-row"><input id="dPlantPrestart" type="checkbox" /> <span>Plant prestart done</span></label>
           <label class="check-row"><input id="dTmOk" type="checkbox" /> <span>TM implementation</span></label>
           <label class="check-row"><input id="dAftercare" type="checkbox" /> <span>After care check</span></label>
+
+          <h2 class="full">Non conformance reports</h2>
           <label class="check-row"><input id="dNcr" type="checkbox" /> <span>NCR raised</span></label>
-          <label class="full">SharePoint / photos URL <input id="dPhotos" type="url" /></label>
+          <label>VenSafe event no. <input id="dVensafe" placeholder="N/A" /></label>
+          <label class="full">Non-compliance details <textarea id="dNonCompliance" rows="2"></textarea></label>
+
+          <h2 class="full">Photos</h2>
+          <label class="full">SharePoint URL <input id="dPhotos" type="url" placeholder="https://ventia.sharepoint.com/..." /></label>
 
           <p class="hint full" id="shiftWeather">Weather fills from your location when you save or tap Refresh weather.</p>
           <label class="check-row full"><input id="dPostSpend" type="checkbox" checked /> <span>Post actual traffic and asphalt spend from this shift</span></label>

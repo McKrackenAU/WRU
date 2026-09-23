@@ -21,6 +21,8 @@ const state = {
   drawLayer: null,
   siteLayer: null,
   measuredM2: 0,
+  weatherTouched: false,
+  reportTouched: false,
 };
 
 function todayISO() {
@@ -104,6 +106,7 @@ function applySiteDefaults() {
   if ($("dTgs")) $("dTgs").value = site.tgs_reference || "";
   if ($("shiftType")) $("shiftType").value = site.indicative_shift_type === "night" ? "night" : "day";
   if ($("dSupervisor") && !$("dSupervisor").value.trim()) $("dSupervisor").value = userName();
+  refreshReportNumber();
   focusSiteOnMap(site.id);
 }
 
@@ -156,8 +159,36 @@ function collectDetails() {
     tm_implementation: Boolean($("dTmOk")?.checked),
     aftercare: Boolean($("dAftercare")?.checked),
     ncr_raised: Boolean($("dNcr")?.checked),
+    vensafe_event: textOrNull("dVensafe"),
+    non_compliance: textOrNull("dNonCompliance"),
+    other_material: numOrNull("dOtherMaterial"),
+    weather_condition: textOrNull("dWeather"),
+    report_number: textOrNull("dReportNo"),
     photos_url: textOrNull("dPhotos"),
   };
+}
+
+function initials(name) {
+  return String(name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function buildReportNumber() {
+  const date = ($("shiftDate")?.value || "").replaceAll("-", "");
+  const siteNo = selectedSite()?.site_number || "";
+  const lot = ($("dLot")?.value || "").trim();
+  const mix = ($("dMix")?.value || "").trim();
+  const who = initials($("dSupervisor")?.value);
+  return [date, siteNo, lot, mix ? `HMA-${mix}` : "", who].filter(Boolean).join("-");
+}
+
+function refreshReportNumber() {
+  if (state.reportTouched || !$("dReportNo")) return;
+  $("dReportNo").value = buildReportNumber();
 }
 
 function ringOf(latlngs) {
@@ -312,6 +343,13 @@ function renderList() {
   }
 }
 
+function weatherCondition(snap) {
+  if (!snap) return "";
+  const temp = snap.temperature_c != null && snap.temperature_c !== "" ? `${Math.round(Number(snap.temperature_c))}c` : "";
+  const label = snap.label || snap.condition || "";
+  return [temp, label].filter(Boolean).join(" ");
+}
+
 function showWeather(snap) {
   state.weather = snap;
   if ($("shiftWeather")) {
@@ -319,6 +357,7 @@ function showWeather(snap) {
       ? `Weather: ${weatherLine(snap)}`
       : "Weather fills from your location when you save or tap Refresh weather.";
   }
+  if ($("dWeather") && snap && !state.weatherTouched) $("dWeather").value = weatherCondition(snap);
 }
 
 function locate() {
@@ -375,6 +414,9 @@ function clearShiftNarrative() {
     "dObservations",
     "dIncidents",
     "dComments",
+    "dNonCompliance",
+    "dVensafe",
+    "dOtherMaterial",
   ]) {
     if ($(id)) $(id).value = "";
   }
@@ -447,6 +489,17 @@ async function init() {
   state.features = features || [];
   if ($("shiftDate")) $("shiftDate").value = todayISO();
   selectSite(preselect);
+  refreshReportNumber();
+  for (const id of ["shiftDate", "dLot", "dMix", "dSupervisor"]) {
+    on(id, "input", () => refreshReportNumber());
+    on(id, "change", () => refreshReportNumber());
+  }
+  on("dReportNo", "input", () => {
+    state.reportTouched = true;
+  });
+  on("dWeather", "input", () => {
+    state.weatherTouched = true;
+  });
   on("shiftRoad", "change", () => {
     fillSites(0);
     state.siteLayer?.clearLayers();

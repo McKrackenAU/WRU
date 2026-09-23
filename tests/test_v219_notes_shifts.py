@@ -46,7 +46,7 @@ def _rate(**kwargs):
 
 
 def test_version_is_219():
-    assert VERSION == "2.19"
+    assert VERSION == "2.20"
 
 
 def test_note_log_is_dated_and_shared_with_activity():

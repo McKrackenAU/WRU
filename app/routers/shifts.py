@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from ..database import get_db
 from ..models import ShiftReport, Site, User
-from ..shift_export import build_shift_report_pdf
+from ..shift_export import build_shift_report_pdf, pdf_filename
 from ..weather import fetch_weather
 
 router = APIRouter(prefix="/api/shifts", tags=["shifts"])
@@ -178,11 +178,13 @@ def export_shift_pdf(
         "road_name": row.site.road_name if row.site else "",
         "site_number": row.site.site_number if row.site else "",
     }
-    pdf = build_shift_report_pdf(_public(row), site)
+    public = _public(row)
+    pdf = build_shift_report_pdf(public, site)
+    filename = pdf_filename(public, site)
     return Response(
         pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="shift-{row.id}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

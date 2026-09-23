@@ -16,7 +16,7 @@ LOGIN_JS = (ROOT / "app/static/js/login.js").read_text(encoding="utf-8")
 
 
 def test_version_is_215():
-    assert VERSION == "2.19"
+    assert VERSION == "2.20"
 
 
 def test_prefs_keep_separate_light_and_dark_palettes():
