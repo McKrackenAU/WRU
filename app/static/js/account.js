@@ -133,6 +133,12 @@ async function init() {
   }));
   renderPills("quickLinkPicker", links, prefs().quick_links || [], "quick");
   renderPills("homeWidgetPicker", WIDGETS, prefs().home_widgets || [], "widget");
+  const charts = prefs().home_charts || [];
+  if ($("homeChartsNote")) {
+    $("homeChartsNote").textContent = charts.length
+      ? `Pinned graphs: ${charts.map((c) => c.title || c.metric).join(", ")}.`
+      : "No custom graphs yet.";
+  }
   if (user?.username && String(user.username).toLowerCase() === "root") {
     $("accountDisplayName").readOnly = true;
   }
@@ -194,6 +200,7 @@ on("accountForm", "submit", async (e) => {
         colors_dark: collectedPalette("dark"),
         quick_links: selectedKeys("quick").slice(0, 8),
         home_widgets: selectedKeys("widget"),
+        home_charts: prefs().home_charts || [],
       },
     };
     if (!isRoot) body.display_name = name;

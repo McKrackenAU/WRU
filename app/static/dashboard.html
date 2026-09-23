@@ -30,9 +30,10 @@
           <p id="dashFocusHint">Recently approved MoAs, status changes, and comms for your tags.</p>
         </div>
         <div class="toolbar">
+          <button type="button" class="btn btn-primary" id="btnAddGraph">Add graph</button>
           <a class="btn" href="/">Sites</a>
           <a class="btn" href="/generics">Generic MoAs</a>
-          <a class="btn btn-primary" href="/lists">Client lists</a>
+          <a class="btn" href="/lists">Client lists</a>
           <a class="btn" href="/account">Customise Home</a>
         </div>
       </div>
@@ -56,6 +57,15 @@
           <ul class="event-list" id="commsPreview"></ul>
         </section>
       </div>
+      <section class="home-charts-wrap" id="homeChartsWrap">
+        <div class="home-charts-head">
+          <div>
+            <h2>Your graphs</h2>
+            <p class="hint">Pick the data for each graph. They stay with this login and can be edited or removed from the card.</p>
+          </div>
+        </div>
+        <div class="home-charts" id="homeCharts"></div>
+      </section>
       <details class="landing-more" id="landingMore">
         <summary>Program health</summary>
         <div class="stat-grid" id="statGrid"></div>
@@ -83,6 +93,47 @@
     </main>
     <footer class="app-footer" data-app-footer></footer>
   </div>
+  <dialog id="homeChartDialog" class="panel">
+    <form id="homeChartForm">
+      <header class="panel-head">
+        <h2 id="homeChartDialogTitle">Add graph</h2>
+        <button type="button" class="icon-btn" data-close-dialog="homeChartDialog" aria-label="Close">×</button>
+      </header>
+      <div class="panel-body">
+        <p class="hint">Choose what to plot. Title is optional — the data name is used if you leave it blank.</p>
+        <input type="hidden" id="chartEditId" />
+        <div class="form-grid">
+          <label class="full">Title
+            <input id="chartTitle" type="text" maxlength="80" placeholder="e.g. Jobs by stage" />
+          </label>
+          <label>Data
+            <select id="chartMetric">
+              <option value="stages">Stages</option>
+              <option value="programs">Programs</option>
+              <option value="councils">Councils</option>
+              <option value="priority">Priority</option>
+              <option value="must_have">Must-have status</option>
+              <option value="lists">Client lists</option>
+              <option value="costs">Traffic estimates</option>
+              <option value="spend">Actual spend</option>
+              <option value="sites">Site totals</option>
+            </select>
+          </label>
+          <label>Graph type
+            <select id="chartType">
+              <option value="bar">Bar</option>
+              <option value="pie">Pie</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <footer class="panel-foot">
+        <div class="spacer"></div>
+        <button type="button" class="btn" data-close-dialog="homeChartDialog">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="homeChartSave">Save graph</button>
+      </footer>
+    </form>
+  </dialog>
   <script type="module" src="/static/js/dashboard.js"></script>
 </body>
 </html>

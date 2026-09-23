@@ -31,7 +31,7 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_version_is_213():
-    assert VERSION == "2.16"
+    assert VERSION == "2.17"
 
 
 def test_normalize_tags_dedupes_and_caps():
