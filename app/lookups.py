@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 
 from .models import LookupItem, Site, SiteCouncil
 
+LOOKUP_KINDS = {"road", "council", "archive_category"}
+ARCHIVE_KIND = "archive_category"
+
 
 @dataclass
 class LookupChange:
@@ -22,6 +25,8 @@ def _usage_names(db: Session, kind: str) -> list[str]:
         rows = db.query(distinct(Site.road_name)).filter(Site.road_name.isnot(None)).all()
     elif kind == "council":
         rows = db.query(distinct(SiteCouncil.council_name)).filter(SiteCouncil.council_name.isnot(None)).all()
+    elif kind == ARCHIVE_KIND:
+        rows = db.query(distinct(Site.archive_category)).filter(Site.archive_category.isnot(None)).all()
     else:
         return []
     return [name.strip() for (name,) in rows if name and str(name).strip()]
@@ -36,6 +41,8 @@ def usage_counts(db: Session, kind: str) -> dict[str, int]:
             .group_by(SiteCouncil.council_name)
             .all()
         )
+    elif kind == ARCHIVE_KIND:
+        rows = db.query(Site.archive_category, func.count(Site.id)).group_by(Site.archive_category).all()
     else:
         return {}
     counts: dict[str, int] = {}
@@ -49,7 +56,7 @@ def usage_counts(db: Session, kind: str) -> dict[str, int]:
 
 def sync_usage_into_lookups(db: Session, kind: str) -> int:
     """Ensure every road/council already used on a site appears in Admin lookups."""
-    if kind not in {"road", "council"}:
+    if kind not in LOOKUP_KINDS:
         return 0
     names = _usage_names(db, kind)
     existing = {
@@ -74,7 +81,7 @@ def sync_usage_into_lookups(db: Session, kind: str) -> int:
 
 def ensure_lookup_value(db: Session, kind: str, value: str, *, commit: bool = False) -> LookupItem | None:
     name = (value or "").strip()
-    if kind not in {"road", "council"} or not name:
+    if kind not in LOOKUP_KINDS or not name:
         return None
     row = (
         db.query(LookupItem)
@@ -126,7 +133,23 @@ def _propagate_rename(db: Session, kind: str, old_value: str, new_value: str) ->
                 row.council_name = new_value
                 updated += 1
         return updated
+    if kind == ARCHIVE_KIND:
+        return (
+            db.query(Site)
+            .filter(Site.archive_category.ilike(old_value))
+            .update({Site.archive_category: new_value}, synchronize_session="fetch")
+        )
     return 0
+
+
+def set_archive_category(db: Session, site: Site, raw: str | None) -> str | None:
+    name = (raw or "").strip()
+    if not name:
+        site.archive_category = None
+        return None
+    row = ensure_lookup_value(db, ARCHIVE_KIND, name)
+    site.archive_category = row.value if row else name
+    return site.archive_category
 
 
 def apply_lookup_update(

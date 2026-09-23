@@ -1848,36 +1848,97 @@ function scheduleAutosave() {
   }, 700);
 }
 
+function closeArchiveDialog() {
+  const el = $("archiveDialog");
+  if (!el) return;
+  if (typeof el.close === "function") el.close();
+  else el.removeAttribute("open");
+}
+
+async function fillArchiveCategorySelect(selected) {
+  const sel = $("archiveCategory");
+  if (!sel) return;
+  let cats = [];
+  try {
+    const meta = await api("/api/meta");
+    cats = meta.archive_categories || [];
+  } catch {
+    cats = [];
+  }
+  const options = [`<option value="">No category</option>`]
+    .concat(cats.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`))
+    .concat([`<option value="__new__">Add a new category…</option>`]);
+  sel.innerHTML = options.join("");
+  if (selected && cats.includes(selected)) sel.value = selected;
+  toggleArchiveNewCategory();
+}
+
+function toggleArchiveNewCategory() {
+  const wrap = $("archiveCategoryNewWrap");
+  if (wrap) wrap.hidden = $("archiveCategory")?.value !== "__new__";
+}
+
+function chosenArchiveCategory() {
+  const picked = $("archiveCategory")?.value || "";
+  if (picked === "__new__") return ($("archiveCategoryNew")?.value || "").trim();
+  return picked.trim();
+}
+
+async function openArchiveDialog(ids) {
+  const unique = [...new Set(ids.map(Number).filter((n) => n > 0))];
+  if (!unique.length) return;
+  $("archiveSiteIds").value = unique.join(",");
+  $("archiveFy").value = "";
+  if ($("archiveCategoryNew")) $("archiveCategoryNew").value = "";
+  $("archiveDialogTitle").textContent =
+    unique.length > 1 ? `Archive ${unique.length} sites` : "Archive site";
+  await fillArchiveCategorySelect();
+  const el = $("archiveDialog");
+  if (typeof el.showModal === "function") el.showModal();
+  else el.setAttribute("open", "");
+}
+
+async function submitArchiveForm() {
+  const ids = ($("archiveSiteIds")?.value || "")
+    .split(",")
+    .map(Number)
+    .filter((n) => n > 0);
+  if (!ids.length) return;
+  const body = {
+    financial_year: ($("archiveFy")?.value || "").trim() || null,
+    archive_category: chosenArchiveCategory() || null,
+  };
+  if (ids.length === 1) {
+    await api(`/api/sites/${ids[0]}/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    state.selectedIds.delete(ids[0]);
+    closeDrawer();
+  } else {
+    await api("/api/sites/bulk-archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ site_ids: ids, ...body }),
+    });
+    state.selectedIds.clear();
+  }
+  closeArchiveDialog();
+  await loadAll();
+  await syncLiveRevision();
+}
+
 async function archiveSite() {
   const id = $("siteId").value;
   if (!id) return;
-  const fy = await promptDialog("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
-  if (fy === null) return;
-  await api(`/api/sites/${id}/archive`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ financial_year: fy.trim() || null }),
-  });
-  state.selectedIds.delete(Number(id));
-  closeDrawer();
-  await loadAll();
-  await syncLiveRevision();
+  await openArchiveDialog([Number(id)]);
 }
 
 async function bulkArchiveSelected() {
   const ids = [...state.selectedIds];
   if (!ids.length) return;
-  if (!await confirmDialog(`Archive ${ids.length} selected site${ids.length === 1 ? "" : "s"}?`)) return;
-  const fy = await promptDialog("Archive to financial year (e.g. 2025-26). Leave blank to auto-detect:");
-  if (fy === null) return;
-  await api("/api/sites/bulk-archive", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ site_ids: ids, financial_year: fy.trim() || null }),
-  });
-  state.selectedIds.clear();
-  await loadAll();
-  await syncLiveRevision();
+  await openArchiveDialog(ids);
 }
 
 function renderColumnList() {
@@ -2342,6 +2403,15 @@ function bindEvents() {
   on("btnColumns", "click", openColumns);
   on("btnAddColumn", "click", () => addColumn().catch((e) => { alertDialog(e.message); }));
   on("btnArchiveSite", "click", () => archiveSite().catch((e) => { alertDialog(e.message); }));
+  on("archiveCategory", "change", () => toggleArchiveNewCategory());
+  on("archiveForm", "submit", (ev) => {
+    ev.preventDefault();
+    submitArchiveForm().catch((e) => { alertDialog(e.message); });
+  });
+  on("archiveConfirm", "click", (ev) => {
+    ev.preventDefault();
+    submitArchiveForm().catch((e) => { alertDialog(e.message); });
+  });
   on("btnAddTrack", "click", () => addTracking().catch((e) => { alertDialog(e.message); }));
   on("btnUploadDoc", "click", () => uploadDoc().catch((e) => { alertDialog(e.message); }));
   on("btnDownloadDocs", "click", () => downloadSiteDocs().catch((e) => { alertDialog(errorMessage(e, "Could not download")); }));

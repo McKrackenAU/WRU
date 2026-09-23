@@ -195,11 +195,13 @@ class SiteUpdate(BaseModel):
 
 class SiteArchiveRequest(BaseModel):
     financial_year: str | None = None
+    archive_category: str | None = None
 
 
 class SiteBulkArchiveRequest(BaseModel):
     site_ids: list[int] = Field(min_length=1)
     financial_year: str | None = None
+    archive_category: str | None = None
 
 
 class SiteBulkArchiveOut(BaseModel):
@@ -239,6 +241,7 @@ class SiteOut(SiteBase):
     archived: bool = False
     archived_at: datetime | None = None
     archived_fy: str | None = None
+    archive_category: str | None = None
     today_priority: int
     metrics: dict[str, Any] = Field(default_factory=dict)
     workflow: list[WorkflowStepOut]
@@ -294,6 +297,7 @@ class MetaOut(BaseModel):
     programs: list[str] = Field(default_factory=list)
     councils: list[str] = Field(default_factory=list)
     roads: list[str] = Field(default_factory=list)
+    archive_categories: list[str] = Field(default_factory=list)
     rules: dict[str, Any] = Field(default_factory=dict)
     asset_version: str = "0"
 
@@ -327,7 +331,7 @@ class AppSettingsUpdate(BaseModel):
 
 
 class LookupIn(BaseModel):
-    kind: str = Field(pattern="^(road|council)$")
+    kind: str = Field(pattern="^(road|council|archive_category)$")
     value: str = Field(min_length=1, max_length=255)
     position: int | None = None
     active: bool = True
@@ -390,3 +394,4 @@ class DashboardOut(BaseModel):
     comms_preview: list[dict[str, Any]] = Field(default_factory=list)
     cost_totals: dict[str, Any] = Field(default_factory=dict)
     spend_totals: dict[str, Any] = Field(default_factory=dict)
+    jobs: list[dict[str, Any]] = Field(default_factory=list)

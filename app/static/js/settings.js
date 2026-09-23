@@ -41,7 +41,7 @@ async function loadLookups(kind, listId, statusId) {
   const rows = await api(`/api/admin/lookups?kind=${encodeURIComponent(kind)}&active_only=false`);
   const list = $(listId);
   const status = $(statusId);
-  const noun = kind === "road" ? "road" : "council";
+  const noun = kind === "road" ? "road" : kind === "council" ? "council" : "category";
   const active = rows.filter((r) => r.active);
   if (status) {
     const used = active.reduce((n, r) => n + (r.usage_count || 0), 0);
@@ -89,6 +89,7 @@ async function refreshLookups() {
   await Promise.all([
     loadLookups("road", "roadLookupList", "roadLookupStatus"),
     loadLookups("council", "councilLookupList", "councilLookupStatus"),
+    loadLookups("archive_category", "archiveLookupList", "archiveLookupStatus"),
     loadDocTypes(),
   ]);
 }
@@ -343,6 +344,7 @@ async function init() {
   $("rulesForm").addEventListener("submit", (e) => saveRules(e).catch((err) => { alertDialog(err.message); }));
   $("btnAddRoad")?.addEventListener("click", () => addLookup("road", "roadLookupValue").catch((e) => { alertDialog(e.message); }));
   $("btnAddCouncil")?.addEventListener("click", () => addLookup("council", "councilLookupValue").catch((e) => { alertDialog(e.message); }));
+  $("btnAddArchiveCat")?.addEventListener("click", () => addLookup("archive_category", "archiveLookupValue").catch((e) => { alertDialog(e.message); }));
   $("btnAddDocType")?.addEventListener("click", () => addDocType().catch((e) => { alertDialog(e.message); }));
   $("roadLookupValue")?.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") {
@@ -354,6 +356,12 @@ async function init() {
     if (ev.key === "Enter") {
       ev.preventDefault();
       addLookup("council", "councilLookupValue").catch((e) => { alertDialog(e.message); });
+    }
+  });
+  $("archiveLookupValue")?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      addLookup("archive_category", "archiveLookupValue").catch((e) => { alertDialog(e.message); });
     }
   });
   $("docTypeLabel")?.addEventListener("keydown", (ev) => {

@@ -1080,6 +1080,10 @@ html.dark .main-nav a.active {
   vertical-align: middle;
 }
 
+.pie-legend .meta {
+  margin-left: 0.25rem;
+}
+
 .landing-more {
   margin-top: 0.35rem;
 }

@@ -27,7 +27,7 @@ PREFS = (ROOT / "app/user_prefs.py").read_text(encoding="utf-8")
 
 
 def test_version_is_214():
-    assert VERSION == "2.17"
+    assert VERSION == "2.18"
 
 
 def test_filter_checkboxes_and_cost_filter():

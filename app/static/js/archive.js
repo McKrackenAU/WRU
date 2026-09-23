@@ -59,6 +59,7 @@ function renderRows(sites) {
             <input type="checkbox" class="site-select" data-select-id="${s.id}" ${checked} aria-label="Select ${escapeHtml(s.road_name)}" />
           </td>
           <td class="mono">${escapeHtml(s.archived_fy || s.financial_year || "")}</td>
+          <td>${escapeHtml(s.archive_category || "—")}</td>
           <td><strong>${escapeHtml(s.road_name)}</strong></td>
           <td class="mono">${escapeHtml(s.site_number)}</td>
           <td>${escapeHtml(s.program || "")}</td>
@@ -75,7 +76,7 @@ function renderRows(sites) {
         </tr>`;
         })
         .join("")
-    : `<tr><td class="empty" colspan="10">No archived sites for this filter.</td></tr>`;
+    : `<tr><td class="empty" colspan="11">No archived sites for this filter.</td></tr>`;
   syncBulkBar();
 }
 
@@ -84,6 +85,8 @@ async function load() {
   const fy = $("fyFilter").value;
   const q = $("search").value.trim();
   if (fy) params.set("financial_year", fy);
+  const category = $("categoryFilter")?.value;
+  if (category) params.set("archive_category", category);
   if (q) params.set("q", q);
   const sites = await api(`/api/sites?${params}`);
   state.sites = Array.isArray(sites) ? sites : [];
@@ -127,6 +130,12 @@ async function init() {
       .map((y) => `<option value="${escapeHtml(y)}">${escapeHtml(y)}</option>`)
       .join("");
   $("fyFilter").addEventListener("change", load);
+  $("categoryFilter").innerHTML =
+    `<option value="">All categories</option>` +
+    (meta.archive_categories || [])
+      .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
+      .join("");
+  $("categoryFilter").addEventListener("change", load);
   $("search").addEventListener("input", debounce(load, 250));
   $("tbody").addEventListener("change", (ev) => {
     const box = ev.target.closest("[data-select-id]");
@@ -192,5 +201,5 @@ async function init() {
 }
 
 init().catch((err) => {
-  $("tbody").innerHTML = `<tr><td class="empty" colspan="10">${escapeHtml(err.message)}</td></tr>`;
+  $("tbody").innerHTML = `<tr><td class="empty" colspan="11">${escapeHtml(err.message)}</td></tr>`;
 });

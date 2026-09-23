@@ -526,6 +526,7 @@ def export_sites_csv(archived: bool = False, db: Session = Depends(get_db)):
         "on_trims_priority_list",
         "is_generic_moa",
         "archived",
+        "archive_category",
         "comments",
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
@@ -557,6 +558,7 @@ def export_sites_csv(archived: bool = False, db: Session = Depends(get_db)):
                 "on_trims_priority_list": m.get("on_trims_priority_list"),
                 "is_generic_moa": data.get("is_generic_moa"),
                 "archived": site.archived,
+                "archive_category": getattr(site, "archive_category", None) or "",
                 "comments": (site.comments or "").replace("\n", " "),
             }
         )

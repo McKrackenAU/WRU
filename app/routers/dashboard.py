@@ -84,21 +84,46 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
     permits = 0
     trims = 0
 
-    for site, data in zip(sites, rows):
+    jobs = []
+
+    def _add_job(site, data, *, archived: bool):
         metrics_stage = data["metrics"].get("current_stage") or "not_started"
+        councils = [c.council_name for c in site.councils] or []
+        band = must_have_status(site)["band"]
+        jobs.append(
+            {
+                "id": site.id,
+                "program": site.program or "",
+                "stage": metrics_stage,
+                "councils": councils,
+                "priority": data.get("today_priority"),
+                "must_have": band,
+                "on_permits": bool(data["metrics"].get("on_permits_priority_list")),
+                "on_trims": bool(data["metrics"].get("on_trims_priority_list")),
+                "archived": archived,
+                "documents": int(data.get("document_count") or 0),
+                "estimated": float(data.get("latest_cost_total") or 0),
+            }
+        )
+        return metrics_stage, councils, band
+
+    for site, data in zip(sites, rows):
+        metrics_stage, councils, band = _add_job(site, data, archived=False)
         stage_counts[metrics_stage] += 1
-
-        councils = [c.council_name for c in site.councils] or ["(unassigned)"]
-        for c in councils:
+        for c in councils or ["(unassigned)"]:
             council_counts[c] += 1
-
         program_counts[site.program or "(no program)"] += 1
         priority_counts[data["today_priority"]] += 1
-        must_counts[must_have_status(site)["band"]] += 1
+        must_counts[band] += 1
         if data["metrics"].get("on_permits_priority_list"):
             permits += 1
         if data["metrics"].get("on_trims_priority_list"):
             trims += 1
+
+    archived_sites = lean_sites_query(db).filter(Site.archived.is_(True)).all()
+    if archived_sites:
+        for site, data in zip(archived_sites, serialize_sites(db, archived_sites)):
+            _add_job(site, data, archived=True)
 
     by_stage = [
         {
@@ -220,4 +245,5 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_us
         "comms_preview": comms_preview,
         "cost_totals": _money_totals(db, CostEstimate, focused_ids, kind=None),
         "spend_totals": _spend_totals(db, focused_ids),
+        "jobs": jobs,
     }

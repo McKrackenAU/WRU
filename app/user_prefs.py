@@ -94,8 +94,8 @@ def _chart_id(raw, used: set[str]) -> str:
         n += 1
 
 
-def _normalize_charts(raw) -> list[dict[str, str]]:
-    charts: list[dict[str, str]] = []
+def _normalize_charts(raw) -> list[dict[str, Any]]:
+    charts: list[dict[str, Any]] = []
     used: set[str] = set()
     for item in raw or []:
         if not isinstance(item, dict):
@@ -109,7 +109,21 @@ def _normalize_charts(raw) -> list[dict[str, str]]:
         cid = _chart_id(item.get("id"), used)
         used.add(cid)
         title = str(item.get("title") or "").strip()[:80]
-        charts.append({"id": cid, "title": title, "metric": metric, "chart": kind})
+        program = str(item.get("program") or "").strip()[:128]
+        council = str(item.get("council") or "").strip()[:128]
+        hide_empty = item.get("hide_empty")
+        charts.append(
+            {
+                "id": cid,
+                "title": title,
+                "metric": metric,
+                "chart": kind,
+                "program": program,
+                "council": council,
+                "include_archived": bool(item.get("include_archived")),
+                "hide_empty": True if hide_empty is None else bool(hide_empty),
+            }
+        )
         if len(charts) >= MAX_HOME_CHARTS:
             break
     return charts

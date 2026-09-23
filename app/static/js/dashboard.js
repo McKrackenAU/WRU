@@ -23,8 +23,23 @@ const CHART_METRICS = {
   sites: "Site totals",
 };
 
-const PIE_COLORS = ["#004825", "#3dd68c", "#2563eb", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#4b5563"];
+const PIE_COLORS = [
+  "#2563eb",
+  "#dc2626",
+  "#059669",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#4b5563",
+  "#65a30d",
+  "#ea580c",
+  "#0f766e",
+  "#9333ea",
+];
 const MAX_HOME_CHARTS = 8;
+
+let chartMeta = { programs: [], councils: [] };
 
 function barRows(items, max) {
   const m = max || Math.max(1, ...items.map((i) => Number(i.count) || 0));
@@ -49,17 +64,23 @@ function formatChartValue(item) {
 }
 
 function pieSvg(items) {
-  const usable = items.filter((i) => (Number(i.count) || 0) > 0);
-  const total = usable.reduce((sum, i) => sum + (Number(i.count) || 0), 0);
+  const rows = items.map((item, idx) => ({
+    label: item.label || item.name || "",
+    count: Number(item.count) || 0,
+    money: !!item.money,
+    color: PIE_COLORS[idx % PIE_COLORS.length],
+  }));
+  const usable = rows.filter((i) => i.count > 0);
+  const total = usable.reduce((sum, i) => sum + i.count, 0);
   if (!total) return `<p class="hint">No data yet.</p>`;
   const r = 42;
   const cx = 50;
   const cy = 50;
   let angle = -Math.PI / 2;
   const slices = [];
-  usable.forEach((item, idx) => {
-    const value = Number(item.count) || 0;
-    const color = PIE_COLORS[idx % PIE_COLORS.length];
+  usable.forEach((item) => {
+    const value = item.count;
+    const color = item.color;
     if (value === total) {
       slices.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"></circle>`);
       return;
@@ -76,10 +97,10 @@ function pieSvg(items) {
     );
     angle = end;
   });
-  const legend = items
-    .map((item, idx) => {
-      const color = PIE_COLORS[idx % PIE_COLORS.length];
-      return `<div><span class="pie-swatch" style="background:${color}"></span>${escapeHtml(item.label)} <strong>${formatChartValue(item)}</strong></div>`;
+  const legend = usable
+    .map((item) => {
+      const pct = Math.round((100 * item.count) / total);
+      return `<div><span class="pie-swatch" style="background:${item.color}"></span>${escapeHtml(item.label)} <strong>${formatChartValue(item)}</strong> <span class="meta">${pct}%</span></div>`;
     })
     .join("");
   return `<div class="pie-chart">
@@ -88,51 +109,162 @@ function pieSvg(items) {
   </div>`;
 }
 
-function seriesFor(metric, data) {
+function filteredJobs(data, chart) {
+  const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  const program = String(chart?.program || "")
+    .trim()
+    .toLowerCase();
+  const council = String(chart?.council || "")
+    .trim()
+    .toLowerCase();
+  const includeArchived = !!chart?.include_archived;
+  return jobs.filter((job) => {
+    if (!includeArchived && job.archived) return false;
+    if (program && String(job.program || "").trim().toLowerCase() !== program) return false;
+    if (
+      council &&
+      !(job.councils || []).some((name) => String(name || "").trim().toLowerCase() === council)
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function countBy(jobs, keyFn) {
+  const counts = {};
+  for (const job of jobs) {
+    const key = keyFn(job);
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+
+function seriesFor(metric, data, chart = {}) {
+  const jobs = filteredJobs(data, chart);
+  const useJobs = Array.isArray(data.jobs);
+  let series = [];
   switch (metric) {
     case "stages":
-      return (data.by_stage || []).map((s) => ({ label: s.label, count: s.count }));
+      if (useJobs) {
+        const counts = countBy(jobs, (j) => j.stage || "not_started");
+        series = (data.by_stage || []).map((s) => ({ label: s.label, count: counts[s.key] || 0 }));
+      } else {
+        series = (data.by_stage || []).map((s) => ({ label: s.label, count: s.count }));
+      }
+      break;
     case "programs":
-      return (data.by_program || []).map((s) => ({ label: s.name, count: s.count }));
+      if (useJobs) {
+        const counts = countBy(jobs, (j) => j.program || "(no program)");
+        series = Object.entries(counts)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([label, count]) => ({ label, count }));
+      } else {
+        series = (data.by_program || []).map((s) => ({ label: s.name, count: s.count }));
+      }
+      break;
     case "councils":
-      return (data.by_council || []).map((s) => ({ label: s.name, count: s.count }));
+      if (useJobs) {
+        const counts = {};
+        for (const job of jobs) {
+          const names = job.councils?.length ? job.councils : ["(unassigned)"];
+          for (const name of names) counts[name] = (counts[name] || 0) + 1;
+        }
+        series = Object.entries(counts)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([label, count]) => ({ label, count }));
+      } else {
+        series = (data.by_council || []).map((s) => ({ label: s.name, count: s.count }));
+      }
+      break;
     case "priority":
-      return [
-        { label: "Priority 1", count: data.priority?.priority_1 || 0 },
-        { label: "Priority 2", count: data.priority?.priority_2 || 0 },
-      ];
+      if (useJobs) {
+        series = [
+          { label: "Priority 1", count: jobs.filter((j) => Number(j.priority) === 1).length },
+          { label: "Priority 2", count: jobs.filter((j) => Number(j.priority) === 2).length },
+        ];
+      } else {
+        series = [
+          { label: "Priority 1", count: data.priority?.priority_1 || 0 },
+          { label: "Priority 2", count: data.priority?.priority_2 || 0 },
+        ];
+      }
+      break;
     case "must_have":
-      return [
-        { label: "On time", count: data.must_have?.ok || 0 },
-        { label: "Not submitted", count: data.must_have?.late || 0 },
-        { label: "Overdue", count: data.must_have?.overdue || 0 },
-        { label: "None", count: data.must_have?.none || 0 },
-      ];
+      if (useJobs) {
+        const counts = countBy(jobs, (j) => j.must_have || "none");
+        series = [
+          { label: "On time", count: counts.ok || 0 },
+          { label: "Not submitted", count: counts.late || 0 },
+          { label: "Overdue", count: counts.overdue || 0 },
+          { label: "None", count: counts.none || 0 },
+        ];
+      } else {
+        series = [
+          { label: "On time", count: data.must_have?.ok || 0 },
+          { label: "Not submitted", count: data.must_have?.late || 0 },
+          { label: "Overdue", count: data.must_have?.overdue || 0 },
+          { label: "None", count: data.must_have?.none || 0 },
+        ];
+      }
+      break;
     case "lists":
-      return [
-        { label: "Permits", count: data.permits_priority_count || 0 },
-        { label: "TRIMS", count: data.trims_priority_count || 0 },
-      ];
+      if (useJobs) {
+        series = [
+          { label: "Permits", count: jobs.filter((j) => j.on_permits).length },
+          { label: "TRIMS", count: jobs.filter((j) => j.on_trims).length },
+        ];
+      } else {
+        series = [
+          { label: "Permits", count: data.permits_priority_count || 0 },
+          { label: "TRIMS", count: data.trims_priority_count || 0 },
+        ];
+      }
+      break;
     case "costs":
-      return [
-        { label: "Latest estimates", count: data.cost_totals?.estimated || 0, money: true },
-        { label: "Sites with costs", count: data.cost_totals?.sites_with_cost || 0 },
-      ];
+      if (useJobs) {
+        const estimated = jobs.reduce((sum, j) => sum + (Number(j.estimated) || 0), 0);
+        series = [
+          { label: "Latest estimates", count: estimated, money: true },
+          { label: "Sites with costs", count: jobs.filter((j) => (Number(j.estimated) || 0) > 0).length },
+        ];
+      } else {
+        series = [
+          { label: "Latest estimates", count: data.cost_totals?.estimated || 0, money: true },
+          { label: "Sites with costs", count: data.cost_totals?.sites_with_cost || 0 },
+        ];
+      }
+      break;
     case "spend":
-      return [
+      series = [
         { label: "Traffic", count: data.spend_totals?.traffic || 0, money: true },
         { label: "Pavements", count: data.spend_totals?.asphalt || 0, money: true },
         { label: "Total", count: data.spend_totals?.total || 0, money: true },
       ];
+      break;
     case "sites":
-      return [
-        { label: "Active", count: data.totals?.active_sites || 0 },
-        { label: "Archived", count: data.totals?.archived_sites || 0 },
-        { label: "Documents", count: data.totals?.documents || 0 },
-      ];
+      if (useJobs) {
+        series = [
+          { label: "Active", count: jobs.filter((j) => !j.archived).length },
+          { label: "Archived", count: jobs.filter((j) => j.archived).length },
+          { label: "Documents", count: jobs.reduce((sum, j) => sum + (Number(j.documents) || 0), 0) },
+        ];
+      } else {
+        series = [
+          { label: "Active", count: data.totals?.active_sites || 0 },
+          { label: "Archived", count: data.totals?.archived_sites || 0 },
+          { label: "Documents", count: data.totals?.documents || 0 },
+        ];
+      }
+      break;
     default:
-      return [];
+      series = [];
   }
+  if (chart.hide_empty !== false) {
+    const kept = series.filter((i) => (Number(i.count) || 0) > 0);
+    if (kept.length) series = kept;
+  }
+  return series;
 }
 
 function fmtWhen(value) {
@@ -182,11 +314,19 @@ function moneyCard(title, rows) {
   </section>`;
 }
 
+function chartScopeHint(chart) {
+  const bits = [chart.chart === "pie" ? "Pie" : "Bar", CHART_METRICS[chart.metric] || chart.metric];
+  if (chart.program) bits.push(chart.program);
+  if (chart.council) bits.push(chart.council);
+  if (chart.include_archived) bits.push("incl. archive");
+  return bits.join(" · ");
+}
+
 function chartCard(chart, data) {
   const metricLabel = CHART_METRICS[chart.metric] || chart.metric;
   const title = chart.title || metricLabel;
   const kind = chart.chart === "pie" ? "pie" : "bar";
-  const series = seriesFor(chart.metric, data);
+  const series = seriesFor(chart.metric, data, chart);
   const body = !series.length
     ? `<p class="hint">No data yet.</p>`
     : kind === "pie"
@@ -196,7 +336,7 @@ function chartCard(chart, data) {
     <div class="page-head lists-panel-head">
       <div>
         <h2>${escapeHtml(title)}</h2>
-        <p class="hint">${kind === "pie" ? "Pie" : "Bar"} · ${escapeHtml(metricLabel)}</p>
+        <p class="hint">${escapeHtml(chartScopeHint(chart))}</p>
       </div>
       <div class="toolbar">
         <button type="button" class="btn btn-sm" data-edit-chart="${escapeHtml(chart.id)}">Edit</button>
@@ -230,11 +370,30 @@ function openChartDialog() {
   else el.setAttribute("open", "");
 }
 
+function fillSelect(id, values, selected, allLabel) {
+  const el = $(id);
+  if (!el) return;
+  const opts = [`<option value="">${escapeHtml(allLabel)}</option>`].concat(
+    (values || []).map(
+      (value) =>
+        `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(value)}</option>`
+    )
+  );
+  el.innerHTML = opts.join("");
+  if (selected && ![...el.options].some((o) => o.value === selected)) {
+    el.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`);
+  }
+}
+
 function fillChartForm(chart) {
   $("chartEditId").value = chart?.id || "";
   $("chartTitle").value = chart?.title || "";
   $("chartMetric").value = chart?.metric && CHART_METRICS[chart.metric] ? chart.metric : "stages";
   $("chartType").value = chart?.chart === "pie" ? "pie" : "bar";
+  fillSelect("chartProgram", chartMeta.programs, chart?.program || "", "All programs / categories");
+  fillSelect("chartCouncil", chartMeta.councils, chart?.council || "", "All councils");
+  if ($("chartIncludeArchived")) $("chartIncludeArchived").checked = !!chart?.include_archived;
+  if ($("chartHideEmpty")) $("chartHideEmpty").checked = chart?.hide_empty !== false;
   $("homeChartDialogTitle").textContent = chart?.id ? "Edit graph" : "Add graph";
 }
 
@@ -412,14 +571,23 @@ function bindChartUi() {
     const metric = $("chartMetric")?.value || "stages";
     const kind = $("chartType")?.value === "pie" ? "pie" : "bar";
     const title = ($("chartTitle")?.value || "").trim();
+    const payload = {
+      title,
+      metric,
+      chart: kind,
+      program: $("chartProgram")?.value || "",
+      council: $("chartCouncil")?.value || "",
+      include_archived: !!$("chartIncludeArchived")?.checked,
+      hide_empty: $("chartHideEmpty") ? $("chartHideEmpty").checked : true,
+    };
     const editId = $("chartEditId")?.value || "";
     const next = homeCharts();
     if (editId) {
       const idx = next.findIndex((c) => c.id === editId);
-      if (idx >= 0) next[idx] = { ...next[idx], title, metric, chart: kind };
+      if (idx >= 0) next[idx] = { ...next[idx], ...payload };
     } else {
       if (next.length >= MAX_HOME_CHARTS) return;
-      next.push({ id: newChartId(), title, metric, chart: kind });
+      next.push({ id: newChartId(), ...payload });
     }
     const saveBtn = $("homeChartSave");
     if (saveBtn) saveBtn.disabled = true;
@@ -467,6 +635,12 @@ function bindChartUi() {
 
 async function init() {
   await injectChrome({ active: "/dashboard" });
+  try {
+    const meta = await api("/api/meta");
+    chartMeta = { programs: meta.programs || [], councils: meta.councils || [] };
+  } catch {
+    chartMeta = { programs: [], councils: [] };
+  }
   renderHomeChrome();
   bindChartUi();
   onLiveSitesChanged(() => loadDashboard().catch(() => {}));
